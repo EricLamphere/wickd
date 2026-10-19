@@ -1,11 +1,11 @@
 [package]
-name = "dbt-ui"
+name = "wickd"
 version = "1.0.0"
-description = "dbt-ui desktop app"
+description = "Wickd desktop app"
 edition = "2021"
 
 [lib]
-name = "dbt_ui_lib"
+name = "wickd_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

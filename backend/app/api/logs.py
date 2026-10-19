@@ -55,7 +55,7 @@ async def clear_project_logs(
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
-    log_file = Path(project.path) / "logs" / "dbt-ui" / "project_logs.log"
+    log_file = Path(project.path) / "logs" / "wickd" / "project_logs.log"
     _clear_log_file(log_file)
     return OkDto(ok=True)
 

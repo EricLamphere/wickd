@@ -1,6 +1,6 @@
 # How-To Guides
 
-Step-by-step guides for using dbt-ui.
+Step-by-step guides for using Wickd.
 
 | Guide | What it covers |
 |---|---|

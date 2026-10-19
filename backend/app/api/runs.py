@@ -106,7 +106,7 @@ def _resolve_selector(dto: RunRequestDto) -> str | None:
 
 
 def _invocation_log_path(project_path: Path, invocation_id: int) -> Path:
-    log_dir = project_path / "logs" / "dbt-ui" / "invocations"
+    log_dir = project_path / "logs" / "wickd" / "invocations"
     log_dir.mkdir(parents=True, exist_ok=True)
     gitignore = project_path / "logs" / ".gitignore"
     if not gitignore.exists():

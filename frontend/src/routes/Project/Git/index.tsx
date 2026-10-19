@@ -24,13 +24,13 @@ export default function GitPage() {
 
   // Panel sizing
   const [changesWidth, setChangesWidth] = useState(() => {
-    try { const v = parseInt(localStorage.getItem('dbt-ui:git-changes-width') ?? '', 10); return !isNaN(v) && v >= 180 && v <= 600 ? v : 280; } catch { return 280; }
+    try { const v = parseInt(localStorage.getItem('wickd:git-changes-width') ?? '', 10); return !isNaN(v) && v >= 180 && v <= 600 ? v : 280; } catch { return 280; }
   });
   const changesResizing = useRef(false);
   const changesWidthRef = useRef(changesWidth);
 
   // UI state — restore selected path from sessionStorage
-  const [changesOpen, toggleChanges] = usePersistedOpen('dbt-ui:git-changes-open', true);
+  const [changesOpen, toggleChanges] = usePersistedOpen('wickd:git-changes-open', true);
   const [selectedPath, setSelectedPath] = useState<string | null>(
     () => sessionStorage.getItem(SESSION_KEY)
   );
@@ -158,7 +158,7 @@ export default function GitPage() {
   const onMouseUp = useCallback(() => {
     if (!changesResizing.current) return;
     changesResizing.current = false;
-    try { localStorage.setItem('dbt-ui:git-changes-width', String(changesWidthRef.current)); } catch {}
+    try { localStorage.setItem('wickd:git-changes-width', String(changesWidthRef.current)); } catch {}
   }, []);
 
   const registerListeners = useCallback(() => {

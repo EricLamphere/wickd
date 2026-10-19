@@ -1,6 +1,6 @@
 # How to Configure Environment and Targets
 
-This guide covers environment variables, dbt targets, profiles, and requirements in dbt-ui.
+This guide covers environment variables, dbt targets, profiles, and requirements in Wickd.
 
 ## Opening the Environment tab
 
@@ -10,7 +10,7 @@ Navigate to a project and click **Environment** in the project nav. The page is 
 - **Profiles** — named sets of env vars you can activate as a group
 - **Settings** — project-specific and global settings
 
-> dbt-ui Pro subscription management (license key, cancellation) lives in the **Global Settings** modal, not here — see below.
+> Wickd Pro subscription management (license key, cancellation) lives in the **Global Settings** modal, not here — see below.
 
 ---
 
@@ -49,7 +49,7 @@ The **Target** dropdown in the top-right header controls which dbt target is act
 The selection is stored per-project and applied to every subsequent dbt run as `--target <value>`.
 
 **Where targets come from:**
-dbt-ui reads `profiles.yml` from the project directory first. If none is found there, it falls back to `~/.dbt/profiles.yml`. The available targets reflect the `outputs:` section of the active profile.
+Wickd reads `profiles.yml` from the project directory first. If none is found there, it falls back to `~/.dbt/profiles.yml`. The available targets reflect the `outputs:` section of the active profile.
 
 ---
 
@@ -93,20 +93,20 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 Global settings are shown for reference but can only be edited in the Global Settings modal:
 
-- **DBT_UI_PROJECTS_PATH** — the workspace directory scanned for dbt projects
-- **DBT_UI_GLOBAL_REQUIREMENTS_PATH** — a global `requirements.txt` installed for every project
-- **DBT_UI_LOG_LEVEL** — logging verbosity
-- **DBT_UI_PYTHON_PATH** — the Python interpreter dbt runs on (see below)
+- **WICKD_PROJECTS_PATH** — the workspace directory scanned for dbt projects
+- **WICKD_GLOBAL_REQUIREMENTS_PATH** — a global `requirements.txt` installed for every project
+- **WICKD_LOG_LEVEL** — logging verbosity
+- **WICKD_PYTHON_PATH** — the Python interpreter dbt runs on (see below)
 
 To change these, click the lock icon area or open Global Settings from the Home page.
 
 ### Choosing the Python version dbt runs on
 
-dbt runs in its own virtual environment, built from a Python interpreter on your machine. On first launch dbt-ui picks one automatically (the newest of `python3.13`, `python3.12`, `python3.11` it can find, including Homebrew and pyenv locations), and shows it as **DBT_UI_PYTHON_PATH** in Global Settings → Settings.
+dbt runs in its own virtual environment, built from a Python interpreter on your machine. On first launch Wickd picks one automatically (the newest of `python3.13`, `python3.12`, `python3.11` it can find, including Homebrew and pyenv locations), and shows it as **WICKD_PYTHON_PATH** in Global Settings → Settings.
 
-To switch, pick another interpreter from the dropdown. It lists every Python 3.11+ install dbt-ui can find: PATH, Homebrew, pyenv's `~/.pyenv/versions/*`, and python.org installs under `/Library/Frameworks`. Symlinks to the same binary appear once, and interpreters inside a virtualenv are excluded. Installed a new Python? Click the rescan button next to the dropdown. You'll be asked to confirm, because switching rebuilds dbt's environment.
+To switch, pick another interpreter from the dropdown. It lists every Python 3.11+ install Wickd can find: PATH, Homebrew, pyenv's `~/.pyenv/versions/*`, and python.org installs under `/Library/Frameworks`. Symlinks to the same binary appear once, and interpreters inside a virtualenv are excluded. Installed a new Python? Click the rescan button next to the dropdown. You'll be asked to confirm, because switching rebuilds dbt's environment.
 
-Switching rebuilds dbt's environment from scratch, so dbt-core and your adapters are removed. dbt-ui then offers a **Run global setup** button to reinstall them from your global `requirements.txt`. Re-open any project that installs its own `REQUIREMENTS_PATH`. You can't switch while a dbt command, global setup, or init pipeline is running.
+Switching rebuilds dbt's environment from scratch, so dbt-core and your adapters are removed. Wickd then offers a **Run global setup** button to reinstall them from your global `requirements.txt`. Re-open any project that installs its own `REQUIREMENTS_PATH`. You can't switch while a dbt command, global setup, or init pipeline is running.
 
 This works the same when running from a source checkout (`task start`): dbt gets its own venv at `data/dbt-venv`, separate from the backend's `backend/.venv`. The backend's Python is still chosen with `task install PYTHON=python3.12`.
 
@@ -114,7 +114,7 @@ This works the same when running from a source checkout (`task start`): dbt gets
 
 ## Subscription
 
-Click the gear icon on the Home page to open **Global Settings**, then the **Subscription** tab. This shows the status of your dbt-ui Pro license and lets you manage it without leaving the app. It's installation-wide, not per-project — the same license covers every project you open.
+Click the gear icon on the Home page to open **Global Settings**, then the **Subscription** tab. This shows the status of your Wickd Pro license and lets you manage it without leaving the app. It's installation-wide, not per-project — the same license covers every project you open.
 
 **If you have an active subscription:**
 - Your license key is shown masked (`••••••••…`) by default. Click the eye icon to reveal it, and again to hide it. **Don't share this key** — anyone who has it can activate their own device on it, using up your device slots (and there's no other protection against this).
@@ -130,7 +130,7 @@ Click the gear icon on the Home page to open **Global Settings**, then the **Sub
 
 ## Requirements installation
 
-dbt-ui installs Python requirements into the same venv as the `dbt` binary (not into the app's own venv). Two sources are supported:
+Wickd installs Python requirements into the same venv as the `dbt` binary (not into the app's own venv). Two sources are supported:
 
 1. **Global** (`global_requirements_path`) — installed first, applies to all projects
 2. **Per-project** (`REQUIREMENTS_PATH`) — installed second, applies to this project only

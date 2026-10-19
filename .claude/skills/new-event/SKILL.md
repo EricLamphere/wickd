@@ -1,10 +1,10 @@
 ---
 name: new-event
-description: Wire up a new SSE event type end-to-end in dbt-ui — backend bus.publish(), sse.ts listener registration, frontend cache invalidation, and rule file update.
+description: Wire up a new SSE event type end-to-end in Wickd — backend bus.publish(), sse.ts listener registration, frontend cache invalidation, and rule file update.
 argument-hint: "<event_type> [topic] [emitter file] [payload fields]"
 ---
 
-You are wiring up a new SSE event type in the dbt-ui project end-to-end. This touches the backend event bus, the frontend SSE hook, and the project rules.
+You are wiring up a new SSE event type in the Wickd project end-to-end. This touches the backend event bus, the frontend SSE hook, and the project rules.
 
 ## Parse the Arguments
 

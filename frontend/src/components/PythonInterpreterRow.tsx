@@ -4,13 +4,13 @@ import { Lock, RefreshCw } from 'lucide-react';
 import { api, type PythonInterpreterDto, type SettingsDto } from '../lib/api';
 import { GlobalSetupModal } from './GlobalSetupModal';
 
-const LABEL = 'DBT_UI_PYTHON_PATH';
+const LABEL = 'WICKD_PYTHON_PATH';
 
 function optionLabel(p: PythonInterpreterDto): string {
   return `Python ${p.version} — ${p.path}`;
 }
 
-/** DBT_UI_PYTHON_PATH row: pick which installed Python the dbt venv is built from. */
+/** WICKD_PYTHON_PATH row: pick which installed Python the dbt venv is built from. */
 export function PythonInterpreterRow({ appSettings }: { appSettings: SettingsDto }) {
   const qc = useQueryClient();
   const editable = appSettings.python_path_editable;
@@ -59,7 +59,7 @@ export function PythonInterpreterRow({ appSettings }: { appSettings: SettingsDto
           <span className="text-gray-600 italic">
             {editable
               ? 'Python that dbt runs on; switching rebuilds the dbt environment'
-              : "dbt shares dbt-ui's own venv (DBT_UI_DBT_VENV_DIR) — can't switch"}
+              : "dbt shares Wickd's own venv (WICKD_DBT_VENV_DIR) — can't switch"}
           </span>
         </div>
         <span className="text-gray-600">=</span>

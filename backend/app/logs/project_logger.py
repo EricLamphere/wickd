@@ -1,5 +1,5 @@
 """
-Append log lines to {project_path}/logs/dbt-ui/project_logs.log and publish
+Append log lines to {project_path}/logs/wickd/project_logs.log and publish
 them as `project_log` SSE events on the project bus topic.
 """
 
@@ -15,7 +15,7 @@ _GITIGNORE_CONTENT = "*\n"
 
 
 def _ensure_log_dir(project_path: str) -> Path:
-    log_dir = Path(project_path) / "logs" / "dbt-ui"
+    log_dir = Path(project_path) / "logs" / "wickd"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     gitignore = Path(project_path) / "logs" / ".gitignore"
@@ -67,7 +67,7 @@ async def append_project_log_async(project_path: str, line: str, project_id: int
 
 def read_project_log_tail(project_path: str, lines: int = 500) -> list[str]:
     """Return the last N lines of the project log file."""
-    log_file = Path(project_path) / "logs" / "dbt-ui" / "project_logs.log"
+    log_file = Path(project_path) / "logs" / "wickd" / "project_logs.log"
     if not log_file.exists():
         return []
     try:

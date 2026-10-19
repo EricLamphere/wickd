@@ -33,7 +33,7 @@ const MAX_WIDTH = 1200;
 const COLLAPSE_THRESHOLD = 80;
 
 function storageKey(page: string) {
-  return `dbt-ui:side-pane-width:${page}`;
+  return `wickd:side-pane-width:${page}`;
 }
 
 function readStoredWidth(page: string): number {

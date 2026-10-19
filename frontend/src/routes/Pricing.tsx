@@ -112,11 +112,11 @@ export default function Pricing() {
       <div className="flex flex-col items-center text-center gap-1.5">
         <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/30 text-brand-300 text-xs font-medium">
           <Sparkles size={12} />
-          dbt-ui Pro
+          Wickd Pro
         </div>
         <h1 className="text-xl font-semibold text-gray-100">{isPro ? "You're on Pro" : 'Upgrade to Pro'}</h1>
         <p className="text-xs text-gray-500 max-w-md">
-          dbt-ui is free and open-source. Pro is a monthly subscription that unlocks advanced features and supports continued development.
+          Wickd is free and open-source. Pro is a monthly subscription that unlocks advanced features and supports continued development.
         </p>
       </div>
 
@@ -201,7 +201,7 @@ export default function Pricing() {
             type="text"
             value={licenseKey}
             onChange={(e) => setLicenseKey(e.target.value)}
-            placeholder="DBTUI_-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+            placeholder="WICKD_-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
             className="bg-surface-elevated border border-gray-700 rounded px-3 py-1.5 text-xs font-mono text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -237,7 +237,7 @@ export default function Pricing() {
         <div className="flex flex-col items-center gap-3 pb-6">
           <div className="flex items-center justify-center gap-1.5 text-center text-brand-300 text-sm font-medium">
             <Lock size={14} />
-            dbt-ui Pro is active on this device
+            Wickd Pro is active on this device
           </div>
           <button
             onClick={() => setManageSubscriptionOpen(true)}
@@ -252,6 +252,10 @@ export default function Pricing() {
       {manageSubscriptionOpen && (
         <GlobalSettingsModal onClose={() => setManageSubscriptionOpen(false)} initialTab="subscription" />
       )}
+
+      <p className="pb-4 text-center text-[11px] text-gray-600">
+        dbt and dbt Core are trademarks of dbt Labs, Inc. Wickd is not affiliated with or endorsed by dbt Labs.
+      </p>
     </div>
   );
 }

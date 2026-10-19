@@ -590,7 +590,7 @@ export default function ModelsPage() {
                   return; // already running — existing run's events will update our query
                 }
                 if (err instanceof ApiError && err.status === 503) {
-                  alert('Column-level lineage is unavailable in this build (the dbt-ui Pro package is not installed).');
+                  alert('Column-level lineage is unavailable in this build (the Wickd Pro package is not installed).');
                   return;
                 }
                 if (err instanceof ApiError && err.status === 422) {

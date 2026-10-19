@@ -1,4 +1,4 @@
-# Database Migrations for dbt-ui
+# Database Migrations for Wickd
 
 ## No Alembic — Idempotent DDL on Startup
 

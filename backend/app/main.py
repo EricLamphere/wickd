@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
         log.info("shutdown")
 
 
-app = FastAPI(title="dbt-ui", lifespan=lifespan)
+app = FastAPI(title="Wickd", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

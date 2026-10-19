@@ -104,7 +104,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
     }
     if (columnLevel && seedNodes.length > 0 && !columnResult) {
       const message = columns.lineage.locked
-        ? 'Column-level impact is a dbt-ui Pro feature. Turn off Columns for node-level impact.'
+        ? 'Column-level impact is a Wickd Pro feature. Turn off Columns for node-level impact.'
         : columns.lineage.ready
           ? 'Pick one or more columns above to see which downstream columns they reach.'
           : 'Column-level impact needs column lineage. Load it above.';

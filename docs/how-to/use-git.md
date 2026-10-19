@@ -1,12 +1,12 @@
 # Use Source Control (Git)
 
-dbt-ui includes a VSCode-style Source Control panel for the active dbt project. It requires the project to live inside a git repository — the repo root is found by walking upward from the project directory, so mono-repo layouts work.
+Wickd includes a VSCode-style Source Control panel for the active dbt project. It requires the project to live inside a git repository — the repo root is found by walking upward from the project directory, so mono-repo layouts work.
 
 ## Opening Source Control
 
 Click **Source Control** in the left rail of any project page. The panel loads the current branch, ahead/behind counts, and the list of changed files.
 
-Like VS Code, the panel is a stack of collapsible sections: **Changes** (expanded), **Impact** (expanded) and **Commit History** (collapsed), with the branch/commit/push box always at the bottom. Click a section header to collapse or expand it; dbt-ui remembers your choice.
+Like VS Code, the panel is a stack of collapsible sections: **Changes** (expanded), **Impact** (expanded) and **Commit History** (collapsed), with the branch/commit/push box always at the bottom. Click a section header to collapse or expand it; Wickd remembers your choice.
 
 If the project is not inside a git repository, the panel shows "Not a git repository" with no file list.
 
@@ -44,7 +44,7 @@ Type a commit message in the text area at the bottom of the changes panel. Press
 
 The **push / pull** icon button appears next to the branch chip. It pushes if you are ahead of the upstream, or pulls if you are behind. Output streams live into a log area above the commit message box.
 
-Authentication uses your existing `~/.gitconfig` credential helper or SSH agent — no credentials are entered in dbt-ui. If auth fails, fix your credential helper externally and retry.
+Authentication uses your existing `~/.gitconfig` credential helper or SSH agent — no credentials are entered in Wickd. If auth fails, fix your credential helper externally and retry.
 
 ## Switching Branches
 
@@ -75,6 +75,6 @@ See [Seeing what a change would affect](navigate-dag.md#seeing-what-a-change-wou
 
 ## Notes
 
-- Push and pull run non-interactively. If your remote requires interactive authentication (e.g. an SSH key without a loaded agent), configure your credential helper or SSH agent outside dbt-ui.
+- Push and pull run non-interactively. If your remote requires interactive authentication (e.g. an SSH key without a loaded agent), configure your credential helper or SSH agent outside Wickd.
 - Merge conflict resolution is not built in — conflicted files appear in the panel, but you must resolve them in the file editor and then stage the result.
 - The branch chip and file list update automatically (within ~250ms) when you run git commands in an external terminal, thanks to the `.git/` directory watcher.

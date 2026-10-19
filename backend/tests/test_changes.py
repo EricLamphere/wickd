@@ -176,7 +176,7 @@ def test_relevant_files_counts_matched_files() -> None:
     mapping = map_changed_files(_manifest(), [
         ChangedFile("models/marts/fct_revenue.sql", "modified"),
         ChangedFile("tests/assert_positive.sql", "modified"),
-        ChangedFile("dbtui/workspace/scratch.sql", "added"),
+        ChangedFile("wickd/workspace/scratch.sql", "added"),
     ])
     assert mapping.relevant_files == 2
 
@@ -189,7 +189,7 @@ def test_missing_manifest_sections_are_tolerated() -> None:
 
 def test_unmapped_only_reports_files_under_resource_dirs() -> None:
     mapping = map_changed_files(_manifest(), [
-        ChangedFile("dbtui/workspace/scratch.sql", "added"),
+        ChangedFile("wickd/workspace/scratch.sql", "added"),
         ChangedFile("scripts/load.py", "modified"),
         ChangedFile("transform/new.sql", "added"),
         ChangedFile("models/new.sql", "added"),

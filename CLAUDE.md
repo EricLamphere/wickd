@@ -1,10 +1,10 @@
-# dbt-ui
+# Wickd
 
 Local web UI for managing dbt projects. No auth, single user, runs on localhost only.
 Backend on `:8001`, frontend on `:5173`.
 
 This repo is the public/free product. Column-level lineage's actual tracing
-algorithm lives in a separate private repo (`dbt-ui-pro`, expected as a
+algorithm lives in a separate private repo (`wickd-pro`, expected as a
 sibling checkout), and the marketing site lives in another separate private
 repo (`lamphere-labs`). See
 [.claude/rules/related-repos.md](.claude/rules/related-repos.md) before
@@ -44,7 +44,7 @@ backend/app/
     drift.py      — diff_columns() + is_eligible_for_drift_check() — column schema diff helpers
     probe.py      — probe_warehouse_columns() — a built node's real column names via `dbt show --inline`; shared by drift and the docs generator
     schema_yaml.py — document_node() — docs generator: adds `- name:` entries for a model/seed/snapshot + columns to its schema YAML (patch_path file → folder YAML with the resource key → new schema.yml). Never re-serialises: ruamel.yaml only locates line positions, new lines are spliced in matching the file's indent style, and the result is re-parsed and verified before writing
-    column_lineage.py — dbt-ui Pro feature (gated via app/licensing). Public shim only: defines the real, always-importable ColumnRef/LineageJob dataclasses (required at import time by api/column_lineage.py) and lazily delegates prepare_lineage_jobs()/trace_job()/trace_job_full() (projection lineage + row dependencies; falls back to no row deps on older Pro builds, see supports_row_dependencies())/build_column_lineage() to the private `dbt_ui_pro` package (separate repo), raising ColumnLineageUnavailable if it isn't installed. The actual sqlglot-based tracing algorithm (case-insensitive matching, UNPIVOT stripping, etc.) lives in dbt-ui-pro, not this repo.
+    column_lineage.py — Wickd Pro feature (gated via app/licensing). Public shim only: defines the real, always-importable ColumnRef/LineageJob dataclasses (required at import time by api/column_lineage.py) and lazily delegates prepare_lineage_jobs()/trace_job()/trace_job_full() (projection lineage + row dependencies; falls back to no row deps on older Pro builds, see supports_row_dependencies())/build_column_lineage() to the private `wickd_pro` package (separate repo), raising ColumnLineageUnavailable if it isn't installed. The actual sqlglot-based tracing algorithm (case-insensitive matching, UNPIVOT stripping, etc.) lives in wickd-pro, not this repo.
   licensing/
     polar_client.py — thin async httpx client wrapping Polar's license-key validate/activate endpoints (sandbox or production per Settings.polar_use_sandbox)
     entitlements.py — check_entitlement() with 7-day grace-period cache (LicenseState) + 6h recheck interval; a definitive "not entitled" from Polar is always trusted immediately, bypassing the grace period
@@ -55,7 +55,7 @@ backend/app/
     sse.py        — sse_response(), sse_response_with_replay()
   projects/
     discovery.py  — Walk workspace for dbt_project.yml
-    service.py    — Upsert projects to DB; _effective_workspace() for DBT_UI_PROJECTS_PATH
+    service.py    — Upsert projects to DB; _effective_workspace() for WICKD_PROJECTS_PATH
   git/
     runner.py     — GitRunner singleton; subprocess + serialization lock per project; stream() publishes git_started/git_log/git_finished
     repo.py       — find_repo_root() walks upward for .git/; parse_porcelain_v2() parses git status --porcelain=v2 -z; parse_name_status_z() parses git diff --name-status -z
@@ -71,9 +71,9 @@ frontend/src/
     navHistoryContext.tsx — NavHistoryProvider (wraps the app inside BrowserRouter) + useNavHistory(); browser history is the source of truth (arrows call navigate(±n)); also binds ⌘[ / ⌘] or ⌘← / ⌘→ (not while typing) and mouse back/forward buttons
     useUrlTab.ts  — useUrlTab(param, allowed, fallback, rememberKey?) — in-page tab state in a URL search param so tab switches are history entries. Used by Health (?tab=, remembered per project), project home file tabs (?file=), Docs browse tabs (?browse=) and Docs node/project detail tabs (?view=). Side/bottom pane tabs deliberately stay local state
   components/
-    NavArrows.tsx — header back/forward buttons (right of the dbt-ui home link)
+    NavArrows.tsx — header back/forward buttons (right of the Wickd home link)
   routes/
-    Home.tsx      — Project list (respects DBT_UI_PROJECTS_PATH configured banner)
+    Home.tsx      — Project list (respects WICKD_PROJECTS_PATH configured banner)
     Project/
       ProjectLayout.tsx  — Shared layout wrapper (outlet + BottomPane; outlet has overflow-auto for scrolling); global ⌘K listener
       lib/
@@ -82,7 +82,7 @@ frontend/src/
         selectedNodeContext.tsx — SelectedNodeContext/SetSelectedNodeContext + useReportSelectedNode(uid) / useSelectedNodeId(); feeds the bottom pane's Node DAG tab. Also SelectedNodeIdsContext + useReportSelectedNodes(uids) for the DAG's Cmd+click multi-selection (empty unless 2+ nodes), which the Impact tab prefers over the single selection; and SelectedColumnsContext + useReportSelectedColumns(keys) for the DAG's column selection (`<uid>::<column>`), which in Selection mode starts column-level impact from those columns (picksFromColumnKeys() in columnImpact.ts)
         impact.ts — computeImpact(graph, seedIds) → seeds + downstream nodes grouped by shortest depth, per-node data/unit test counts, risk flags (untested/exposure/incremental/failing/stale) and summary; buildImpactSelector() → `a+ b+` for dbt build; unit-tested in impact.test.ts
         nodeTypeIcon.ts — typeIconFor(resource_type): glyph per node type, shared by ModelNode (DAG) and the Impact table
-        bottomPaneEvents.ts — openBottomTab(tab, { impactMode? }): `dbt-ui:open-bottom-tab` window event BottomPane listens for (used by the SidePane impact card and the Git page ImpactSection)
+        bottomPaneEvents.ts — openBottomTab(tab, { impactMode? }): `wickd:open-bottom-tab` window event BottomPane listens for (used by the SidePane impact card and the Git page ImpactSection)
         columnImpact.ts — computeColumnImpact(graph, lineage, seeds) → column-level reach (Pro): projection lineage narrows columns, row dependencies (filter/join/group) mark a model fully affected, untraced models assumed fully affected, affected tests; pickableColumns(); describeAffected() labels; unit-tested
         useColumnLineageData.ts — latest column lineage snapshot for impact (['column-lineage', id], shared with the DAG) + start(); `ready` needs lineage_version >= 2; `locked` on 403
         impactChanges.ts — ImpactMode ('selection' | 'working' | 'branch'); describeReason(s)() labels for why a node changed; seedIdsFrom()/reasonsByNode() over ImpactChangesDto; changeErrorMessage()
@@ -97,7 +97,7 @@ frontend/src/
       Models.tsx         — React Flow DAG page (/projects/:projectId/models); ?model=<uid> is the selected node (clicking a node pushes it, so back/forward steps through selections; pane click clears it with replace; modifier-click multi-select doesn't touch it); uses SidePane(page="dag"); optional test coverage overlay with toggle in DagFilterBar; persists coverage state per-project in sessionStorage
       Docs.tsx           — Native docs browser (folder tree); MacroDetail includes "Try It" section with arg inputs, editable Jinja call textarea, and inline compile button
       FileExplorer/      — File browser + editor; uses SidePane(page="files") with navigation to DAG. ?path=<file> is the open file (opening a file pushes it, so back/forward covers files); inbound ?model=<uid> deep-links (or the last-open file) are resolved to ?path= with replace on arrival
-      Git/               — Source Control page (VSCode-style SCM): ChangesList, DiffView (Monaco DiffEditor), CommitBox, BranchPicker, HistoryPanel. The changes panel is VS Code-style collapsible sections (PaneSection.tsx: PaneSectionHeader + usePersistedOpen in localStorage): Changes (open by default, `dbt-ui:git-changes-open`) → ImpactSection (impact of uncommitted changes, open, `dbt-ui:git-impact-open`) → HistorySection "Commit History" (collapsed, resizable) → CommitBox pinned at the bottom
+      Git/               — Source Control page (VSCode-style SCM): ChangesList, DiffView (Monaco DiffEditor), CommitBox, BranchPicker, HistoryPanel. The changes panel is VS Code-style collapsible sections (PaneSection.tsx: PaneSectionHeader + usePersistedOpen in localStorage): Changes (open by default, `wickd:git-changes-open`) → ImpactSection (impact of uncommitted changes, open, `wickd:git-impact-open`) → HistorySection "Commit History" (collapsed, resizable) → CommitBox pinned at the bottom
       Workspace/         — SQL Workspace page: file tree + Monaco editor + Compiled SQL tab + resizable results pane; SQL/dbt autocomplete; cmd+click refs navigate to File Explorer
       Environment.tsx    — Env vars + profiles
       InitScripts.tsx    — Init pipeline management
@@ -137,7 +137,7 @@ All 13 in `backend/app/db/models.py`:
 - `run_invocations` — historical run records; `custom_args` (JSON list, nullable) holds the user-entered args of a custom dbt command so rerun replays them exactly
 - `env_profiles` — named environment profiles per project
 - `profile_env_vars` — key/value vars belonging to a profile
-- `project_env_vars` — project-level env vars (not profile-scoped); includes `dbt_target` for active target; `REQUIREMENTS_PATH` for per-project requirements; `WORKSPACE_PATH` for SQL workspace dir (default `dbtui/workspace`)
+- `project_env_vars` — project-level env vars (not profile-scoped); includes `dbt_target` for active target; `REQUIREMENTS_PATH` for per-project requirements; `WORKSPACE_PATH` for SQL workspace dir (default `wickd/workspace`)
 - `app_settings` — global app config (key/value); keys: `dbt_projects_path`, `global_requirements_path`, `log_level`, `theme`, `python_path`, `setup_completed`
 - `global_profiles` — named env var sets shared across all projects
 - `global_profile_vars` — key/value vars belonging to a global profile
@@ -255,7 +255,7 @@ finally:
 **Init Pipeline** — runs pip install + dbt deps + custom shell scripts in sequence
 - Entry: `POST /api/projects/{id}/open`
 - Built-in base steps (in order): `base: pip install`, `base: dbt deps`
-- Scripts in `{project_path}/{init_script_path}/*.sh` (default `dbtui/init/`; managed by `dbt/init_scripts.py`)
+- Scripts in `{project_path}/{init_script_path}/*.sh` (default `wickd/init/`; managed by `dbt/init_scripts.py`)
 - Per-project `init_script_path` column in `projects` table
 - Linked external scripts tracked with absolute `script_path` in `init_steps` table
 - `_sync_steps_from_disk()` only deletes owned (init-dir) scripts; preserves linked ones
@@ -325,13 +325,13 @@ useInitSessionEvents(sessionId, onEvent, useCallback(() => { /* on close */ }, [
 - `AppSetting` table stores key/value pairs for global config
 - `GET /api/settings` returns `{ dbt_projects_path, global_requirements_path, log_level, theme, python_path, python_path_editable, configured }`
 - `PUT /api/settings` updates any subset of the above keys
-- `python_path` (`DBT_UI_PYTHON_PATH`) is the interpreter the dbt venv is built from. Seeded at startup by `load_python_setting()` (`dbt/python_env.py`) from whatever the existing venv was built from, else `find_system_python()`. The UI is a dropdown fed by `GET /api/settings/python-interpreters` (`venv.list_pythons()` — 3.11+ installs found on PATH, Homebrew, `~/.pyenv/versions/*/bin`, python.org frameworks; deduped by realpath, virtualenv interpreters excluded). Changing it validates (3.11+, not inside a virtualenv), rebuilds the venv via `venv.rebuild_venv()` (skipped when the new path is a symlink to the current interpreter) and only then saves; empty input re-detects; returns 409 while a dbt run, global setup, or init pipeline is in flight. Mirrored into `app.dbt.venv` via `set_configured_python()` because venv resolution is sync. The venv records its interpreter in `<venv>/.dbt-ui-python`, and `ensure_venv()` rebuilds on mismatch. The dbt venv is `data/dbt-venv` in dev (not `backend/.venv` — dbt is kept out of the backend's own venv so its Python can be switched) and `<data_dir>/dbt-venv` in the packaged app. `python_path_editable` is false only if `DBT_UI_DBT_VENV_DIR` points at the backend's own venv, which is never rebuilt
-- **First-run setup wizard**: `SetupGate` (`frontend/src/components/setup/`, wraps the whole app in `App.tsx`) shows a full-screen `LoadingScreen` until the first `GET /api/settings` succeeds (retrying every 250ms — the backend may still be booting), then `SetupWizard` *instead of* the app while `setup_completed` is false, or on the `dbt-ui:open-setup` window event (Global Settings → Run setup again). It saves everything via `POST /api/setup/complete` (`api/setup.py`), which validates paths first, then `change_python_path()`, then creates the requirements file if `create_requirements_file` (seeded with `dbt-core`; the wizard defaults the path to `<projects folder>/requirements.txt`), then commits and rescans; field errors come back as `400 {field, code, message}`, and the wizard jumps to that step. The last step streams global setup via the shared `useGlobalSetupRun()` hook (also used by `GlobalSetupModal`). `seed_setup_completed()` runs at startup and marks installs that predate the wizard (projects path already set in the DB or env) as complete
+- `python_path` (`WICKD_PYTHON_PATH`) is the interpreter the dbt venv is built from. Seeded at startup by `load_python_setting()` (`dbt/python_env.py`) from whatever the existing venv was built from, else `find_system_python()`. The UI is a dropdown fed by `GET /api/settings/python-interpreters` (`venv.list_pythons()` — 3.11+ installs found on PATH, Homebrew, `~/.pyenv/versions/*/bin`, python.org frameworks; deduped by realpath, virtualenv interpreters excluded). Changing it validates (3.11+, not inside a virtualenv), rebuilds the venv via `venv.rebuild_venv()` (skipped when the new path is a symlink to the current interpreter) and only then saves; empty input re-detects; returns 409 while a dbt run, global setup, or init pipeline is in flight. Mirrored into `app.dbt.venv` via `set_configured_python()` because venv resolution is sync. The venv records its interpreter in `<venv>/.wickd-python`, and `ensure_venv()` rebuilds on mismatch. The dbt venv is `data/dbt-venv` in dev (not `backend/.venv` — dbt is kept out of the backend's own venv so its Python can be switched) and `<data_dir>/dbt-venv` in the packaged app. `python_path_editable` is false only if `WICKD_DBT_VENV_DIR` points at the backend's own venv, which is never rebuilt
+- **First-run setup wizard**: `SetupGate` (`frontend/src/components/setup/`, wraps the whole app in `App.tsx`) shows a full-screen `LoadingScreen` until the first `GET /api/settings` succeeds (retrying every 250ms — the backend may still be booting), then `SetupWizard` *instead of* the app while `setup_completed` is false, or on the `wickd:open-setup` window event (Global Settings → Run setup again). It saves everything via `POST /api/setup/complete` (`api/setup.py`), which validates paths first, then `change_python_path()`, then creates the requirements file if `create_requirements_file` (seeded with `dbt-core`; the wizard defaults the path to `<projects folder>/requirements.txt`), then commits and rescans; field errors come back as `400 {field, code, message}`, and the wizard jumps to that step. The last step streams global setup via the shared `useGlobalSetupRun()` hook (also used by `GlobalSetupModal`). `seed_setup_completed()` runs at startup and marks installs that predate the wizard (projects path already set in the DB or env) as complete
 - Status checks (`/api/init/dbt-core-status`, `/api/init/package-info`) use `venv.existing_bin()` and never create the dbt venv — creating it blocks the event loop ~1s and would build it before the wizard's Python choice
 - Global setup (`POST /api/init/global-setup`) installs the global requirements file if set, else `pip install --upgrade dbt-core` (`_global_setup_install_args()`)
-- `configured: bool` indicates whether `DBT_UI_PROJECTS_PATH` is meaningfully set (mandatory to show project list)
+- `configured: bool` indicates whether `WICKD_PROJECTS_PATH` is meaningfully set (mandatory to show project list)
 - Home page shows blocking banner if `configured: false`
-- Workspace is resolved from `app_settings` table (key `dbt_projects_path`) with fallback to env var `DBT_UI_PROJECTS_PATH`
+- Workspace is resolved from `app_settings` table (key `dbt_projects_path`) with fallback to env var `WICKD_PROJECTS_PATH`
 - `_effective_workspace()` in `projects/service.py` handles resolution; used by `rescan_projects` and `start_init_session`
 - `global_requirements_path` is read by `_run_init_steps()` in `api/init.py` during `base: pip install`
 
@@ -389,15 +389,15 @@ useInitSessionEvents(sessionId, onEvent, useCallback(() => { /* on close */ }, [
 
 ```bash
 task start           # backend + frontend in parallel (primary)
-task start:pro       # same, with Pro loaded live from ../dbt-ui-pro via PYTHONPATH (no install; hot reload watches both repos; PRO_DIR=<path> to override)
+task start:pro       # same, with Pro loaded live from ../wickd-pro via PYTHONPATH (no install; hot reload watches both repos; PRO_DIR=<path> to override)
 task dev:backend     # uvicorn on :8001, hot reload
 task dev:frontend    # vite on :5173, proxies /api → :8001
 task test:backend    # pytest --cov=app -q (run from backend/)
 task test            # pytest + tsc build
 task lint            # ruff check app tests
-task db:reset        # delete data/dbt_ui.sqlite
-task package:app     # build + install the free desktop app (no dbt-ui-pro, no .env needed)
-task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, then creates the GitHub release; also uploads dbt-ui_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)
+task db:reset        # delete data/wickd.sqlite
+task package:app     # build + install the free desktop app (no wickd-pro, no .env needed)
+task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, then creates the GitHub release; also uploads Wickd_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)
 ```
 
 Single test file: `cd backend && .venv/bin/pytest tests/test_x.py -xvs`

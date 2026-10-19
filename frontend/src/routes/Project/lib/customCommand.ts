@@ -2,7 +2,7 @@ import { api, ApiError } from '../../../lib/api';
 
 const HISTORY_LIMIT = 10;
 
-const historyKey = (projectId: number) => `dbt-ui:custom-commands:${projectId}`;
+const historyKey = (projectId: number) => `wickd:custom-commands:${projectId}`;
 
 /** Most recent first. Per-project, browser-local convenience only. */
 export function loadCommandHistory(projectId: number): string[] {

@@ -1,9 +1,9 @@
 ---
 name: update-docs
-description: Update README, CLAUDE.md, docs/architecture.md, and docs/how-to/ guides to reflect recent code changes in dbt-ui.
+description: Update README, CLAUDE.md, docs/architecture.md, and docs/how-to/ guides to reflect recent code changes in Wickd.
 ---
 
-You are updating the dbt-ui documentation to reflect recent code changes. Read the changed files first to understand what actually changed, then update only the sections that need it.
+You are updating the Wickd documentation to reflect recent code changes. Read the changed files first to understand what actually changed, then update only the sections that need it.
 
 ## Step 1: Identify What Changed
 

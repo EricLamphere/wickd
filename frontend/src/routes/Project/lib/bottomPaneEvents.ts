@@ -5,7 +5,7 @@ import type { ImpactMode } from './impactChanges';
  * the Git page banner) open it on a specific tab. BottomPane owns its
  * open/tab state, so this is a window event rather than lifted state.
  */
-export const OPEN_BOTTOM_TAB_EVENT = 'dbt-ui:open-bottom-tab';
+export const OPEN_BOTTOM_TAB_EVENT = 'wickd:open-bottom-tab';
 
 export type BottomTabRequest = 'impact' | 'node-dag';
 

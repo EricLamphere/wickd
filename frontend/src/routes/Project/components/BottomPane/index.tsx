@@ -39,7 +39,7 @@ const MIN_HEIGHT = 180;
 const DEFAULT_HEIGHT = 280;
 const MAX_HEIGHT = 800;
 const COLLAPSE_THRESHOLD = 80;
-const BOTTOM_PANE_HEIGHT_KEY = 'dbt-ui:bottom-pane-height';
+const BOTTOM_PANE_HEIGHT_KEY = 'wickd:bottom-pane-height';
 
 function readStoredHeight(): number {
   try {

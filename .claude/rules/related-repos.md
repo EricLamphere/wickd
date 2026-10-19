@@ -1,17 +1,17 @@
 # Related Repositories
 
-dbt-ui spans three separate git repositories on disk, each with a distinct
+Wickd spans three separate git repositories on disk, each with a distinct
 purpose and audience. Claude should know which repo owns what before making
 changes that might actually belong in a sibling repo.
 
 ```
 ~/Projects/
-  dbt-ui/           this repo — public, open source (MIT), the product itself
-  dbt-ui-pro/        private — paid Pro feature implementation (sibling checkout)
+  wickd/           this repo — public, open source (MIT), the product itself
+  wickd-pro/        private — paid Pro feature implementation (sibling checkout)
   lamphere-labs/     private — marketing site (lampherelabs.com), Cloudflare Pages
 ```
 
-## dbt-ui (this repo) — public product
+## Wickd (this repo) — public product
 
 FastAPI + React app described in the rest of this `.claude/` tree. Free and
 open source. Ships as a Tauri desktop app or runs from source.
@@ -20,16 +20,16 @@ Contains the **shim side** of the Pro integration:
 `backend/app/dbt/column_lineage.py` defines the public, always-importable
 `ColumnRef`/`LineageJob` dataclasses and lazily delegates
 `prepare_lineage_jobs()` / `trace_job()` / `build_column_lineage()` to the
-private `dbt_ui_pro` package, raising `ColumnLineageUnavailable` if it isn't
+private `wickd_pro` package, raising `ColumnLineageUnavailable` if it isn't
 installed. `backend/app/licensing/` (`polar_client.py`, `entitlements.py`)
 handles license-key validation against Polar and the entitlement cache — this
 is also public, since gating logic itself isn't the IP worth protecting.
 
-## dbt-ui-pro — private, paid feature implementation
+## wickd-pro — private, paid feature implementation
 
-Separate private repo, expected as a **sibling checkout** at `../dbt-ui-pro`
-relative to this repo (i.e. `~/Projects/dbt-ui-pro`, not nested inside
-`dbt-ui/`). Distributed as a pip package (`dbt_ui_pro`), not a monorepo
+Separate private repo, expected as a **sibling checkout** at `../wickd-pro`
+relative to this repo (i.e. `~/Projects/wickd-pro`, not nested inside
+`wickd/`). Distributed as a pip package (`wickd_pro`), not a monorepo
 package or git submodule.
 
 - Contains the actual sqlglot-based column-lineage tracing algorithm (the
@@ -40,27 +40,27 @@ package or git submodule.
   tests run against sqlglot 30.18 in its own venv, but the shipped app uses
   the backend venv's sqlglot (30.20 at time of writing), and sqlglot renames
   internals between minor versions, so run its tests under both.
-- Depends on `dbt-ui`'s backend at dev time for the shared `ColumnRef`/
-  `LineageJob` types (`pip install -e ../dbt-ui/backend` before installing
-  `dbt-ui-pro` itself — see `dbt-ui-pro/pyproject.toml`'s comment on why this
+- Depends on Wickd's backend at dev time for the shared `ColumnRef`/
+  `LineageJob` types (`pip install -e ../wickd/backend` before installing
+  `wickd-pro` itself — see `wickd-pro/pyproject.toml`'s comment on why this
   isn't a normal package dependency: pip requires an absolute `file://` path
   for local deps, which isn't portable across machines/CI).
 - For day-to-day development, `task start:pro` runs the dev servers with the
   live checkout on `PYTHONPATH` (nothing installed; uvicorn reloads on edits in
   either repo). It takes precedence over any copy `task package:pro` installed.
-- Installed into `dbt-ui`'s **shared backend venv** via `task package:pro`
+- Installed into Wickd's **shared backend venv** via `task package:pro`
   (plain `pip install`, deliberately **not** `-e`/editable — PyInstaller's
   static analysis can't see through an editable install's import-finder
   indirection, so an editable install silently produces a build missing
-  `dbt_ui_pro` at runtime). See `Taskfile.yml`'s `package:pro` /
+  `wickd_pro` at runtime). See `Taskfile.yml`'s `package:pro` /
   `_package:pro-check` / `package:sandbox:pro` / `package:sandbox:base`
   tasks for the full build matrix (pro vs. base × sandbox vs. production).
-- Contributors without access to `dbt-ui-pro` build and test with
+- Contributors without access to `wickd-pro` build and test with
   `task package:app` (no Pro package and no `backend/.env.*` file needed) —
   column lineage is simply unavailable, identical to the entitlement-gated
   experience a non-Pro user sees.
 - If asked to work on the actual lineage tracing algorithm, that code lives
-  in `dbt-ui-pro`, not here — this repo only has the shim.
+  in `wickd-pro`, not here — this repo only has the shim.
 
 ## lamphere-labs — private, marketing site
 
@@ -68,8 +68,8 @@ Static site (plain HTML/CSS/JS, no build step, no framework) for
 lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
 `main` → live in ~1-2 minutes, no CI/CD workflow file).
 
-- `tools/dbt-ui/index.html` is dbt-ui's product page
-  (lampherelabs.com/tools/dbt-ui) — hero shots, feature grid, screenshot
+- `tools/wickd/index.html` is Wickd's product page
+  (lampherelabs.com/tools/wickd) — hero shots, feature grid, screenshot
   gallery with a click-to-enlarge/arrow-key-navigable lightbox, pricing,
   install steps.
 - `assets/img/` holds resized copies of screenshots sourced from this repo's
@@ -79,13 +79,13 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
   2400px (`*_2400.png`, the gallery items' `data-full`).
 - **This repo's `img/*.png` files are the source of truth for screenshots.**
   When updating one, also refresh the corresponding resized copy in
-  `lamphere-labs/assets/img/` and check whether `tools/dbt-ui/index.html`
+  `lamphere-labs/assets/img/` and check whether `tools/wickd/index.html`
   references it by name — the two repos' filenames don't always match
   (e.g. this repo's `home.png` → the site's `homepage_1200.png` /
   `homepage_2400.png`, `dag_view.png` → the hero shot `dag_logs_2560.png`,
   `file_explorer.png` → the hero shot `files_model_exec_dag_2560.png`).
 - When this repo's `img/` screenshots change (new screenshot, rename,
-  deletion), check whether `lamphere-labs/tools/dbt-ui/index.html`'s
+  deletion), check whether `lamphere-labs/tools/wickd/index.html`'s
   gallery grid needs the same update. This repo's README only shows
   `img/dag_view.png` (under the intro); the full gallery lives on the site.
   See

@@ -1,6 +1,6 @@
-# dbt-ui Architecture
+# Wickd Architecture
 
-dbt-ui is a local-first web UI that wraps dbt-core. It runs as a local dev server pair (FastAPI + Vite), discovers dbt projects from a configured workspace directory, and provides a live-updating DAG view with run/build/test controls, an integrated terminal, an in-browser SQL editor, a PTY-backed `dbt init` terminal, and a native docs browser.
+Wickd is a local-first web UI that wraps dbt-core. It runs as a local dev server pair (FastAPI + Vite), discovers dbt projects from a configured workspace directory, and provides a live-updating DAG view with run/build/test controls, an integrated terminal, an in-browser SQL editor, a PTY-backed `dbt init` terminal, and a native docs browser.
 
 ---
 
@@ -27,7 +27,7 @@ dbt-ui is a local-first web UI that wraps dbt-core. It runs as a local dev serve
 ## Repository Layout
 
 ```
-dbt-ui/
+wickd/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI app, lifespan, SPA mount
@@ -302,7 +302,7 @@ GET    /api/health
 GET    /api/settings
 PUT    /api/settings
 POST   /api/setup/complete                               first-run wizard: validate + save projects path, python, requirements, theme; mark setup_completed
-GET    /api/settings/python-interpreters                 list Python 3.11+ installs for the DBT_UI_PYTHON_PATH dropdown
+GET    /api/settings/python-interpreters                 list Python 3.11+ installs for the WICKD_PYTHON_PATH dropdown
 
 GET    /api/projects
 POST   /api/projects/rescan
@@ -504,7 +504,7 @@ Standard project events do not replay.
 ### 1. Project Discovery
 
 On startup and on `POST /api/projects/rescan`:
-1. `_effective_workspace()` in `service.py` resolves the active projects path: checks `app_settings` DB table first, falls back to `DBT_UI_PROJECTS_PATH` env var, returns `None` if unconfigured
+1. `_effective_workspace()` in `service.py` resolves the active projects path: checks `app_settings` DB table first, falls back to `WICKD_PROJECTS_PATH` env var, returns `None` if unconfigured
 2. If `None`, rescan is a no-op; Home page shows a blocking banner
 3. `discovery.py` walks the workspace for `dbt_project.yml` files
 4. For each project, reads `profile:` from the YAML and looks up the adapter type in `profiles.yml`
@@ -583,10 +583,10 @@ The **Node DAG** tab shows the `+node+` lineage of whatever node is selected on 
 - Flags: `untested` (model/snapshot with no tests), `exposure`, `incremental`, `failing` (error/warn), `stale`. The summary counts downstream nodes by type, tests on seeds vs. tests only downstream, and flags across downstream nodes
 - `buildImpactSelector()` produces `<seed>+ …` (sources as `source:x.y`), which `useBuildImpacted()` sends to `POST /build` as `select`
 
-It's shown in two places: `SidePane/ImpactSummary.tsx` (a card in PropertiesTab, hidden for tests and exposures) and the bottom pane **Impact** tab (`ImpactPanel.tsx`, mounted only while visible). The card also appears in the multi-selection panel. The tab uses the DAG's multi-selection when there is one (`SelectedNodeIdsContext`, reported by Models.tsx via `useReportSelectedNodes()` and empty unless 2+ nodes are selected), otherwise `SelectedNodeContext`. The card's **Show impact** button calls `openBottomTab('impact')`, a `dbt-ui:open-bottom-tab` window event that BottomPane listens for. `openBottomTab(tab, { impactMode })` can also pick the tab's source.
+It's shown in two places: `SidePane/ImpactSummary.tsx` (a card in PropertiesTab, hidden for tests and exposures) and the bottom pane **Impact** tab (`ImpactPanel.tsx`, mounted only while visible). The card also appears in the multi-selection panel. The tab uses the DAG's multi-selection when there is one (`SelectedNodeIdsContext`, reported by Models.tsx via `useReportSelectedNodes()` and empty unless 2+ nodes are selected), otherwise `SelectedNodeContext`. The card's **Show impact** button calls `openBottomTab('impact')`, a `wickd:open-bottom-tab` window event that BottomPane listens for. `openBottomTab(tab, { impactMode })` can also pick the tab's source.
 
 **Column-level impact (Pro).** In Selection mode the toolbar's **Columns** toggle (state in BottomPane) switches to column-level impact, built on the column lineage snapshot:
-- **Row dependencies** (private `dbt_ui_pro/row_dependencies.py`, `trace_row_dependencies()`; `trace_job_full()` runs it alongside `trace_job()`): `qualify()` the compiled SQL against parent columns, walk every scope, and resolve columns in `WHERE` / `JOIN ON`/`USING` / `GROUP BY` / `HAVING` / `QUALIFY` (plus subquery projections, which feed IN/EXISTS filters) back through CTE, derived-table and set-operation aliases to parent columns. Stored per snapshot as `row_dependencies`; data tests get them too (their row dependency is the column they check). The public shim's `trace_job_full()` falls back to `[]` for older Pro builds
+- **Row dependencies** (private `wickd_pro/row_dependencies.py`, `trace_row_dependencies()`; `trace_job_full()` runs it alongside `trace_job()`): `qualify()` the compiled SQL against parent columns, walk every scope, and resolve columns in `WHERE` / `JOIN ON`/`USING` / `GROUP BY` / `HAVING` / `QUALIFY` (plus subquery projections, which feed IN/EXISTS filters) back through CTE, derived-table and set-operation aliases to parent columns. Stored per snapshot as `row_dependencies`; data tests get them too (their row dependency is the column they check). The public shim's `trace_job_full()` falls back to `[]` for older Pro builds
 - `lib/columnImpact.ts` `computeColumnImpact(graph, lineage, seeds)` (pure, tested) propagates picked `(node, column)`s: projection lineage narrows to specific downstream columns; a row dependency on an affected column marks the whole downstream model affected (`via: 'rows'`, with the triggering column); children with no lineage at all are assumed fully affected (`'untraced'`); exposures are reached through any affected parent. Tests count as affected when their row dependency (else `attached_node` + `column_name`, else any parent) is affected. Tests traced as lineage targets are never listed as nodes
 - `computeImpact(graph, seeds, { reach, affectedTests })` then builds the usual table from that reach; rows get an **Affected columns** column (`describeAffected()`) and "N of M" affected tests; the toolbar shows how many node-level-downstream nodes are unaffected, and **Build impacted** selects exactly the affected nodes (`buildExactSelector()`, no `+`)
 - **DAG column selection drives it:** Models.tsx reports its clicked columns (`activeColumnSels`, `<uid>::<column>` keys) via `useReportSelectedColumns()` (`SelectedColumnsContext` in `lib/selectedNodeContext.tsx`). In Selection mode a non-empty column selection becomes the seeds and picks (`picksFromColumnKeys()`), forces column-level on (toggle disabled), and replaces the picker with a read-only summary
@@ -626,18 +626,18 @@ It's shown in two places: `SidePane/ImpactSummary.tsx` (a card in PropertiesTab,
 5. Publishes `docs_generated {ok, generated_at}`
 6. Frontend invalidates `['docs-status', projectId]`; the native docs browser (`Docs.tsx`) re-fetches `GET /api/projects/{id}/docs/data`
 
-### 10. Column-Level Lineage (dbt-ui Pro)
+### 10. Column-Level Lineage (Wickd Pro)
 
-Column-level lineage is the first paid ("Pro") feature — all three routes (`start`, latest, and by-snapshot-id) call `_require_pro(session)` (`api/column_lineage.py`), which raises `403 {"error": "pro_feature_required", "reason": <Entitlement.reason>}` when `entitlements.check_entitlement()` returns not-entitled. Both GET routes are gated too, not just `start`, because an already-computed snapshot persists in the DB indefinitely and would otherwise keep serving results forever after a subscription lapses. See "Licensing (dbt-ui Pro)" below for the entitlement system itself.
+Column-level lineage is the first paid ("Pro") feature — all three routes (`start`, latest, and by-snapshot-id) call `_require_pro(session)` (`api/column_lineage.py`), which raises `403 {"error": "pro_feature_required", "reason": <Entitlement.reason>}` when `entitlements.check_entitlement()` returns not-entitled. Both GET routes are gated too, not just `start`, because an already-computed snapshot persists in the DB indefinitely and would otherwise keep serving results forever after a subscription lapses. See "Licensing (Wickd Pro)" below for the entitlement system itself.
 
-**Open-core split:** the actual sqlglot-based tracing algorithm (`prepare_lineage_jobs`, `trace_job`, `build_column_lineage`, and their private helpers) lives in a separate private repo, `dbt-ui-pro` (not in this repo) — all licensing/entitlement enforcement stays in this public repo, since that code must run inside the distributed app regardless of who can read the source. `backend/app/dbt/column_lineage.py` in *this* repo is a thin public shim: it defines the real, always-importable `ColumnRef`/`LineageJob` dataclasses (required at server-startup import time by `api/column_lineage.py`, so they can't be `TYPE_CHECKING`-only) and lazily imports `dbt_ui_pro.column_lineage` inside each function, raising `ColumnLineageUnavailable` if the private package isn't installed. The public repo therefore builds and runs completely standalone for contributors; only maintainer/release builds of the packaged desktop app install `dbt-ui-pro`: run `task package:pro` (installs `dbt-ui-pro` from a sibling checkout — a plain, non-editable install, since PyInstaller can't see through an editable install) before a Pro build (`task package:sandbox:pro` / `task package:production`); contributors build the free app with `task package:app`. `packaging/dbt_ui.spec` detects whether `dbt_ui_pro` is importable at build time (`importlib.util.find_spec`) and only adds it to PyInstaller's `hiddenimports` when present — required because it's imported lazily at call time, which PyInstaller's static analysis can't discover on its own. Skipping `package:pro` produces a normal public build with lineage unavailable; nothing else in the packaging flow changes.
+**Open-core split:** the actual sqlglot-based tracing algorithm (`prepare_lineage_jobs`, `trace_job`, `build_column_lineage`, and their private helpers) lives in a separate private repo, `wickd-pro` (not in this repo) — all licensing/entitlement enforcement stays in this public repo, since that code must run inside the distributed app regardless of who can read the source. `backend/app/dbt/column_lineage.py` in *this* repo is a thin public shim: it defines the real, always-importable `ColumnRef`/`LineageJob` dataclasses (required at server-startup import time by `api/column_lineage.py`, so they can't be `TYPE_CHECKING`-only) and lazily imports `wickd_pro.column_lineage` inside each function, raising `ColumnLineageUnavailable` if the private package isn't installed. The public repo therefore builds and runs completely standalone for contributors; only maintainer/release builds of the packaged desktop app install `wickd-pro`: run `task package:pro` (installs `wickd-pro` from a sibling checkout — a plain, non-editable install, since PyInstaller can't see through an editable install) before a Pro build (`task package:sandbox:pro` / `task package:production`); contributors build the free app with `task package:app`. `packaging/wickd.spec` detects whether `wickd_pro` is importable at build time (`importlib.util.find_spec`) and only adds it to PyInstaller's `hiddenimports` when present — required because it's imported lazily at call time, which PyInstaller's static analysis can't discover on its own. Skipping `package:pro` produces a normal public build with lineage unavailable; nothing else in the packaging flow changes.
 
 Column lineage is computed **SQL-first**: `dbt/column_lineage.py` derives each model's column list by parsing the compiled SQL's outer `SELECT` with sqlglot (`named_selects`) — no yml `columns:` documentation is required. yml-documented columns are used only as a fallback when the SQL parse can't determine an explicit column list (a top-level `SELECT *`, or missing `compiled_code` because `dbt compile` hasn't run).
 
 The scan is a backgrounded, progress-reporting job — same pattern as schema drift and source freshness (`column_lineage_snapshots` table; see Database Schema):
 
 1. `POST /api/projects/{id}/column-lineage/start`:
-   - Reads `target/manifest.json`'s mtime; if the latest snapshot for the project is `done`, its `manifest_mtime` matches and its `lineage_version` equals what a scan would produce now (`LINEAGE_VERSION`, or 1 when the installed `dbt_ui_pro` predates row dependencies — `supports_row_dependencies()`), short-circuits and returns that snapshot directly (200) — no recomputation.
+   - Reads `target/manifest.json`'s mtime; if the latest snapshot for the project is `done`, its `manifest_mtime` matches and its `lineage_version` equals what a scan would produce now (`LINEAGE_VERSION`, or 1 when the installed `wickd_pro` predates row dependencies — `supports_row_dependencies()`), short-circuits and returns that snapshot directly (200) — no recomputation.
    - Otherwise, runs the "prep" phase (`prepare_lineage_jobs()`, in a thread executor) — cheap manifest parsing that builds one `LineageJob` per model needing lineage (no `sqlglot.lineage.lineage()` calls yet).
    - Creates a `running` `ColumnLineageSnapshot` row, spawns a background `asyncio.Task`, publishes `column_lineage_started`, returns 202.
 2. Background runner (`_run_column_lineage`) fans the actual CPU-bound tracing out across a `ProcessPoolExecutor` (sized `max(1, min(8, cpu_count-1))`) — one `trace_job_full(job)` call per model (projection lineage + row dependencies), submitted via `loop.run_in_executor(pool, trace_job_full, job)` and collected with `asyncio.wait(..., return_when=FIRST_COMPLETED)` so each completed job's `checked`/`total`/`current` can be published as it lands.
@@ -657,7 +657,7 @@ In the frontend (`Models.tsx`):
 - Highlighted `{node, column}` pairs are passed as props into each `ModelNode`; nodes and edges outside the trace are dimmed
 - None of this blocks other queries/interactions — the scan runs fully server-side in background worker processes; the frontend only ever does small polling GETs and SSE-driven invalidation.
 
-### 10a. Licensing (dbt-ui Pro entitlement)
+### 10a. Licensing (Wickd Pro entitlement)
 
 Entitlement resolution (`app/licensing/entitlements.py`) wraps a thin async Polar client (`app/licensing/polar_client.py`, `httpx`-based) with a persistent grace-period cache (`license_state` table, single row, id=1) so Pro features keep working through brief offline periods:
 
@@ -805,11 +805,11 @@ Behavior:
 
 | Variable | Default | Description |
 |---|---|---|
-| `DBT_UI_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects; overridable via Global Settings UI |
-| `DBT_UI_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.dbt-ui.desktop` (desktop app, passed in by the Tauri shell) | App storage: SQLite database, dbt venv, generated docs, API logs. Not a user-facing setting — the dev default is fixed and the desktop app sets it from Tauri's `app_data_dir()` |
-| `DBT_UI_DATABASE_URL` | _(derived from DATA_DIR)_ | Override SQLite path |
-| `DBT_UI_LOG_LEVEL` | `INFO` | structlog level |
-| `DBT_UI_FRONTEND_DIST` | `frontend/dist` (dev) / resolved next to the packaged binary | Directory the SPA is served from — see `_mount_spa()` |
+| `WICKD_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects; overridable via Global Settings UI |
+| `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app, passed in by the Tauri shell) | App storage: SQLite database, dbt venv, generated docs, API logs. Not a user-facing setting — the dev default is fixed and the desktop app sets it from Tauri's `app_data_dir()` |
+| `WICKD_DATABASE_URL` | _(derived from DATA_DIR)_ | Override SQLite path |
+| `WICKD_LOG_LEVEL` | `INFO` | structlog level |
+| `WICKD_FRONTEND_DIST` | `frontend/dist` (dev) / resolved next to the packaged binary | Directory the SPA is served from — see `_mount_spa()` |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment to validate license keys against — sandbox or production |
 | `POLAR_SANDBOX_ORGANIZATION_ID` | _(none)_ | Polar sandbox org id (not a secret) |
 | `POLAR_SANDBOX_API_KEY` | _(none)_ | Polar sandbox API key — secret, `backend/.env` only, never committed |
@@ -819,16 +819,16 @@ Behavior:
 | `POLAR_PRODUCTION_CHECKOUT_URL` | _(none)_ | Polar production checkout link, surfaced in the frontend upgrade modal |
 | `POLAR_SANDBOX_ORGANIZATION_SLUG` / `POLAR_PRODUCTION_ORGANIZATION_SLUG` | `lamphere-labs` | Public org slug → `settings.polar_portal_url` (`https://polar.sh/<slug>/portal`, or `sandbox.polar.sh` when `POLAR_USE_SANDBOX`), returned as `portal_url` by `GET /api/license`. Shown under every license key input ("Lost your key…") and in Settings → Subscription. Empty string hides it |
 
-`dbt_venv_dir` (`Settings`, not an env var): the isolated venv `dbt` runs from — `<repo>/data/dbt-venv` in dev (kept separate from the backend's own `backend/.venv`), or `<data_dir>/dbt-venv` in the packaged app; overridable with `DBT_UI_DBT_VENV_DIR`. Self-created on first use of `venv_dbt()`/`venv_pip()`/`venv_python()` from the `python_path` global setting (auto-detected on first launch: the interpreter an existing venv was built from, else the first Python 3.11+ found — see `app/dbt/venv.py` and `app/dbt/python_env.py`). Changing `python_path` rebuilds the venv, so dbt and adapters must be reinstalled via global setup. `venv.create()` is never run from the app's own (possibly frozen) interpreter — doing so from a PyInstaller-frozen binary causes `ensurepip` to recursively re-exec the whole app.
+`dbt_venv_dir` (`Settings`, not an env var): the isolated venv `dbt` runs from — `<repo>/data/dbt-venv` in dev (kept separate from the backend's own `backend/.venv`), or `<data_dir>/dbt-venv` in the packaged app; overridable with `WICKD_DBT_VENV_DIR`. Self-created on first use of `venv_dbt()`/`venv_pip()`/`venv_python()` from the `python_path` global setting (auto-detected on first launch: the interpreter an existing venv was built from, else the first Python 3.11+ found — see `app/dbt/venv.py` and `app/dbt/python_env.py`). Changing `python_path` rebuilds the venv, so dbt and adapters must be reinstalled via global setup. `venv.create()` is never run from the app's own (possibly frozen) interpreter — doing so from a PyInstaller-frozen binary causes `ensurepip` to recursively re-exec the whole app.
 
 Global settings (stored in `app_settings` table, set via UI):
 
 | Setting key | Description |
 |---|---|
-| `dbt_projects_path` | Overrides `DBT_UI_PROJECTS_PATH` |
+| `dbt_projects_path` | Overrides `WICKD_PROJECTS_PATH` |
 | `global_requirements_path` | Absolute path to a `requirements.txt` installed into the dbt venv on every project open |
-| `log_level` | Overrides `DBT_UI_LOG_LEVEL` |
-| `python_path` | Python 3.11+ interpreter the dbt venv is built from (UI label `DBT_UI_PYTHON_PATH`). Auto-detected on first launch; changing it rebuilds the venv. Not editable in a source checkout |
+| `log_level` | Overrides `WICKD_LOG_LEVEL` |
+| `python_path` | Python 3.11+ interpreter the dbt venv is built from (UI label `WICKD_PYTHON_PATH`). Auto-detected on first launch; changing it rebuilds the venv. Not editable in a source checkout |
 
 Per-project env vars (stored in `project_env_vars`, injected into every dbt subprocess via `load_project_env()`):
 
@@ -876,7 +876,7 @@ task install PYTHON=python3.12
 
 **SQLite** — Single-user, local tool. No concurrent writes from multiple processes. SQLite with aiosqlite is zero-ops and sufficient.
 
-**`_effective_workspace()` as single source of truth** — The projects path can come from the `app_settings` DB table (set via UI) or `settings.dbt_projects_path` (the `DBT_UI_PROJECTS_PATH` env var). All backend code that needs the workspace path calls this one function.
+**`_effective_workspace()` as single source of truth** — The projects path can come from the `app_settings` DB table (set via UI) or `settings.dbt_projects_path` (the `WICKD_PROJECTS_PATH` env var). All backend code that needs the workspace path calls this one function.
 
 **SidePane as a unified panel** — The right-side panel (DAG and File Explorer) intentionally has no tab bar. Model metadata and run controls live in one scrollable view. Separating them into tabs added navigation friction with no benefit since both are used together during a typical run-and-inspect workflow.
 

@@ -1,7 +1,7 @@
 import type { ColumnLineageEntry, GraphDto, ModelNode } from '../../../lib/api';
 
 /**
- * Column-level downstream impact (dbt-ui Pro). Starting from picked columns
+ * Column-level downstream impact (Wickd Pro). Starting from picked columns
  * of the seed nodes, follows projection lineage column by column, and treats
  * a model as changed in EVERY column when it filters / joins / groups on an
  * affected column (row dependencies), since that changes which rows it has.

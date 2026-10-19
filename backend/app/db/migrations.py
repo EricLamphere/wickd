@@ -115,7 +115,7 @@ async def run_migrations() -> None:
             )
             await session.commit()
 
-        # Migrate old default 'init' to '' (empty = use runtime default 'dbtui/init')
+        # Migrate old default 'init' to '' (empty = use runtime default 'wickd/init')
         await session.execute(
             text("UPDATE projects SET init_script_path = '' WHERE init_script_path = 'init'")
         )

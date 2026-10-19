@@ -8,7 +8,7 @@ import type { SetupForm, StepProps } from './types';
 export function WelcomeStep() {
   return (
     <>
-      <StepHeading title="Welcome to dbt-ui">
+      <StepHeading title="Welcome to Wickd">
         A few quick questions to get you set up. Everything here can be changed later in Global Settings.
       </StepHeading>
       <ol className="flex flex-col gap-2 text-sm text-gray-300 list-decimal list-inside">
@@ -18,7 +18,7 @@ export function WelcomeStep() {
         <li>A couple of preferences</li>
       </ol>
       <p className="mt-5 text-xs text-gray-500">
-        At the end, dbt-ui installs dbt into its own isolated environment. Nothing is installed into your system Python.
+        At the end, Wickd installs dbt into its own isolated environment. Nothing is installed into your system Python.
       </p>
     </>
   );
@@ -28,8 +28,8 @@ export function ProjectsStep({ form, update, error, onEnter }: StepProps) {
   return (
     <>
       <StepHeading title="Where are your dbt projects?">
-        dbt-ui scans this folder (and its subfolders) for <InlineCode className="text-gray-300">dbt_project.yml</InlineCode> files.
-        New projects you create in dbt-ui go here too.
+        Wickd scans this folder (and its subfolders) for <InlineCode className="text-gray-300">dbt_project.yml</InlineCode> files.
+        New projects you create in Wickd go here too.
       </StepHeading>
       <PathInput
         label="Projects folder"
@@ -164,7 +164,7 @@ export function ReviewStep({ form }: StepProps) {
   return (
     <>
       <StepHeading title="Ready to set up">
-        dbt-ui will save these settings, then install dbt. This can take a minute or two.
+        Wickd will save these settings, then install dbt. This can take a minute or two.
       </StepHeading>
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 px-4 py-3 bg-surface-elevated border border-gray-800 rounded text-sm">
         {rows.map(([label, value]) => (

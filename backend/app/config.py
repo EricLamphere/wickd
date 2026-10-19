@@ -14,8 +14,8 @@ def _bundle_dir() -> Path:
     """Directory containing bundled data files (PyInstaller extraction dir, or repo root in dev).
 
     Deliberately NOT sys._MEIPASS: for this onedir build, _MEIPASS resolves
-    to the dbt-ui-backend/_internal/ subdirectory, not the top-level
-    dbt-ui-backend/ folder Tauri lays out as a resource (see
+    to the wickd-backend/_internal/ subdirectory, not the top-level
+    wickd-backend/ folder Tauri lays out as a resource (see
     _default_frontend_dist's comment for the same reasoning) — so this must
     match that same sys.executable-relative resolution to find files placed
     alongside the binary itself.
@@ -29,12 +29,12 @@ def _default_data_dir() -> Path:
     if not _is_frozen():
         # Dev mode: always <repo>/data (gitignored), regardless of the cwd the
         # backend is launched from. The desktop app passes its own location
-        # (Tauri's app data dir) via DBT_UI_DATA_DIR — see src-tauri/src/lib.rs.
+        # (Tauri's app data dir) via WICKD_DATA_DIR — see src-tauri/src/lib.rs.
         return Path(__file__).resolve().parents[2] / "data"
     try:
         from platformdirs import user_data_dir
 
-        return Path(user_data_dir("dbt-ui", appauthor=False))
+        return Path(user_data_dir("wickd", appauthor=False))
     except ImportError:
         return Path(sys.executable).parent / "data"
 
@@ -73,15 +73,15 @@ class Settings(BaseSettings):
     # defaults for release builds, never relying on a bundled .env for
     # secrets. Revert this once that's done.
     model_config = SettingsConfigDict(
-        env_prefix="DBT_UI_",
+        env_prefix="WICKD_",
         env_file=str(_bundle_dir() / ".env") if _is_frozen() else ".env",
         extra="ignore",
         populate_by_name=True,
     )
 
     # Optional — can also be set via the Global Settings UI (stored in app_settings table)
-    dbt_projects_path: Path | None = Field(default=None, alias="DBT_UI_PROJECTS_PATH")
-    global_requirements_path: str | None = Field(default=None, alias="DBT_UI_GLOBAL_REQUIREMENTS_PATH")
+    dbt_projects_path: Path | None = Field(default=None, alias="WICKD_PROJECTS_PATH")
+    global_requirements_path: str | None = Field(default=None, alias="WICKD_GLOBAL_REQUIREMENTS_PATH")
     data_dir: Path = Field(default_factory=_default_data_dir)
     database_url: str = Field(default="")
     vscode_cmd: str = Field(default="code")
@@ -139,7 +139,7 @@ class Settings(BaseSettings):
         if self.database_url:
             return self.database_url
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        return f"sqlite+aiosqlite:///{self.data_dir / 'dbt_ui.sqlite'}"
+        return f"sqlite+aiosqlite:///{self.data_dir / 'wickd.sqlite'}"
 
 
 settings = Settings()

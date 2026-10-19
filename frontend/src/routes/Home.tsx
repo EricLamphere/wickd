@@ -52,7 +52,7 @@ const SORT_LABELS: Record<SortKey, string> = {
   last_opened: 'Last opened',
   models: 'Model count',
 };
-const SORT_STORAGE_KEY = 'dbt-ui:home-sort';
+const SORT_STORAGE_KEY = 'wickd:home-sort';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -504,8 +504,8 @@ export default function Home() {
       if (!isConfigured) setGlobalSettingsOpen(true);
       else setNewProjectOpen(true);
     };
-    window.addEventListener('dbt-ui:new-project', handler);
-    return () => window.removeEventListener('dbt-ui:new-project', handler);
+    window.addEventListener('wickd:new-project', handler);
+    return () => window.removeEventListener('wickd:new-project', handler);
   }, [isConfigured]);
 
   // Global ⌘K listener — mirrors ProjectLayout's, since this page sits
@@ -675,7 +675,7 @@ export default function Home() {
       {appSettings && !isConfigured && (
         <div className="flex items-center justify-between gap-4 px-4 py-3 bg-amber-950/40 border border-amber-800/60 rounded-lg">
           <div className="flex flex-col gap-0.5">
-            <p className="text-sm font-medium text-amber-300">DBT_UI_PROJECTS_PATH is not set</p>
+            <p className="text-sm font-medium text-amber-300">WICKD_PROJECTS_PATH is not set</p>
             <p className="text-xs text-amber-500">Set the path to your dbt projects folder before scanning or creating projects.</p>
           </div>
           <button

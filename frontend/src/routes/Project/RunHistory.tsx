@@ -503,7 +503,7 @@ const PANE_MIN = 280;
 const PANE_DEFAULT = 520;
 const PANE_MAX = 1200;
 const PANE_COLLAPSE_THRESHOLD = 80;
-const PANE_STORAGE_KEY = 'dbt-ui:run-history-pane-width';
+const PANE_STORAGE_KEY = 'wickd:run-history-pane-width';
 
 function readPaneWidth(): number {
   try {

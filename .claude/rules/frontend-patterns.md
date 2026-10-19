@@ -1,4 +1,4 @@
-# Frontend Patterns for dbt-ui
+# Frontend Patterns for Wickd
 
 ## API Calls — Always Use api.ts
 

@@ -36,7 +36,7 @@ class SettingsDto(BaseModel):
     global_requirements_path: str | None
     theme: str | None
     python_path: str | None
-    # False only when DBT_UI_DBT_VENV_DIR points at the venv the backend itself
+    # False only when WICKD_DBT_VENV_DIR points at the venv the backend itself
     # runs from — rebuilding that would take the server down with it.
     python_path_editable: bool
     configured: bool
@@ -109,7 +109,7 @@ async def change_python_path(session: AsyncSession, raw: str) -> None:
     if venv.is_own_venv():
         raise HTTPException(
             status_code=400,
-            detail="DBT_UI_DBT_VENV_DIR points at the venv dbt-ui itself runs from, "
+            detail="WICKD_DBT_VENV_DIR points at the venv Wickd itself runs from, "
             "which can't be rebuilt — point it at a separate directory to switch Python.",
         )
     loop = asyncio.get_running_loop()
@@ -168,7 +168,7 @@ class PythonInterpreterDto(BaseModel):
 async def list_python_interpreters(
     session: AsyncSession = Depends(get_session),
 ) -> list[PythonInterpreterDto]:
-    """Python 3.11+ interpreters on this machine, for the DBT_UI_PYTHON_PATH picker."""
+    """Python 3.11+ interpreters on this machine, for the WICKD_PYTHON_PATH picker."""
     current = await _get_override(session, PYTHON_PATH_KEY)
     found = await asyncio.get_running_loop().run_in_executor(None, venv.list_pythons, current)
     return [PythonInterpreterDto(path=p.path, version=p.version) for p in found]
@@ -186,13 +186,13 @@ async def get_requirements_file(
     if not global_req_path:
         raise HTTPException(
             status_code=400,
-            detail="DBT_UI_GLOBAL_REQUIREMENTS_PATH variable has not been set",
+            detail="WICKD_GLOBAL_REQUIREMENTS_PATH variable has not been set",
         )
     p = Path(global_req_path)
     if not p.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"File not found at the path specified in the DBT_UI_GLOBAL_REQUIREMENTS_PATH variable: {global_req_path}",
+            detail=f"File not found at the path specified in the WICKD_GLOBAL_REQUIREMENTS_PATH variable: {global_req_path}",
         )
     return RequirementsFileDto(content=p.read_text())
 
@@ -206,7 +206,7 @@ async def put_requirements_file(
     if not global_req_path:
         raise HTTPException(
             status_code=400,
-            detail="DBT_UI_GLOBAL_REQUIREMENTS_PATH variable has not been set",
+            detail="WICKD_GLOBAL_REQUIREMENTS_PATH variable has not been set",
         )
     p = Path(global_req_path)
     p.write_text(dto.content)

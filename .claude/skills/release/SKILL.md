@@ -1,10 +1,10 @@
 ---
 name: release
-description: Cut a new dbt-ui desktop release — bump the version everywhere it lives, then run `task release` to build the production app and publish the GitHub release. Use when the user asks to release, ship, or publish a new version of dbt-ui.
+description: Cut a new Wickd desktop release — bump the version everywhere it lives, then run `task release` to build the production app and publish the GitHub release. Use when the user asks to release, ship, or publish a new version of Wickd.
 argument-hint: "[patch|minor|major|X.Y.Z]  (default: patch)"
 ---
 
-# Release dbt-ui
+# Release Wickd
 
 Arguments: `$ARGUMENTS` — `patch` (default when empty), `minor`, `major`, or an explicit `X.Y.Z`.
 
@@ -22,17 +22,17 @@ Run these and stop with a clear message if any fail:
 - `gh release view v<new>` must fail (no existing release with that tag).
 - `git status --short` — if there are uncommitted changes, list them for the user as a heads-up, but continue.
 
-Tell the user in one line: `Releasing dbt-ui <old> → <new>`.
+Tell the user in one line: `Releasing Wickd <old> → <new>`.
 
 ## 2. Bump the version in every file
 
-The version lives in exactly these places. Change only the dbt-ui version field itself — never a dependency that happens to share the same version string.
+The version lives in exactly these places. Change only the Wickd version field itself — never a dependency that happens to share the same version string.
 
 | File | What to change |
 |------|----------------|
 | `src-tauri/tauri.conf.json` | top-level `"version"` |
 | `src-tauri/Cargo.toml` | `version` under `[package]` |
-| `src-tauri/Cargo.lock` | the `version` line directly under `name = "dbt-ui"` in its `[[package]]` block (other crates can have the same version — don't touch them) |
+| `src-tauri/Cargo.lock` | the `version` line directly under `name = "wickd"` in its `[[package]]` block (other crates can have the same version — don't touch them) |
 | `frontend/package.json` | top-level `"version"` |
 | `frontend/package-lock.json` | the root `"version"` (line ~3) and `packages[""].version` (line ~9) only |
 | `backend/pyproject.toml` | `version` under `[project]` |
@@ -44,7 +44,7 @@ Then verify — every row should print the new version:
 ```bash
 grep -m1 '"version"' src-tauri/tauri.conf.json
 grep -m1 '^version' src-tauri/Cargo.toml
-grep -A1 '^name = "dbt-ui"$' src-tauri/Cargo.lock
+grep -A1 '^name = "wickd"$' src-tauri/Cargo.lock
 grep -m1 '"version"' frontend/package.json
 sed -n '1,10p' frontend/package-lock.json | grep '"version"'
 grep -m1 '^version' backend/pyproject.toml
@@ -59,7 +59,7 @@ Run `task release` from the repo root **in the background** (`run_in_background:
 1. refuses if a release for this version already exists,
 2. runs `task package:production` (builds the Pro + Polar-production app, Developer-ID signed — backend binaries included — and notarized by Tauri, and installs it to `/Applications`),
 3. notarizes and staples the `.dmg`, then checks both with `spctl` — if notarization is rejected, get the reason with `xcrun notarytool log <submission-id>` (credentials from `.env.signing`),
-4. creates GitHub release `v<new>` with both `dbt-ui_<new>_aarch64.dmg` and `dbt-ui_aarch64.dmg` (the stable name the lamphere-labs site's Download buttons link to).
+4. creates GitHub release `v<new>` with both `Wickd_<new>_aarch64.dmg` and `Wickd_aarch64.dmg` (the stable name the lamphere-labs site's Download buttons link to).
 
 Wait for the completion notification; don't poll. If it fails, show the relevant tail of the output, diagnose, and do not retry blindly — a failure after the release was created must not create a second one.
 
@@ -68,10 +68,10 @@ Wait for the completion notification; don't poll. If it fails, show the relevant
 ```bash
 gh release view v<new> --json tagName,url,assets -q '.tagName, .url, (.assets[].name)'
 curl -sIL -o /dev/null -w '%{http_code} %{url_effective}\n' \
-  https://github.com/EricLamphere/dbt-ui/releases/latest/download/dbt-ui_aarch64.dmg
+  https://github.com/EricLamphere/wickd/releases/latest/download/Wickd_aarch64.dmg
 ```
 
-The release should list both dmg files, and the curl should end in `200` with `filename=dbt-ui_aarch64.dmg` in the final URL.
+The release should list both dmg files, and the curl should end in `200` with `filename=Wickd_aarch64.dmg` in the final URL.
 
 ## 5. Report
 

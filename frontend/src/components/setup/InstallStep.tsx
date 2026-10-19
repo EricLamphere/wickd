@@ -22,7 +22,7 @@ export function InstallStep({ installing, onRetry, onFinish }: Props) {
   return (
     <div className="flex flex-col h-full min-h-0">
       <StepHeading title={running ? 'Installing dbt…' : state === 'done' ? "You're all set" : 'Install failed'}>
-        {running && <>Installing {installing} into dbt-ui's environment.</>}
+        {running && <>Installing {installing} into Wickd's environment.</>}
         {state === 'done' && <>dbt is installed. Your settings are saved and can be changed any time in Global Settings.</>}
         {state === 'error' && (
           <>
@@ -60,7 +60,7 @@ export function InstallStep({ installing, onRetry, onFinish }: Props) {
             onClick={onFinish}
             className="px-4 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 text-white font-medium transition-colors"
           >
-            Open dbt-ui
+            Open Wickd
           </button>
         )}
       </div>

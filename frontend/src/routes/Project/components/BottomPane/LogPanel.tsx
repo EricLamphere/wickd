@@ -116,8 +116,8 @@ export function LogPanel({ projectId, logType }: LogPanelProps) {
       <div className="flex items-center justify-between px-3 py-1 border-b border-gray-800 shrink-0">
         <span className="text-[10px] text-gray-600 font-mono">
           {logType === 'project'
-            ? 'logs/dbt-ui/project_logs.log'
-            : '{data_dir}/logs/dbt-ui/api_logs.log'}
+            ? 'logs/wickd/project_logs.log'
+            : '{data_dir}/logs/wickd/api_logs.log'}
         </span>
         <div className="flex items-center gap-2">
           {!autoScroll && (

@@ -2,11 +2,11 @@
 Integration test: /api/projects/{id}/models includes column metadata.
 
 This is separate from the column-lineage TRACING algorithm's own tests
-(moved to the private dbt-ui-pro repo — see the open-core split discussed
+(moved to the private wickd-pro repo — see the open-core split discussed
 when the Pro licensing feature was added) because it tests yml-documented
 column metadata surfaced by the /models graph endpoint, not sqlglot-based
 cross-model lineage tracing — it never touches app.dbt.column_lineage at
-all, so it doesn't need dbt_ui_pro installed to run.
+all, so it doesn't need wickd_pro installed to run.
 
 The /api/projects/{id}/column-lineage endpoint's own tests (including
 entitlement gating) live in test_api_column_lineage.py.

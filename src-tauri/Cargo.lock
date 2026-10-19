@@ -657,7 +657,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dbt-ui"
+name = "wickd"
 version = "1.0.0"
 dependencies = [
  "reqwest 0.12.28",

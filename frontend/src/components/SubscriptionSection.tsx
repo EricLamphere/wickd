@@ -23,7 +23,7 @@ export function SubscriptionSection() {
     <div className="flex flex-col gap-4">
       <div>
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Subscription</h3>
-        <p className="text-xs text-gray-500">Your dbt-ui Pro license, shared across all projects on this installation.</p>
+        <p className="text-xs text-gray-500">Your Wickd Pro license, shared across all projects on this installation.</p>
       </div>
 
       {license && (license.has_key
@@ -60,7 +60,7 @@ function SubscribedView({ license, qc }: { license: LicenseStatusDto; qc: Return
         {license.entitled ? (
           <>
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="text-gray-200 font-medium">dbt-ui Pro is active</span>
+            <span className="text-gray-200 font-medium">Wickd Pro is active</span>
           </>
         ) : (
           <>
@@ -115,7 +115,7 @@ function SubscribedView({ license, qc }: { license: LicenseStatusDto; qc: Return
         ) : (
           <div className="flex flex-col gap-2 bg-red-500/5 border border-red-900/50 rounded px-3 py-2.5">
             <p className="text-xs text-gray-300">
-              This cancels your dbt-ui Pro subscription at the end of the current billing period — you'll keep Pro
+              This cancels your Wickd Pro subscription at the end of the current billing period — you'll keep Pro
               access until then. This can't be undone from here.
             </p>
             {cancelError && <p className="text-xs text-red-400">{cancelError}</p>}
@@ -212,7 +212,7 @@ function UnsubscribedView({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-2 text-xs">
         <AlertTriangle className="w-4 h-4 text-gray-500 shrink-0" />
-        <span className="text-gray-300">No active dbt-ui Pro subscription</span>
+        <span className="text-gray-300">No active Wickd Pro subscription</span>
       </div>
 
       <div className="flex items-center gap-2">
@@ -238,7 +238,7 @@ function UnsubscribedView({ qc }: { qc: ReturnType<typeof useQueryClient> }) {
             type="text"
             value={licenseKey}
             onChange={(e) => setLicenseKey(e.target.value)}
-            placeholder="DBTUI_-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+            placeholder="WICKD_-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
             className="bg-surface-elevated border border-gray-700 rounded px-3 py-1.5 text-xs font-mono text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
           {error && <p className="text-xs text-red-400">{error}</p>}

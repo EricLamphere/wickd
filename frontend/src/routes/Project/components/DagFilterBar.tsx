@@ -141,7 +141,7 @@ export default function DagFilterBar({
       <ProFeatureButton
         onClick={columnLineageLocked ? onColumnLineageLockedClick! : onLoadColumnLineage}
         disabled={!columnLineageLocked && columnLineageLoading}
-        title={columnLineageLocked ? 'Column-level lineage is a dbt-ui Pro feature' : undefined}
+        title={columnLineageLocked ? 'Column-level lineage is a Wickd Pro feature' : undefined}
       >
         {columnLineageLocked && <Lock size={12} />}
         {columnLineageLocked

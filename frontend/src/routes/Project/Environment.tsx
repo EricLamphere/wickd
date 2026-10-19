@@ -106,7 +106,7 @@ function GlobalProfileSelector({ projectId }: { projectId: number }) {
 
 // ---- Resizable, persisted column widths ----
 // Widths are stored per-column in localStorage so a user's chosen width survives
-// navigation and full page reloads (mirrors the dbt-ui:* width-persistence
+// navigation and full page reloads (mirrors the wickd:* width-persistence
 // convention used by Workspace/Docs/Git panel widths).
 
 const MIN_COL_WIDTH = 80;
@@ -156,7 +156,7 @@ function ColumnResizeHandle({ onDrag }: { onDrag: (dx: number) => void }) {
 
 // ---- Project Settings ----
 
-const SETTINGS_LABEL_COL_WIDTH_KEY = 'dbt-ui:env-settings-label-col-width';
+const SETTINGS_LABEL_COL_WIDTH_KEY = 'wickd:env-settings-label-col-width';
 const DEFAULT_SETTINGS_LABEL_COL_WIDTH = 176;
 
 interface ProjectSettingRowProps {
@@ -292,7 +292,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
             <ProjectSettingRow
               label="INIT_SCRIPT_PATH"
               value={project.init_script_path ?? ''}
-              placeholder="dbtui/init"
+              placeholder="wickd/init"
               kind="default"
               onSave={handleSaveInitScriptPath}
               labelWidth={labelWidth}
@@ -309,7 +309,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
             <ProjectSettingRow
               label="WORKSPACE_PATH"
               value={workspacePath}
-              placeholder="dbtui/workspace"
+              placeholder="wickd/workspace"
               kind="default"
               onSave={handleSaveWorkspacePath}
               labelWidth={labelWidth}
@@ -327,7 +327,7 @@ const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'activ
 
 // ---- Environment Variables ----
 
-const ENVVAR_KEY_COL_WIDTH_KEY = 'dbt-ui:env-envvar-key-col-width';
+const ENVVAR_KEY_COL_WIDTH_KEY = 'wickd:env-envvar-key-col-width';
 const DEFAULT_ENVVAR_KEY_COL_WIDTH = 160;
 
 function EnvironmentVariablesSection({ projectId }: { projectId: number }) {

@@ -12,7 +12,7 @@ The feature set is listed in four places that must agree on wording and tier:
 |---------|----------|
 | README | `README.md` → `## Features` (Pro items tagged `(Pro)`) |
 | In-app pricing | `frontend/src/routes/Pricing.tsx` → `FEATURES` (`base` / `pro` flags) |
-| Website pricing | `../lamphere-labs/tools/dbt-ui/index.html` → `#pricing` Base and Pro plan lists, plus the intro paragraph |
+| Website pricing | `../lamphere-labs/tools/wickd/index.html` → `#pricing` Base and Pro plan lists, plus the intro paragraph |
 | Website feature grid | same file → `#features` (headline features only) |
 
 Bug fixes, refactors, and dev tooling don't need it. Never commit or push

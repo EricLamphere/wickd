@@ -18,7 +18,7 @@ def configure_logging(level: str = "INFO", api_log_path: Path | None = None) -> 
         _file_handler = logging.FileHandler(str(api_log_path), encoding="utf-8")
         _file_handler.setFormatter(logging.Formatter("%(message)s"))
 
-        _file_logger = logging.getLogger("dbt_ui.api")
+        _file_logger = logging.getLogger("wickd.api")
         _file_logger.setLevel(level.upper())
         _file_logger.addHandler(_file_handler)
         _file_logger.propagate = False

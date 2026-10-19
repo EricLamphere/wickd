@@ -1,4 +1,4 @@
-# Testing Conventions for dbt-ui
+# Testing Conventions for Wickd
 
 ## Backend Test Setup
 

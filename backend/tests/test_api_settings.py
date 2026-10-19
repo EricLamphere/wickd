@@ -119,7 +119,7 @@ async def test_put_python_path_rejected_for_own_venv(
     resp = await client.put("/api/settings", json={"python_path": py})
 
     assert resp.status_code == 400
-    assert "DBT_UI_DBT_VENV_DIR" in resp.json()["detail"]
+    assert "WICKD_DBT_VENV_DIR" in resp.json()["detail"]
     assert isolated_venv == []
 
 

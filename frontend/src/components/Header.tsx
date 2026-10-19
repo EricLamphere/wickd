@@ -132,7 +132,7 @@ export default function Header() {
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7m-9 5v6h4v-6m-4 0H9m6 0h2" />
           </svg>
-          dbt-ui
+          Wickd
         </Link>
         <NavArrows />
       </div>
@@ -171,7 +171,7 @@ export default function Header() {
               Run global setup
             </button>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('dbt-ui:new-project'))}
+              onClick={() => window.dispatchEvent(new CustomEvent('wickd:new-project'))}
               className="px-3 py-1.5 text-xs rounded bg-brand-600 hover:bg-brand-500 text-white font-medium transition-colors"
             >
               + New project
@@ -181,7 +181,7 @@ export default function Header() {
         {!isPricingPage && (
           <button
             onClick={() => navigate('/pricing')}
-            title={license?.entitled ? 'View your dbt-ui Pro subscription' : undefined}
+            title={license?.entitled ? 'View your Wickd Pro subscription' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600/10 border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 font-medium transition-colors"
           >
             <Sparkles size={12} />

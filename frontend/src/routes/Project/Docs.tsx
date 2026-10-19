@@ -325,7 +325,7 @@ export default function DocsPage() {
   const qc = useQueryClient();
 
   const [listWidth, setListWidth] = useState(() => {
-    try { const v = parseInt(localStorage.getItem('dbt-ui:docs-list-width') ?? '', 10); return !isNaN(v) && v >= 160 && v <= 520 ? v : 300; } catch { return 300; }
+    try { const v = parseInt(localStorage.getItem('wickd:docs-list-width') ?? '', 10); return !isNaN(v) && v >= 160 && v <= 520 ? v : 300; } catch { return 300; }
   });
   const listResizing = useRef(false);
   const [generating, setGenerating] = useState(false);
@@ -383,7 +383,7 @@ export default function DocsPage() {
     };
     const onUp = () => {
       listResizing.current = false;
-      setListWidth((w) => { try { localStorage.setItem('dbt-ui:docs-list-width', String(w)); } catch {} return w; });
+      setListWidth((w) => { try { localStorage.setItem('wickd:docs-list-width', String(w)); } catch {} return w; });
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);

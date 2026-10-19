@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "dbt-ui",
+  "productName": "Wickd",
   "version": "1.0.0",
-  "identifier": "com.dbt-ui.desktop",
+  "identifier": "com.lampherelabs.wickd",
   "build": {
     "frontendDist": "../frontend/dist"
   },
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "dbt-ui",
+        "title": "Wickd",
         "url": "http://127.0.0.1:8001",
         "width": 1400,
         "height": 900,
@@ -36,7 +36,7 @@
     "macOS": {
       "exceptionDomain": "127.0.0.1",
       "files": {
-        "Resources/binaries/dbt-ui-backend": "./binaries/dbt-ui-backend"
+        "Resources/binaries/wickd-backend": "./binaries/wickd-backend"
       }
     }
   }

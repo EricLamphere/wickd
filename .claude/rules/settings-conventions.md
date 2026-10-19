@@ -1,4 +1,4 @@
-# Settings Conventions for dbt-ui
+# Settings Conventions for Wickd
 
 ## Where Settings Live in the UI
 
@@ -39,15 +39,15 @@ All settings must appear in one of two places in the Environment page (`frontend
 
 | Setting | Backing store | Default | Example |
 |---|---|---|---|
-| `INIT_SCRIPT_PATH` | `projects.init_script_path` | `dbtui/init` | `dbtui/init` |
+| `INIT_SCRIPT_PATH` | `projects.init_script_path` | `wickd/init` | `wickd/init` |
 | `REQUIREMENTS_PATH` | `ProjectEnvVar` | (empty) | `/path/to/requirements.txt` |
-| `WORKSPACE_PATH` | `ProjectEnvVar` | `dbtui/workspace` | `analysis/scratch` |
+| `WORKSPACE_PATH` | `ProjectEnvVar` | `wickd/workspace` | `analysis/scratch` |
 
 ## Current Global Settings
 
 | Setting | Key | Example |
 |---|---|---|
-| `DBT_UI_PROJECTS_PATH` | `dbt_projects_path` | `/home/user/dbt-projects` |
-| `DBT_UI_GLOBAL_REQUIREMENTS_PATH` | `global_requirements_path` | `/home/user/dbt-projects/requirements.txt` |
-| `DBT_UI_PYTHON_PATH` | `python_path` | `/opt/homebrew/bin/python3.12` |
-| `DBT_UI_LOG_LEVEL` | `log_level` | `INFO` |
+| `WICKD_PROJECTS_PATH` | `dbt_projects_path` | `/home/user/dbt-projects` |
+| `WICKD_GLOBAL_REQUIREMENTS_PATH` | `global_requirements_path` | `/home/user/dbt-projects/requirements.txt` |
+| `WICKD_PYTHON_PATH` | `python_path` | `/opt/homebrew/bin/python3.12` |
+| `WICKD_LOG_LEVEL` | `log_level` | `INFO` |

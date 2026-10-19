@@ -9,8 +9,8 @@ background asyncio.Task that fans work out across a ProcessPoolExecutor, and
 progress/completion are observable both via polling GET and via SSE events on
 the bus.
 
-Column-level lineage is a dbt-ui Pro feature (see app/licensing/): the real
-tracing algorithm lives in the private dbt_ui_pro package, not this repo.
+Column-level lineage is a Wickd Pro feature (see app/licensing/): the real
+tracing algorithm lives in the private wickd_pro package, not this repo.
 These tests don't need it installed — `_entitled` below forces
 check_entitlement() to report entitled for every test in this file (a
 separate test class covers the actual gating behavior when NOT entitled),
@@ -62,7 +62,7 @@ from app.main import app
 def _fake_prepare_lineage_jobs(manifest_path: Path) -> list[LineageJob]:
     """Reproduces exactly what the real algorithm would compute for
     _make_manifest()'s fixture data (orders.order_id <- stg_orders.order_id),
-    without depending on sqlglot or dbt_ui_pro."""
+    without depending on sqlglot or wickd_pro."""
     data = json.loads(manifest_path.read_text())
     if "model.proj.orders" not in data.get("nodes", {}):
         return []

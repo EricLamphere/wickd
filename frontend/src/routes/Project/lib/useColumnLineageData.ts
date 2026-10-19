@@ -8,7 +8,7 @@ export const IMPACT_LINEAGE_VERSION = 2;
 
 function startErrorMessage(err: unknown): string | null {
   if (err instanceof ApiError && err.status === 409) return null; // already running; its events update the query
-  if (err instanceof ApiError && err.status === 503) return 'Column lineage is unavailable in this build (the dbt-ui Pro package is not installed).';
+  if (err instanceof ApiError && err.status === 503) return 'Column lineage is unavailable in this build (the Wickd Pro package is not installed).';
   if (err instanceof ApiError && err.status === 422) return 'Column lineage needs a compiled project. Use Refresh DAG first.';
   if (err instanceof ApiError && typeof err.body === 'string') return err.body;
   return err instanceof Error ? err.message : 'Failed to start column lineage';

@@ -47,8 +47,8 @@ const ALL_EDITORS: EditorChoice[] = [
   { id: 'other', label: 'Other', kind: 'other' },
 ];
 
-const PREF_KEY = 'dbt-ui:preferred-editor';
-const OTHER_APP_KEY = 'dbt-ui:other-app-name';
+const PREF_KEY = 'wickd:preferred-editor';
+const OTHER_APP_KEY = 'wickd:other-app-name';
 
 function getPreferredEditor(): EditorChoice {
   const saved = localStorage.getItem(PREF_KEY);

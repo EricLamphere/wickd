@@ -12,7 +12,7 @@ interface UpgradeModalProps {
 }
 
 const REASON_COPY: Record<string, string> = {
-  not_licensed: 'This is a dbt-ui Pro feature. Enter your license key to unlock it.',
+  not_licensed: 'This is a Wickd Pro feature. Enter your license key to unlock it.',
   not_entitled: 'Your subscription is no longer active. Renew or enter a new license key to continue.',
   unreachable: "Couldn't verify your license and the offline grace period has expired. Check your connection and try again.",
   activation_limit_reached: "This license key has reached its device activation limit. Free up a seat in your Polar customer portal, then retry.",
@@ -64,14 +64,14 @@ export function UpgradeModal({ onClose, feature = 'Column-level lineage' }: Upgr
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-200">
             <Lock className="w-4 h-4 text-brand-400" />
-            Upgrade to dbt-ui Pro
+            Upgrade to Wickd Pro
           </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-sm">✕</button>
         </div>
 
         <div className="px-4 py-4 flex flex-col gap-3">
           <p className="text-xs text-gray-400">
-            {feature} requires an active dbt-ui Pro subscription.
+            {feature} requires an active Wickd Pro subscription.
           </p>
           {reasonCopy && (
             <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded px-3 py-2">
@@ -97,7 +97,7 @@ export function UpgradeModal({ onClose, feature = 'Column-level lineage' }: Upgr
               type="text"
               value={licenseKey}
               onChange={(e) => setLicenseKey(e.target.value)}
-              placeholder="DBTUI_-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+              placeholder="WICKD_-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
               className="bg-surface-elevated border border-gray-700 rounded px-3 py-1.5 text-xs font-mono text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
             {error && <p className="text-xs text-red-400">{error}</p>}

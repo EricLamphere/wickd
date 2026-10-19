@@ -9,7 +9,7 @@ import { openBottomTab } from '../../lib/bottomPaneEvents';
 import { FlagBadge, useBuildImpacted } from '../../components/impact/impactUi';
 import { PaneSectionHeader, usePersistedOpen } from './PaneSection';
 
-const OPEN_KEY = 'dbt-ui:git-impact-open';
+const OPEN_KEY = 'wickd:git-impact-open';
 
 /** Collapsible "Impact" section: what the uncommitted changes affect downstream. */
 export function ImpactSection({ projectId }: { projectId: number }) {

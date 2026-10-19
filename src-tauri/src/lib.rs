@@ -53,14 +53,14 @@ pub fn run() {
             // only happen once, ever.
             let backend_exe = resource_dir
                 .join("binaries")
-                .join("dbt-ui-backend")
-                .join("dbt-ui-backend");
+                .join("wickd-backend")
+                .join("wickd-backend");
 
             let child = std::process::Command::new(&backend_exe)
-                .env("DBT_UI_FRONTEND_DIST", frontend_dist.to_string_lossy().to_string())
-                .env("DBT_UI_DATA_DIR", data_dir.to_string_lossy().to_string())
+                .env("WICKD_FRONTEND_DIST", frontend_dist.to_string_lossy().to_string())
+                .env("WICKD_DATA_DIR", data_dir.to_string_lossy().to_string())
                 .spawn()
-                .expect("failed to spawn dbt-ui-backend");
+                .expect("failed to spawn wickd-backend");
 
             app.state::<BackendProcess>()
                 .0

@@ -1136,7 +1136,7 @@ async def append_requirement(dto: AppendRequirementDto) -> dict[str, bool]:
     """Append a line to the global requirements file."""
     path_str = await _get_global_requirements_path()
     if not path_str:
-        raise HTTPException(status_code=400, detail="DBT_UI_GLOBAL_REQUIREMENTS_PATH is not configured")
+        raise HTTPException(status_code=400, detail="WICKD_GLOBAL_REQUIREMENTS_PATH is not configured")
     req_path = Path(path_str)
     if not req_path.exists():
         raise HTTPException(status_code=404, detail=f"Requirements file not found: {path_str}")
@@ -1162,7 +1162,7 @@ def global_setup_running() -> bool:
     return _global_setup_thread is not None and _global_setup_thread.is_alive()
 
 
-_DBG_LOG = Path("/tmp/dbt_ui_pip_debug.log")
+_DBG_LOG = Path("/tmp/wickd_pip_debug.log")
 
 
 def _dbg(msg: str) -> None:
@@ -1210,7 +1210,7 @@ def _run_pip_in_thread(pip: Path, install_args: list[str], pip_env: dict) -> Non
         # state, so pip's spawned multiprocessing workers won't inherit uvicorn's
         # internal TCP socket and won't block on it.
         # Paths are shell-quoted: the packaged app's venv lives under
-        # "~/Library/Application Support/dbt-ui/...", which contains a space —
+        # "~/Library/Application Support/wickd/...", which contains a space —
         # unquoted interpolation gets word-split by bash into a bogus command.
         cmd = (
             f"exec {shlex.quote(str(pip))} install {shlex.join(install_args)}"

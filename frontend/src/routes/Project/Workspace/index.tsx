@@ -70,14 +70,14 @@ export default function WorkspacePage() {
 
   // Tree resize
   const [treeWidth, setTreeWidth] = useState(() => {
-    try { const v = parseInt(localStorage.getItem('dbt-ui:ws-tree-width') ?? '', 10); return !isNaN(v) && v >= 150 && v <= 400 ? v : 240; } catch { return 240; }
+    try { const v = parseInt(localStorage.getItem('wickd:ws-tree-width') ?? '', 10); return !isNaN(v) && v >= 150 && v <= 400 ? v : 240; } catch { return 240; }
   });
   const treeResizing = useRef(false);
   const treeWidthRef = useRef(treeWidth);
 
   // Vertical split: ratio of panel height given to the database explorer (0–1, default 0.5)
   const [explorerRatio, setExplorerRatio] = useState(() => {
-    try { const v = parseFloat(localStorage.getItem('dbt-ui:ws-explorer-ratio') ?? ''); return !isNaN(v) && v >= 0.1 && v <= 0.9 ? v : 0.5; } catch { return 0.5; }
+    try { const v = parseFloat(localStorage.getItem('wickd:ws-explorer-ratio') ?? ''); return !isNaN(v) && v >= 0.1 && v <= 0.9 ? v : 0.5; } catch { return 0.5; }
   });
   const explorerResizing = useRef(false);
   const explorerStartYRef = useRef(0);
@@ -87,7 +87,7 @@ export default function WorkspacePage() {
 
   // Results pane resize
   const [resultsWidth, setResultsWidth] = useState(() => {
-    try { const v = parseInt(localStorage.getItem('dbt-ui:ws-results-width') ?? '', 10); return !isNaN(v) && v >= MIN_RESULTS_WIDTH && v <= MAX_RESULTS_WIDTH ? v : DEFAULT_RESULTS_WIDTH; } catch { return DEFAULT_RESULTS_WIDTH; }
+    try { const v = parseInt(localStorage.getItem('wickd:ws-results-width') ?? '', 10); return !isNaN(v) && v >= MIN_RESULTS_WIDTH && v <= MAX_RESULTS_WIDTH ? v : DEFAULT_RESULTS_WIDTH; } catch { return DEFAULT_RESULTS_WIDTH; }
   });
   const [resultsOpen, setResultsOpen] = useState(false);
   const resultsResizing = useRef(false);
@@ -228,14 +228,14 @@ export default function WorkspacePage() {
     };
     const onMouseUp = () => {
       if (treeResizing.current) {
-        try { localStorage.setItem('dbt-ui:ws-tree-width', String(treeWidthRef.current)); } catch {}
+        try { localStorage.setItem('wickd:ws-tree-width', String(treeWidthRef.current)); } catch {}
       }
       if (explorerResizing.current) {
-        try { localStorage.setItem('dbt-ui:ws-explorer-ratio', String(explorerRatioRef.current)); } catch {}
+        try { localStorage.setItem('wickd:ws-explorer-ratio', String(explorerRatioRef.current)); } catch {}
       }
       if (resultsResizing.current) {
         setResultsWidth((w) => {
-          if (w >= MIN_RESULTS_WIDTH) try { localStorage.setItem('dbt-ui:ws-results-width', String(w)); } catch {}
+          if (w >= MIN_RESULTS_WIDTH) try { localStorage.setItem('wickd:ws-results-width', String(w)); } catch {}
           return w;
         });
       }

@@ -84,9 +84,9 @@ function SettingsTab() {
   const [saving, setSaving] = useState(false);
 
   const rows: { key: string; label: string; value: string | null | undefined; hint?: string; example?: string }[] = [
-    { key: 'dbt_projects_path', label: 'DBT_UI_PROJECTS_PATH', value: appSettings?.dbt_projects_path, example: '/home/user/dbt-projects' },
-    { key: 'global_requirements_path', label: 'DBT_UI_GLOBAL_REQUIREMENTS_PATH', value: appSettings?.global_requirements_path, hint: 'requirements.txt installed via Run global setup', example: '/home/user/dbt-projects/requirements.txt' },
-    { key: 'log_level', label: 'DBT_UI_LOG_LEVEL', value: appSettings?.log_level, hint: 'takes effect on restart', example: 'INFO' },
+    { key: 'dbt_projects_path', label: 'WICKD_PROJECTS_PATH', value: appSettings?.dbt_projects_path, example: '/home/user/dbt-projects' },
+    { key: 'global_requirements_path', label: 'WICKD_GLOBAL_REQUIREMENTS_PATH', value: appSettings?.global_requirements_path, hint: 'requirements.txt installed via Run global setup', example: '/home/user/dbt-projects/requirements.txt' },
+    { key: 'log_level', label: 'WICKD_LOG_LEVEL', value: appSettings?.log_level, hint: 'takes effect on restart', example: 'INFO' },
   ];
 
   const handleSave = async (key: string) => {
@@ -203,7 +203,7 @@ function RequirementsTab() {
   if (!appSettings?.global_requirements_path) {
     return (
       <div className="flex items-center justify-center py-16">
-        <p className="text-sm text-gray-500">DBT_UI_GLOBAL_REQUIREMENTS_PATH variable has not been set</p>
+        <p className="text-sm text-gray-500">WICKD_GLOBAL_REQUIREMENTS_PATH variable has not been set</p>
       </div>
     );
   }
@@ -215,7 +215,7 @@ function RequirementsTab() {
   if (error) {
     return (
       <div className="flex items-center justify-center py-16">
-        <p className="text-sm text-gray-500">File not found at the path specified in the DBT_UI_GLOBAL_REQUIREMENTS_PATH variable</p>
+        <p className="text-sm text-gray-500">File not found at the path specified in the WICKD_GLOBAL_REQUIREMENTS_PATH variable</p>
       </div>
     );
   }
@@ -279,7 +279,7 @@ function ThemeTab() {
     queryFn: () => api.settings.get(),
   });
 
-  const currentTheme = appSettings?.theme ?? localStorage.getItem('dbt-ui-theme') ?? 'dark';
+  const currentTheme = appSettings?.theme ?? localStorage.getItem('wickd-theme') ?? 'dark';
 
   const handleThemeSelect = async (theme: string) => {
     applyTheme(theme as 'dark' | 'light');

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DBG_LOG=/tmp/dbt_ui_pip_debug.log
+DBG_LOG=/tmp/wickd_pip_debug.log
 BACKEND_DIR="$SCRIPT_DIR/backend"
 TIMEOUT_SECS=900  # 15 minutes (fresh install takes a while)
 API_BASE="http://localhost:8001"

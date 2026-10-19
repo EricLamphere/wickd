@@ -16,10 +16,10 @@ export function LoadingScreen({ waitedSecs }: Props) {
 
   return (
     <div className="flex flex-col items-center justify-center h-screen gap-4 p-6 bg-surface-app text-center">
-      <span className="text-lg font-semibold text-brand-400">dbt-ui</span>
+      <span className="text-lg font-semibold text-brand-400">Wickd</span>
       <Loader2 className="w-6 h-6 text-brand-400 animate-spin" aria-hidden />
       <p className="text-sm text-gray-300" role="status">
-        {stuck ? 'Still waiting for the dbt-ui server…' : 'Getting things ready…'}
+        {stuck ? 'Still waiting for the Wickd server…' : 'Getting things ready…'}
       </p>
       {slow && !stuck && (
         <p className="max-w-sm text-xs text-gray-500">
@@ -29,7 +29,7 @@ export function LoadingScreen({ waitedSecs }: Props) {
       {stuck && (
         <p className="max-w-sm text-xs text-gray-500">
           The server hasn't responded yet. If this doesn't clear up, check that the backend is running
-          (<InlineCode>task start</InlineCode>), or quit and reopen dbt-ui.
+          (<InlineCode>task start</InlineCode>), or quit and reopen Wickd.
         </p>
       )}
     </div>

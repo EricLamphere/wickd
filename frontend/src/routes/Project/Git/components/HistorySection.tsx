@@ -2,8 +2,8 @@ import { useRef, useState, type PointerEvent } from 'react';
 import { HistoryPanel } from './HistoryPanel';
 import { PaneSectionHeader, usePersistedOpen } from './PaneSection';
 
-const HEIGHT_KEY = 'dbt-ui:git-history-height';
-const OPEN_KEY = 'dbt-ui:git-history-open';
+const HEIGHT_KEY = 'wickd:git-history-height';
+const OPEN_KEY = 'wickd:git-history-open';
 const MIN_HEIGHT = 96;
 const MAX_HEIGHT = 900;
 const DEFAULT_HEIGHT = 192;

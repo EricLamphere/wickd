@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Entitlements for the PyInstaller-built backend (binaries/dbt-ui-backend),
+  Entitlements for the PyInstaller-built backend (binaries/wickd-backend),
   applied by the _package:sign-backend task. Notarization requires the
   hardened runtime; these two exceptions are what a bundled CPython needs to
   run under it (ctypes/cffi trampolines, and loading the bundled .so/.dylib

@@ -49,12 +49,12 @@ async def test_set_license_key_activates_and_validates() -> None:
         ),
     ):
         async with await _client() as client:
-            r = await client.put("/api/license", json={"license_key": "DBTUI_-TEST-KEY"})
+            r = await client.put("/api/license", json={"license_key": "WICKD_-TEST-KEY"})
 
     assert r.status_code == 200
     body = r.json()
     assert body["has_key"] is True
-    assert body["license_key"] == "DBTUI_-TEST-KEY"
+    assert body["license_key"] == "WICKD_-TEST-KEY"
     assert body["entitled"] is True
     assert body["reason"] == "granted"
     assert body["status"] == "granted"
@@ -72,7 +72,7 @@ async def test_set_license_key_not_entitled() -> None:
         new=AsyncMock(side_effect=LicenseKeyNotEntitled("canceled")),
     ):
         async with await _client() as client:
-            r = await client.put("/api/license", json={"license_key": "DBTUI_-CANCELED-KEY"})
+            r = await client.put("/api/license", json={"license_key": "WICKD_-CANCELED-KEY"})
 
     assert r.status_code == 200
     body = r.json()
@@ -88,7 +88,7 @@ async def test_clear_license_key() -> None:
         new=AsyncMock(return_value=LicenseKeyState(status="granted", expires_at=None, activation_id="act_123")),
     ):
         async with await _client() as client:
-            await client.put("/api/license", json={"license_key": "DBTUI_-TEST-KEY"})
+            await client.put("/api/license", json={"license_key": "WICKD_-TEST-KEY"})
             r = await client.put("/api/license", json={"license_key": None})
 
     assert r.status_code == 200
@@ -106,7 +106,7 @@ async def test_recheck_forces_fresh_check() -> None:
         new=AsyncMock(return_value=LicenseKeyState(status="granted", expires_at=None, activation_id="act_123")),
     ) as mock_validate:
         async with await _client() as client:
-            await client.put("/api/license", json={"license_key": "DBTUI_-TEST-KEY"})
+            await client.put("/api/license", json={"license_key": "WICKD_-TEST-KEY"})
             r = await client.post("/api/license/recheck")
 
     assert r.status_code == 200
@@ -144,7 +144,7 @@ async def _activate_licensed_client(client: AsyncClient) -> None:
             )
         ),
     ):
-        await client.put("/api/license", json={"license_key": "DBTUI_-TEST-KEY"})
+        await client.put("/api/license", json={"license_key": "WICKD_-TEST-KEY"})
 
 
 async def test_cancel_subscription_success() -> None:

@@ -1,5 +1,5 @@
 """
-Append API request/response log lines to {data_dir}/logs/dbt-ui/api_logs.log
+Append API request/response log lines to {data_dir}/logs/wickd/api_logs.log
 and publish them as `api_log` SSE events on the relevant project bus topic.
 """
 
@@ -17,7 +17,7 @@ _api_log_path: Path | None = None
 def configure_api_log(data_dir: Path) -> Path:
     """Call once at startup to set the log path. Returns the path."""
     global _api_log_path
-    log_dir = data_dir / "logs" / "dbt-ui"
+    log_dir = data_dir / "logs" / "wickd"
     log_dir.mkdir(parents=True, exist_ok=True)
     _api_log_path = log_dir / "api_logs.log"
     return _api_log_path

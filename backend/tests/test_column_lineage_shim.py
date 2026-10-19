@@ -2,7 +2,7 @@
 Tests for the public column-lineage shim's row-dependency delegation
 (app.dbt.column_lineage.trace_job_full / supports_row_dependencies).
 
-The private dbt_ui_pro package isn't needed: `_pro()` is patched to return a
+The private wickd_pro package isn't needed: `_pro()` is patched to return a
 stand-in module, covering both a Pro build that has row-dependency tracing
 and an older one that only has trace_job().
 """

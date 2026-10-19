@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './styles.css';
 
-const savedTheme = localStorage.getItem('dbt-ui-theme') ?? 'dark';
+const savedTheme = localStorage.getItem('wickd-theme') ?? 'dark';
 document.documentElement.dataset.theme = savedTheme;
 
 const queryClient = new QueryClient({

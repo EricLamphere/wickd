@@ -113,7 +113,7 @@ export function SetupWizard({ settings, onFinish }: Props) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-surface-app">
       <div className="flex flex-col w-full max-w-2xl h-[min(640px,100%)] bg-surface-panel border border-gray-800 rounded-xl shadow-2xl overflow-hidden">
         <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-800 shrink-0">
-          <span className="text-sm font-semibold text-brand-400">dbt-ui setup</span>
+          <span className="text-sm font-semibold text-brand-400">Wickd setup</span>
           <ol className="flex flex-1 items-center gap-1.5">
             {STEPS.map((s, i) => (
               <li

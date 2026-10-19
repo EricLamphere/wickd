@@ -1,6 +1,6 @@
-# Contributing to dbt-ui
+# Contributing to Wickd
 
-Thanks for helping out. This guide covers setting up a dev environment, the project's conventions, and how the desktop app is built and released. For what dbt-ui is and how to download it, see the [README](README.md).
+Thanks for helping out. This guide covers setting up a dev environment, the project's conventions, and how the desktop app is built and released. For what Wickd is and how to download it, see the [README](README.md).
 
 ## Getting set up
 
@@ -14,10 +14,10 @@ task start                      # backend on :8001 + Vite on :5173, hot reload; 
 
 Open [http://localhost:5173](http://localhost:5173). Vite proxies `/api` to the backend on `:8001`.
 
-On first launch a banner asks for your dbt projects folder (**DBT_UI_PROJECTS_PATH**). Set it in the UI, or with an environment variable:
+On first launch a banner asks for your dbt projects folder (**WICKD_PROJECTS_PATH**). Set it in the UI, or with an environment variable:
 
 ```bash
-export DBT_UI_PROJECTS_PATH=$HOME/dbt-projects
+export WICKD_PROJECTS_PATH=$HOME/dbt-projects
 task start
 ```
 
@@ -26,7 +26,7 @@ task start
 | Command | What it does |
 |---|---|
 | `task start` | Run the app in the browser with hot reload |
-| `task start:pro` | Same, with Pro features loaded from a sibling `../dbt-ui-pro` checkout (maintainers; `PRO_DIR=<path>` to override). Licensing uses `backend/.env`'s Polar settings |
+| `task start:pro` | Same, with Pro features loaded from a sibling `../wickd-pro` checkout (maintainers; `PRO_DIR=<path>` to override). Licensing uses `backend/.env`'s Polar settings |
 | `task test` | Backend tests + frontend type-check and build |
 | `task test:backend` | `pytest --cov=app` only |
 | `task test:frontend` | `tsc` + `vite build` only |
@@ -57,33 +57,33 @@ The rules that matter most:
 
 | Variable | Default | Description |
 |---|---|---|
-| `DBT_UI_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects (overridable in the UI) |
-| `DBT_UI_GLOBAL_REQUIREMENTS_PATH` | _(none)_ | `requirements.txt` installed into the dbt venv on every project open |
-| `DBT_UI_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.dbt-ui.desktop` (desktop app) | App storage (SQLite DB, dbt venv, docs, logs). Set automatically — not configurable in the UI |
-| `DBT_UI_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `WICKD_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects (overridable in the UI) |
+| `WICKD_GLOBAL_REQUIREMENTS_PATH` | _(none)_ | `requirements.txt` installed into the dbt venv on every project open |
+| `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app) | App storage (SQLite DB, dbt venv, docs, logs). Set automatically — not configurable in the UI |
+| `WICKD_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment (sandbox/production) license checks talk to |
 | `POLAR_SANDBOX_ORGANIZATION_ID` / `POLAR_PRODUCTION_ORGANIZATION_ID` | _(none)_ | Polar org id used to validate license keys (not a secret) |
 | `POLAR_SANDBOX_API_KEY` / `POLAR_PRODUCTION_API_KEY` | _(none)_ | Polar API key — **secret**, set in `backend/.env` only, never commit |
 | `POLAR_SANDBOX_CHECKOUT_URL` / `POLAR_PRODUCTION_CHECKOUT_URL` | _(none)_ | Checkout link behind the in-app **Upgrade to Pro** button |
 | `POLAR_SANDBOX_ORGANIZATION_SLUG` / `POLAR_PRODUCTION_ORGANIZATION_SLUG` | `lamphere-labs` | Builds the Polar customer portal link (`https://[sandbox.]polar.sh/<slug>/portal`) shown for lost license keys and device seats; set to empty to hide it |
 
-You don't need any of the Polar variables to work on dbt-ui. Without them, Pro features simply stay locked.
+You don't need any of the Polar variables to work on Wickd. Without them, Pro features simply stay locked.
 
 Per-project settings are stored in `project_env_vars` and injected into every dbt subprocess:
 
 | Key | Set by | Description | Default |
 |---|---|---|---|
-| `INIT_SCRIPT_PATH` | Environment tab | Directory (relative to the project root) scanned for `.sh` init scripts | `dbtui/init` |
+| `INIT_SCRIPT_PATH` | Environment tab | Directory (relative to the project root) scanned for `.sh` init scripts | `wickd/init` |
 | `REQUIREMENTS_PATH` | Environment tab | Project-specific `requirements.txt`, installed after the global one | _(none)_ |
-| `WORKSPACE_PATH` | Environment tab | Directory (relative to the project root) for SQL Workspace files | `dbtui/workspace` |
+| `WORKSPACE_PATH` | Environment tab | Directory (relative to the project root) for SQL Workspace files | `wickd/workspace` |
 | `dbt_target` | Target dropdown | Active dbt target, passed as `--target` on every invocation | _(profiles.yml default)_ |
 | _(any key)_ | Init scripts | Any `export KEY=value` in a custom init script is captured automatically | — |
 
-## dbt-ui Pro and the open-core split
+## Wickd Pro and the open-core split
 
-Pro features (currently column-level lineage) are gated by a license check in this repo, but the actual lineage algorithm lives in a separate private package, `dbt-ui-pro`. `backend/app/dbt/column_lineage.py` is a thin public shim that raises `ColumnLineageUnavailable` when the package isn't installed.
+Pro features (currently column-level lineage) are gated by a license check in this repo, but the actual lineage algorithm lives in a separate private package, `wickd-pro`. `backend/app/dbt/column_lineage.py` is a thin public shim that raises `ColumnLineageUnavailable` when the package isn't installed.
 
-**You don't need `dbt-ui-pro` to contribute.** Everything else builds and runs without it. Pro features just show as unavailable, exactly as they do for a free user.
+**You don't need `wickd-pro` to contribute.** Everything else builds and runs without it. Pro features just show as unavailable, exactly as they do for a free user.
 
 ## Building the desktop app
 
@@ -93,10 +93,10 @@ The desktop app is a Tauri shell around the PyInstaller-bundled backend and the 
 |---|---|---|
 | `task package:app` | Free features, no licensing config | Anyone — the one to use when contributing |
 | `task package:sandbox:base` | Free features, Polar sandbox | Maintainers (needs `backend/.env.sandbox`) |
-| `task package:sandbox:pro` | Pro features, Polar sandbox | Maintainers (needs `dbt-ui-pro` + `backend/.env.sandbox`) |
+| `task package:sandbox:pro` | Pro features, Polar sandbox | Maintainers (needs `wickd-pro` + `backend/.env.sandbox`) |
 | `task package:production` | Pro features, Polar production | Maintainers — the real release build |
 
-Each one builds the app and installs it to `/Applications/dbt-ui.app`. The build output (`.app` and `.dmg`) lands in `src-tauri/target/release/bundle/`. Local builds are ad-hoc signed, which is fine for running on your own Mac.
+Each one builds the app and installs it to `/Applications/Wickd.app`. The build output (`.app` and `.dmg`) lands in `src-tauri/target/release/bundle/`. Local builds are ad-hoc signed, which is fine for running on your own Mac.
 
 ## Releasing (maintainers)
 
@@ -105,7 +105,7 @@ Releases are Developer ID signed and notarized by Apple.
 1. Put your Apple credentials in `.env.signing` (gitignored; copy `.env.signing.example`). You need a **Developer ID Application** certificate in your keychain and an app-specific password.
 2. Run `/release` in Claude Code, which bumps the version everywhere and runs the release, or bump the version yourself and run `task release`.
 
-`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, and creates GitHub release `v<version>`. It uploads the `.dmg` twice: with its versioned name, and as `dbt-ui_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
+`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, and creates GitHub release `v<version>`. It uploads the `.dmg` twice: with its versioned name, and as `Wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
 
 ## Submitting changes
 

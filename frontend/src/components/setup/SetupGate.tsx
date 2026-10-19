@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { LoadingScreen } from './LoadingScreen';
 import { SetupWizard } from './SetupWizard';
 
-export const OPEN_SETUP_EVENT = 'dbt-ui:open-setup';
+export const OPEN_SETUP_EVENT = 'wickd:open-setup';
 
 // How often to retry while the backend is still starting (dev: `task start`
 // pip-installs before uvicorn launches; packaged: the sidecar is booting). The

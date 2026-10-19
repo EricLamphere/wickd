@@ -18,7 +18,7 @@ dependencies = [
     "ptyprocess>=0.7.0",
     "structlog>=24.4.0",
     "python-multipart>=0.0.12",
-    "sqlglot>=24.0.0",
+    "sqlglot>=24.0.0,<30.22",  # 30.22 breaks wickd-pro column lineage (empty results); re-test before raising
     "platformdirs>=4.3.0",
     "httpx>=0.27.2",
 ]

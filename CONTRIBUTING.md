@@ -98,6 +98,8 @@ The desktop app is a Tauri shell around the PyInstaller-bundled backend and the 
 
 Each one builds the app and installs it to `/Applications/Wickd.app`. The build output (`.app` and `.dmg`) lands in `src-tauri/target/release/bundle/`. Local builds are ad-hoc signed, which is fine for running on your own Mac.
 
+The app icon's source is `src-tauri/icons/icon.svg` (also served as the browser favicon from `frontend/public/favicon.svg`). After editing it, regenerate the bundled sizes with `cargo tauri icon src-tauri/icons/icon.svg -o /tmp/wickd-icons` and copy `32x32.png`, `128x128.png`, `128x128@2x.png` and `icon.icns` into `src-tauri/icons/` (the only files `tauri.conf.json` uses), then update `frontend/public/favicon.svg` to match.
+
 ## Releasing (maintainers)
 
 Releases are Developer ID signed and notarized by Apple.

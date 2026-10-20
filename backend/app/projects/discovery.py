@@ -1,3 +1,4 @@
+import os
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,13 +22,9 @@ EXCLUDE_DIRS = {
 }
 
 
-# Marker files identifying a Python environment regardless of its folder name
+# Entries identifying a Python environment regardless of its folder name
 # (virtualenv/venv write pyvenv.cfg; conda envs have conda-meta/).
-_ENV_MARKERS = ("pyvenv.cfg", "conda-meta")
-
-
-def _is_python_env(path: Path) -> bool:
-    return any((path / marker).exists() for marker in _ENV_MARKERS)
+_ENV_MARKERS = {"pyvenv.cfg", "conda-meta"}
 
 
 @dataclass(frozen=True)
@@ -39,26 +36,32 @@ class DiscoveredProject:
 
 
 def _iter_dbt_project_files(root: Path) -> Iterator[Path]:
+    # os.scandir gets the entry type from the directory listing itself, avoiding
+    # a stat() per entry — this walk covers every project's whole tree.
     if not root.exists():
         return
-    stack: list[Path] = [root]
+    stack: list[str] = [str(root)]
     while stack:
         current = stack.pop()
         try:
-            entries = list(current.iterdir())
-        except (PermissionError, OSError) as exc:
-            log.warning("discovery_skip_dir", path=str(current), error=str(exc))
+            with os.scandir(current) as it:
+                entries = list(it)
+        except OSError as exc:
+            log.warning("discovery_skip_dir", path=current, error=str(exc))
             continue
+        if any(e.name in _ENV_MARKERS for e in entries):
+            continue  # a Python environment (any folder name) — never holds user projects
         for entry in entries:
-            if entry.is_dir():
+            try:
+                is_dir = entry.is_dir()
+            except OSError:
+                continue
+            if is_dir:
                 if entry.name in EXCLUDE_DIRS or entry.name.startswith("."):
                     continue
-                if _is_python_env(entry):
-                    continue
-                stack.append(entry)
-                continue
-            if entry.name == "dbt_project.yml":
-                yield entry
+                stack.append(entry.path)
+            elif entry.name == "dbt_project.yml":
+                yield Path(entry.path)
 
 
 def _load_profiles(path: Path, cache: dict[Path, dict | None]) -> dict | None:

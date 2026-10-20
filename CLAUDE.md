@@ -55,7 +55,7 @@ backend/app/
     sse.py        — sse_response(), sse_response_with_replay()
   projects/
     discovery.py  — Walk workspace for dbt_project.yml
-    service.py    — Upsert projects to DB; _effective_workspace() for WICKD_PROJECTS_PATH
+    service.py    — Upsert projects to DB; _effective_workspace() for WICKD_PROJECTS_PATH; begin_startup_scan()/wait_for_startup_scan(): the startup rescan runs in the background (server answers immediately), project-list endpoints await it
     summary.py    — manifest_node_counts() for GET /projects/summaries (home page cards: one request for all projects; cached by manifest mtime/size)
   git/
     runner.py     — GitRunner singleton; subprocess + serialization lock per project; stream() publishes git_started/git_log/git_finished

@@ -37,7 +37,7 @@ from app.db.migrations import init_db
 from app.dbt.python_env import load_python_setting
 from app.logs.api_logger import append_api_log, configure_api_log
 from app.logging_setup import configure_logging, get_logger
-from app.projects.service import rescan_projects
+from app.projects.service import begin_startup_scan, rescan_projects
 from app.watcher.service import watcher_manager
 
 _api_log_path = configure_api_log(settings.data_dir)
@@ -45,15 +45,31 @@ configure_logging(settings.log_level)
 log = get_logger(__name__)
 
 
+async def _startup_scan() -> None:
+    """Rescan the workspace after the server is up, then point the watcher at the result."""
+    try:
+        async with SessionLocal() as session:
+            await rescan_projects(session)
+    except Exception as exc:
+        log.warning("startup_scan_failed", error=str(exc))
+    await watcher_manager.resync()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    started = time.perf_counter()
     await init_db()
     async with SessionLocal() as session:
-        await rescan_projects(session)
         await load_python_setting(session)
         await setup_api.seed_setup_completed(session)
-    log.info("startup", workspace=str(settings.dbt_projects_path), db=settings.resolved_database_url())
+    log.info(
+        "startup",
+        workspace=str(settings.dbt_projects_path),
+        db=settings.resolved_database_url(),
+        duration_ms=round((time.perf_counter() - started) * 1000),
+    )
     await watcher_manager.start()
+    begin_startup_scan(_startup_scan())
     try:
         yield
     finally:

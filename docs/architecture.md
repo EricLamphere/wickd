@@ -504,7 +504,7 @@ Standard project events do not replay.
 
 ### 1. Project Discovery
 
-On startup and on `POST /api/projects/rescan`:
+On startup and on `POST /api/projects/rescan`. The startup rescan runs as a background task after the server is up (`begin_startup_scan()` in `service.py`), so `/api/settings` answers — and the UI leaves its loading screen — while a large workspace is walked; `GET /api/projects`, `/projects/summaries` and `POST /rescan` await it via `wait_for_startup_scan()`, and the watcher resyncs when it finishes. `discovery_done` / `startup` / `watcher_start` log their durations.
 1. `_effective_workspace()` in `service.py` resolves the active projects path: checks `app_settings` DB table first, falls back to `WICKD_PROJECTS_PATH` env var, returns `None` if unconfigured
 2. If `None`, rescan is a no-op; Home page shows a blocking banner
 3. `discovery.py` walks the workspace for `dbt_project.yml` files (in a worker thread, off the event loop), skipping excluded dirs (`target`, `dbt_packages`, `node_modules`, dot-dirs, …) and Python environments of any name (detected by `pyvenv.cfg` or `conda-meta/`)

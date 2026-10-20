@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { useModifierKeyClass } from '../../lib/useModifierKeyClass';
 import { BottomPane } from './components/BottomPane';
 import { CommandPalette } from './components/CommandPalette';
+import { WickyPane } from './components/Wicky/WickyPane';
 import { CommandPaletteContext } from './lib/commandPaletteContext';
 import {
   SelectedNodeContext,
@@ -82,7 +83,8 @@ export default function ProjectLayout() {
       <SelectedNodeIdsContext.Provider value={selectedNodeIds}>
       <SetSelectedColumnsContext.Provider value={setSelectedColumns}>
       <SelectedColumnsContext.Provider value={selectedColumns}>
-      <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-row h-full overflow-hidden">
+      <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden">
         <div className="flex-1 min-h-0 overflow-auto">
           <Outlet />
         </div>
@@ -94,6 +96,8 @@ export default function ProjectLayout() {
           selectedNodeIds={selectedNodeIds}
           selectedColumns={selectedColumns}
         />
+      </div>
+      <WickyPane projectId={id} graph={graph ?? null} selectedNodeId={selectedNodeId} />
         {paletteOpen && (
           <CommandPalette
             projectId={id}

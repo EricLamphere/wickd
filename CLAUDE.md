@@ -26,7 +26,7 @@ working on Pro features or updating screenshots/gallery content.
 
 ```
 backend/app/
-  api/            — FastAPI routers, one file per resource (projects, models, document, runs, files, docs, init, env, sql, terminal, settings, global_profiles, git, debug, drift, freshness, column_lineage, license, impact)
+  api/            — FastAPI routers, one file per resource (ai_model, ai_chat, ai_proposals, ai_query, projects, models, document, runs, files, docs, init, env, sql, terminal, settings, global_profiles, git, debug, drift, freshness, column_lineage, license, impact)
   db/
     models.py     — All SQLAlchemy models (12 tables)
     engine.py     — get_session dependency
@@ -43,8 +43,11 @@ backend/app/
     changes.py    — map_changed_files(manifest, files, resource_dirs) → ChangeMapping (nodes→reasons, unmapped, project_wide, relevant_files): changed files → model/seed/snapshot/source/exposure nodes via original_file_path, patch_path (schema YAML) and root-project macros (transitively through depends_on.macros); resource_dirs_from_project_yml(); pure, unit-tested in test_changes.py
     drift.py      — diff_columns() + is_eligible_for_drift_check() — column schema diff helpers
     probe.py      — probe_warehouse_columns() — a built node's real column names via `dbt show --inline`; shared by drift and the docs generator
-    schema_yaml.py — document_node() — docs generator: adds `- name:` entries for a model/seed/snapshot + columns to its schema YAML (patch_path file → folder YAML with the resource key → new schema.yml). Never re-serialises: ruamel.yaml only locates line positions, new lines are spliced in matching the file's indent style, and the result is re-parsed and verified before writing
+    schema_descriptions.py — set_descriptions(): splices `description:` lines for a node + columns into schema YAML text (fill empty, or overwrite), re-parse verified, pure; used by AI docs
+    schema_tests.py — add_column_tests(): splices generic data tests (DataTestSpec) under a node's columns (`data_tests:`/`tests:` per file + dbt version; `arguments:` on 1.10+), re-parse verified, pure
+    schema_yaml.py — plan_document_node() (no write) / document_node() — docs generator: adds `- name:` entries for a model/seed/snapshot + columns to its schema YAML (patch_path file → folder YAML with the resource key → new schema.yml). Never re-serialises: ruamel.yaml only locates line positions, new lines are spliced in matching the file's indent style, and the result is re-parsed and verified before writing
     column_lineage.py — wickd Pro feature (gated via app/licensing). Public shim only: defines the real, always-importable ColumnRef/LineageJob dataclasses (required at import time by api/column_lineage.py) and lazily delegates prepare_lineage_jobs()/trace_job()/trace_job_full() (projection lineage + row dependencies; falls back to no row deps on older Pro builds, see supports_row_dependencies())/build_column_lineage() to the private `wickd_pro` package (separate repo), raising ColumnLineageUnavailable if it isn't installed. The actual sqlglot-based tracing algorithm (case-insensitive matching, UNPIVOT stripping, etc.) lives in wickd-pro, not this repo.
+  ai/             — Local AI (wickd Pro). catalog.py (pinned GGUF models + sha256), download.py (`downloader` singleton: resumable download into <data_dir>/models, checksum before rename, progress on the `global` topic), runtime.py (`llama_server` singleton: lazy llama-server process, idle stop, find_llama_server()), client.py (OpenAI-compatible stream_chat(), optional JSON-schema constraint, strips <think>), config.py (ai_model / ai_endpoint_url / ai_endpoint_model from app_settings), provider.py (endpoint else bundled), pro.py (public shim over private `wickd_pro.ai`: ask_messages / documentation_prompt / parse_documentation; AiUnavailable), gating.py (require_ai: 403 / 503), documentation.py (generate_documentation() → FileChange proposal; never writes), test_generation.py (generate_tests(): sample → schema-constrained suggestions → one-query warehouse pre-check → YAML splice), run_context.py (node_run_info(): latest status + tests' results from model_statuses; failing_rows() via dbt show), errors.py (ProposalError / NothingToPropose), sql_guard.py (validate_select() / for_dbt_show(): one read-only query, only literal ref/source Jinja, sqlglot per adapter dialect; wraps queries that have their own LIMIT), selection.py (rebuild(): a proposal's file for a subset of its items, from the summary's `plan` + original text — partial accept)
   licensing/
     polar_client.py — thin async httpx client wrapping Polar's license-key validate/activate endpoints (sandbox or production per Settings.polar_use_sandbox)
     entitlements.py — check_entitlement() with 7-day grace-period cache (LicenseState) + 6h recheck interval; a definitive "not entitled" from Polar is always trusted immediately, bypassing the grace period
@@ -104,6 +107,7 @@ frontend/src/
       InitScripts.tsx    — Init pipeline management
       Health.tsx         — Health page: tabbed view of dbt Health Check + Schema Drift + Source Freshness
       components/
+        Wicky/           — Wicky, the AI assistant (Pro): WickyPane (right panel in ProjectLayout on every project page; ⌘I toggles; open state/width in localStorage; follows SelectedNodeContext, project-level context when nothing is selected) → WickyContent (unlock → AiSetup model download → QuickActions (Explain failure when the node or its tests failed, Document, Add tests) + AiChat; Explain failure sends a chat request with mode explain_failure); AiChat has Ask / Query data modes — QueryEntry shows the SQL (editable), Run, status, results in a DataTable and Answer from results (auto with the bundled model); ActionEntry renders a quick action inline in chat history (live descriptions / tests from `ai_proposal_progress` via lib/partialDocs.ts / lib/partialTests.ts, then Review/Discard, then the outcome + what was written, permanently), ProposalReviewModal (Monaco diff + ChangeList of the proposal's items: click to reveal/highlight via findItemLine() in proposalItems.ts, ✓/✗/undo per item; the file is applied once every item is decided; Accept all / Reject all), useAi.ts (useAiStatus via useGlobalEvents, useAiProposals: project-wide proposals + live progress; useWickyConversation: open chat shared by AiChat and QuickActions); API in lib/aiApi.ts
         NavRail.tsx      — Collapsible left nav sidebar; persists collapsed state in localStorage; resizable when expanded; never re-opens on navigation
         ProjectNav.tsx   — Nav items (DAG/Files/Docs/Workspace/Git/Environment/Init/Health); icon-only when NavRail collapsed
         HealthCheckPanel.tsx — Runs dbt debug; renders structured per-check pass/fail table + version info
@@ -131,7 +135,7 @@ frontend/src/
 
 ## Database Tables
 
-All 13 in `backend/app/db/models.py`:
+All 17 in `backend/app/db/models.py`:
 - `projects` — discovered dbt projects (includes `init_script_path: str` per-project init dir; `ignored: bool` to hide from list; `last_init_status: str` (idle/running/success/error), `last_init_started_at`, `last_init_finished_at`, `last_init_failed_step` — persisted init pipeline status shown on the homepage and Initialization page)
 - `init_steps` — ordered init pipeline steps per project (includes `script_path` for linked external scripts; `last_status: str` (idle/running/success/error), `last_started_at`, `last_finished_at`, `last_log: str` (capped at 200 lines) — persisted per-step run status)
 - `model_statuses` — per-model run status (idle/pending/running/success/error/warn/stale)
@@ -139,12 +143,14 @@ All 13 in `backend/app/db/models.py`:
 - `env_profiles` — named environment profiles per project
 - `profile_env_vars` — key/value vars belonging to a profile
 - `project_env_vars` — project-level env vars (not profile-scoped); includes `dbt_target` for active target; `REQUIREMENTS_PATH` for per-project requirements; `WORKSPACE_PATH` for SQL workspace dir (default `wickd/workspace`)
-- `app_settings` — global app config (key/value); keys: `dbt_projects_path`, `global_requirements_path`, `log_level`, `theme`, `python_path`, `setup_completed`
+- `app_settings` — global app config (key/value); keys: `dbt_projects_path`, `global_requirements_path`, `log_level`, `theme`, `python_path`, `setup_completed`, `ai_model`, `ai_endpoint_url`, `ai_endpoint_model`
 - `global_profiles` — named env var sets shared across all projects
 - `global_profile_vars` — key/value vars belonging to a global profile
 - `drift_snapshots` — schema drift scan results per project; stores status (running/done/error), progress counters, and results_json (array of per-model column diffs)
 - `freshness_snapshots` — source freshness scan results per project; stores status (running/done/error), target, started_at, finished_at, results_json (array of per-source freshness results), and error_message
 - `column_lineage_snapshots` — backgrounded column-level lineage scan results per project; stores status (running/done/error), total_models/checked_models progress counters, results_json (map of downstream unique_id → column → list of upstream `{node, column}` refs), `row_dependencies_json` (unique_id → upstream `{node, column}` refs it filters/joins/groups on), error_message, `manifest_mtime` and `lineage_version` (1 = projection only, 2 = with row dependencies; the re-scan short-circuit needs both the manifest mtime and the version to match)
+- `ai_conversations` / `ai_messages` — Wicky chats per project (wickd Pro AI); messages store `role` (user/assistant/action/query), `payload_json` (query SQL + results), `content`, the `unique_id` in context and, for `action` messages (quick actions run from the chat), `proposal_id`
+- `ai_proposals` / `ai_proposal_files` — AI-generated file changes awaiting review (`status` generating/ready/applied/rejected/dismissed/error/empty — empty = nothing needed changing; `result_json` keeps the generated descriptions for chat history; dismissing keeps the row; per file `original_text` (null = new file), `proposed_text`, `status` pending/accepted/rejected); accept re-checks the file is unchanged
 - `license_state` — single-row (id=1) cached Polar entitlement state for this installation: `license_key`, `activation_id`, `device_id`, `entitled`, `status`, `checked_at`, `customer_id` (Polar customer id, captured from `validate()`; required to cancel a subscription), `license_key_id` (Polar's internal id for the key, required to look up activation count), `limit_activations` (max devices allowed on this key) — see `app/licensing/entitlements.py`
 
 ## Critical Architecture Rules
@@ -250,6 +256,10 @@ finally:
 | `column_lineage_started` | project | backgrounded column lineage scan started; payload includes `snapshot_id`, `total` |
 | `column_lineage_progress` | project | one model's lineage traced; payload includes `snapshot_id`, `checked`, `total`, `current` (model name) |
 | `column_lineage_finished` | project | column lineage scan finished; payload includes `snapshot_id`, `ok` |
+| `ai_proposal_updated` | project | AI proposal created / changed status; payload `proposal_id`, `status` (incl. `dismissed`), `unique_id` |
+| `ai_query_updated` | project | Query data query status changed; payload `message_id`, `status` (waiting/running/done/error) |
+| `ai_proposal_progress` | project | AI proposal generating (throttled ~4/s); payload `proposal_id`, `unique_id`, `phase` (columns/writing), `text` (model's JSON answer so far) |
+| `ai_model_download` | global | AI model download progress; payload `model_id`, `state`, `bytes_done`, `bytes_total`, `error` |
 
 ### Init Pipeline System
 
@@ -397,6 +407,7 @@ task dev:frontend    # vite on :5173, proxies /api → :8001
 task test:backend    # pytest --cov=app -q (run from backend/)
 task test            # pytest + tsc build
 task lint            # ruff check app tests
+task ai:runtime      # fetch the pinned llama.cpp build (llama-server) into src-tauri/binaries/llama; dev uses it, packaging bundles + signs it
 task db:reset        # delete data/wickd.sqlite
 task package:app     # build + install the free desktop app (no wickd-pro, no .env needed)
 task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, then creates the GitHub release; also uploads wickd_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)

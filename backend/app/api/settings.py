@@ -1,10 +1,13 @@
 import asyncio
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.catalog import DEFAULT_MODEL_ID, find_model
+from app.ai.config import AI_ENDPOINT_MODEL_KEY, AI_ENDPOINT_URL_KEY, AI_MODEL_KEY
 from app.api.init import global_setup_running, init_pipeline_running
 from app.config import settings
 from app.db.engine import get_session
@@ -28,6 +31,9 @@ class SettingsUpdateDto(BaseModel):
     global_requirements_path: str | None = None
     theme: str | None = None
     python_path: str | None = None
+    ai_model: str | None = None
+    ai_endpoint_url: str | None = None
+    ai_endpoint_model: str | None = None
 
 
 class SettingsDto(BaseModel):
@@ -39,6 +45,10 @@ class SettingsDto(BaseModel):
     # False only when WICKD_DBT_VENV_DIR points at the venv the backend itself
     # runs from — rebuilding that would take the server down with it.
     python_path_editable: bool
+    # Local AI (wickd Pro): bundled model id, or an OpenAI-compatible endpoint that replaces it
+    ai_model: str
+    ai_endpoint_url: str | None
+    ai_endpoint_model: str | None
     configured: bool
     setup_completed: bool
 
@@ -76,6 +86,7 @@ async def get_settings(session: AsyncSession = Depends(get_session)) -> Settings
     theme = await _get_override(session, "theme")
     python_path = await _get_override(session, PYTHON_PATH_KEY)
     setup_completed = await _get_override(session, SETUP_COMPLETED_KEY) == "true"
+    ai_model = await _get_override(session, AI_MODEL_KEY)
 
     return SettingsDto(
         dbt_projects_path=dbt_projects_path,
@@ -85,6 +96,9 @@ async def get_settings(session: AsyncSession = Depends(get_session)) -> Settings
         theme=theme,
         python_path=python_path or None,
         python_path_editable=not venv.is_own_venv(),
+        ai_model=ai_model if find_model(ai_model) else DEFAULT_MODEL_ID,
+        ai_endpoint_url=await _get_override(session, AI_ENDPOINT_URL_KEY) or None,
+        ai_endpoint_model=await _get_override(session, AI_ENDPOINT_MODEL_KEY) or None,
         setup_completed=setup_completed,
     )
 
@@ -155,8 +169,24 @@ async def put_settings(
         await _upsert(session, "theme", dto.theme)
     if dto.python_path is not None:
         await change_python_path(session, dto.python_path)
+    if dto.ai_model is not None:
+        if find_model(dto.ai_model.strip()) is None:
+            raise HTTPException(status_code=400, detail=f"unknown AI model {dto.ai_model!r}")
+        await _upsert(session, AI_MODEL_KEY, dto.ai_model.strip())
+    if dto.ai_endpoint_url is not None:
+        await _upsert(session, AI_ENDPOINT_URL_KEY, _validate_endpoint(dto.ai_endpoint_url))
+    if dto.ai_endpoint_model is not None:
+        await _upsert(session, AI_ENDPOINT_MODEL_KEY, dto.ai_endpoint_model.strip())
     await session.commit()
     return await get_settings(session)
+
+
+def _validate_endpoint(raw: str) -> str:
+    """Empty clears it (back to the bundled model); otherwise an http(s) URL."""
+    url = raw.strip()
+    if url and urlparse(url).scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="AI endpoint must be an http:// or https:// URL")
+    return url
 
 
 class PythonInterpreterDto(BaseModel):

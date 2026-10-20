@@ -594,6 +594,10 @@ export interface SettingsDto {
   theme: string | null;
   python_path: string | null;
   python_path_editable: boolean;
+  /** Local AI (Pro): bundled model id, or an OpenAI-compatible endpoint used instead. */
+  ai_model: string;
+  ai_endpoint_url: string | null;
+  ai_endpoint_model: string | null;
   configured: boolean;
   setup_completed: boolean;
 }
@@ -635,6 +639,9 @@ export interface SettingsUpdateDto {
   global_requirements_path?: string;
   theme?: string;
   python_path?: string;
+  ai_model?: string;
+  ai_endpoint_url?: string;
+  ai_endpoint_model?: string;
 }
 
 export const api = {

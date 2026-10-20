@@ -382,6 +382,93 @@ async def run_migrations() -> None:
             )
             await session.commit()
 
+        if not await _table_exists(session, "ai_conversations"):
+            await session.execute(text(
+                "CREATE TABLE ai_conversations ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "title VARCHAR(255) NOT NULL DEFAULT '', "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.commit()
+
+        if not await _table_exists(session, "ai_messages"):
+            await session.execute(text(
+                "CREATE TABLE ai_messages ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "conversation_id INTEGER NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE, "
+                "role VARCHAR(16) NOT NULL, "
+                "content TEXT NOT NULL DEFAULT '', "
+                "unique_id VARCHAR(512), "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.commit()
+
+        if not await _table_exists(session, "ai_proposals"):
+            await session.execute(text(
+                "CREATE TABLE ai_proposals ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "kind VARCHAR(32) NOT NULL, "
+                "unique_id VARCHAR(512), "
+                "title VARCHAR(255) NOT NULL DEFAULT '', "
+                "status VARCHAR(16) NOT NULL DEFAULT 'generating', "
+                "error_message TEXT, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.commit()
+
+        if not await _table_exists(session, "ai_proposal_files"):
+            await session.execute(text(
+                "CREATE TABLE ai_proposal_files ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "proposal_id INTEGER NOT NULL REFERENCES ai_proposals(id) ON DELETE CASCADE, "
+                "path VARCHAR(1024) NOT NULL, "
+                "original_text TEXT, "
+                "proposed_text TEXT NOT NULL, "
+                "status VARCHAR(16) NOT NULL DEFAULT 'pending')"
+            ))
+            await session.commit()
+
+        if not await _column_exists(session, "ai_messages", "proposal_id"):
+            await session.execute(text(
+                "ALTER TABLE ai_messages ADD COLUMN proposal_id INTEGER "
+                "REFERENCES ai_proposals(id) ON DELETE SET NULL"
+            ))
+            await session.commit()
+
+        if not await _column_exists(session, "ai_proposals", "result_json"):
+            await session.execute(
+                text("ALTER TABLE ai_proposals ADD COLUMN result_json TEXT NOT NULL DEFAULT '{}'")
+            )
+            await session.commit()
+
+        if not await _column_exists(session, "ai_messages", "payload_json"):
+            await session.execute(text("ALTER TABLE ai_messages ADD COLUMN payload_json TEXT"))
+            await session.commit()
+
+        # Queries run in-process, so one still waiting/running at startup was interrupted
+        await session.execute(
+            text(
+                "UPDATE ai_messages SET payload_json = json_set(payload_json, '$.status', 'error',"
+                " '$.error', 'interrupted by server restart')"
+                " WHERE role = 'query' AND json_extract(payload_json, '$.status') IN ('waiting', 'running')"
+            )
+        )
+        await session.commit()
+
+        # Generation runs in-process, so a proposal still generating at startup was interrupted
+        await session.execute(
+            text(
+                "UPDATE ai_proposals SET status = 'error',"
+                " error_message = 'interrupted by server restart'"
+                " WHERE status = 'generating'"
+            )
+        )
+        await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

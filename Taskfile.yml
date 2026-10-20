@@ -79,6 +79,7 @@ tasks:
       PRO_DIR: '{{.PRO_DIR | default (print .ROOT_DIR "/../wickd-pro")}}'
     deps:
       - task: ensure:backend
+      - task: ai:runtime  # local AI is a Pro feature; no-op once fetched
     preconditions:
       - sh: test -d "{{.PRO_DIR}}/wickd_pro"
         msg: "wickd-pro not found at {{.PRO_DIR}} — clone it as a sibling of wickd/, or pass PRO_DIR=<path>."
@@ -98,6 +99,31 @@ tasks:
       - task: dev:backend:pro
       - task: dev:frontend
       - task: open
+
+  ai:runtime:
+    desc: Fetch the pinned llama.cpp build (llama-server + dylibs) that runs local AI models into src-tauri/binaries/llama (used by dev and bundled into the app)
+    vars:
+      LLAMA_BUILD: b11361
+      LLAMA_SHA256: 9608054c5cb193223963c26bf8293b777e794c4646798b9f3df40fe3985bf767
+      DEST: src-tauri/binaries/llama
+    status:
+      - test "$(cat {{.DEST}}/.build 2>/dev/null)" = "{{.LLAMA_BUILD}}"
+    cmds:
+      - |
+        set -euo pipefail
+        tmp=$(mktemp -d)
+        trap 'rm -rf "$tmp"' EXIT
+        url="https://github.com/ggml-org/llama.cpp/releases/download/{{.LLAMA_BUILD}}/llama-{{.LLAMA_BUILD}}-bin-macos-arm64.tar.gz"
+        echo "Downloading llama.cpp {{.LLAMA_BUILD}}…"
+        curl -fsSL -o "$tmp/llama.tar.gz" "$url"
+        echo "{{.LLAMA_SHA256}}  $tmp/llama.tar.gz" | shasum -a 256 -c -
+        tar xzf "$tmp/llama.tar.gz" -C "$tmp"
+        rm -rf "{{.DEST}}" && mkdir -p "{{.DEST}}"
+        # Only the server and the libraries it links; the other CLI tools aren't used.
+        src="$tmp/llama-{{.LLAMA_BUILD}}"
+        cp -P "$src"/llama-server "$src"/*.dylib "$src"/LICENSE "{{.DEST}}/"
+        echo "{{.LLAMA_BUILD}}" > "{{.DEST}}/.build"
+        "{{.DEST}}/llama-server" --version 2>&1 | tail -2
 
   kill:ports:
     desc: Kill any processes using the backend (8001) and frontend (5173) ports
@@ -308,7 +334,9 @@ tasks:
       - |
         {{if .ENV_FILE}}cp "{{.ENV_FILE}}" src-tauri/binaries/wickd-backend/.env
         echo "Bundled {{.ENV_FILE}} into the app."{{end}}
+      - task: ai:runtime
       - task: _package:sign-backend
+      - task: _package:sign-llama
       # "-" = ad-hoc signing (local builds); release sets a Developer ID identity.
       - cd src-tauri && APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" cargo tauri build
 
@@ -343,6 +371,31 @@ tasks:
         sign wickd-backend
         codesign --verify --strict --verbose=1 wickd-backend
         echo "Signed the backend with $APPLE_SIGNING_IDENTITY."
+
+  _package:sign-llama:
+    desc: |
+      Internal: Developer-ID sign the bundled llama.cpp runtime (llama-server
+      and its dylibs, shipped as a plain resource like the backend, so Tauri
+      doesn't sign it). Libraries first, then the executable. No-op unless
+      APPLE_SIGNING_IDENTITY is set.
+    internal: true
+    dir: src-tauri/binaries/llama
+    cmds:
+      - |
+        set -euo pipefail
+        if [ -z "${APPLE_SIGNING_IDENTITY:-}" ] || [ "$APPLE_SIGNING_IDENTITY" = "-" ]; then
+          echo "APPLE_SIGNING_IDENTITY not set — leaving llama-server ad-hoc signed."
+          exit 0
+        fi
+        sign() {
+          codesign --force --timestamp --options runtime \
+            --entitlements ../../entitlements/backend.plist \
+            --sign "$APPLE_SIGNING_IDENTITY" "$1"
+        }
+        find . -maxdepth 1 -type f -name "*.dylib" | while IFS= read -r f; do sign "$f"; done
+        sign llama-server
+        codesign --verify --strict --verbose=1 llama-server
+        echo "Signed llama-server with $APPLE_SIGNING_IDENTITY."
 
   _package:install:
     desc: "Internal: install the last-built app bundle to /Applications (macOS)."

@@ -87,6 +87,9 @@ function SettingsTab() {
     { key: 'dbt_projects_path', label: 'WICKD_PROJECTS_PATH', value: appSettings?.dbt_projects_path, example: '/home/user/dbt-projects' },
     { key: 'global_requirements_path', label: 'WICKD_GLOBAL_REQUIREMENTS_PATH', value: appSettings?.global_requirements_path, hint: 'requirements.txt installed via Run global setup', example: '/home/user/dbt-projects/requirements.txt' },
     { key: 'log_level', label: 'WICKD_LOG_LEVEL', value: appSettings?.log_level, hint: 'takes effect on restart', example: 'INFO' },
+    { key: 'ai_model', label: 'WICKD_AI_MODEL', value: appSettings?.ai_model, hint: 'bundled local model (Pro)', example: 'qwen3.5-4b' },
+    { key: 'ai_endpoint_url', label: 'WICKD_AI_ENDPOINT_URL', value: appSettings?.ai_endpoint_url, hint: 'OpenAI-compatible server used instead', example: 'http://localhost:11434' },
+    { key: 'ai_endpoint_model', label: 'WICKD_AI_ENDPOINT_MODEL', value: appSettings?.ai_endpoint_model, hint: 'model name on that server', example: 'qwen3:8b' },
   ];
 
   const handleSave = async (key: string) => {
@@ -95,6 +98,7 @@ function SettingsTab() {
       await api.settings.update({ [key]: editValue });
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ['app-settings'] });
+      if (key.startsWith('ai_')) qc.invalidateQueries({ queryKey: ['ai-status'] });
     } catch (e) {
       alert(String(e));
     } finally {

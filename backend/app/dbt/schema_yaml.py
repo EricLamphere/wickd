@@ -58,9 +58,23 @@ class _Edit:
     added_columns: tuple[str, ...]
 
 
-def document_node(
+@dataclass(frozen=True)
+class PlannedDocument:
+    """What document_node() would write, without writing it."""
+    file: Path
+    result: DocumentResult
+    resource_key: str
+    original: str | None  # None when the file doesn't exist yet
+    text: str  # full file text with the node + columns present
+
+    @property
+    def changed(self) -> bool:
+        return self.original != self.text
+
+
+def plan_document_node(
     project_path: Path, target: DocumentTarget, columns: Iterable[str]
-) -> DocumentResult:
+) -> PlannedDocument:
     resource_key = RESOURCE_KEYS.get(target.resource_type)
     if resource_key is None:
         raise SchemaYamlError(f"documenting a {target.resource_type!r} is not supported")
@@ -71,20 +85,47 @@ def document_node(
     rel_path = schema_file.relative_to(root).as_posix()
 
     if not schema_file.exists():
-        _write(schema_file, _render_new_file(resource_key, target.name, cols))
-        return DocumentResult(rel_path, created_file=True, added_entry=True, added_columns=cols)
+        result = DocumentResult(rel_path, created_file=True, added_entry=True, added_columns=cols)
+        text = _render_new_file(resource_key, target.name, cols)
+        return PlannedDocument(schema_file, result, resource_key, None, text)
 
     original = _read(schema_file)
     edit = _plan_edit(original, schema_file.name, resource_key, target.name, cols)
     if edit.added_entry or edit.added_columns:
         _verify(original, edit, schema_file.name, resource_key, target.name)
-        _write(schema_file, edit.text)
-    return DocumentResult(
+    result = DocumentResult(
         rel_path,
         created_file=False,
         added_entry=edit.added_entry,
         added_columns=edit.added_columns,
     )
+    return PlannedDocument(schema_file, result, resource_key, original, edit.text)
+
+
+def node_text(
+    original: str | None, filename: str, resource_key: str, name: str, columns: Iterable[str]
+) -> str:
+    """`original` (None → a new file) with the node's entry and these columns present.
+
+    plan_document_node() without touching disk — used to rebuild a proposal from the
+    text it was made against.
+    """
+    cols = _clean_columns(columns)
+    if original is None:
+        return _render_new_file(resource_key, name, cols)
+    edit = _plan_edit(original, filename, resource_key, name, cols)
+    if edit.added_entry or edit.added_columns:
+        _verify(original, edit, filename, resource_key, name)
+    return edit.text
+
+
+def document_node(
+    project_path: Path, target: DocumentTarget, columns: Iterable[str]
+) -> DocumentResult:
+    plan = plan_document_node(project_path, target, columns)
+    if plan.changed:
+        _write(plan.file, plan.text)
+    return plan.result
 
 
 # ── Locating the file ────────────────────────────────────────────────────────

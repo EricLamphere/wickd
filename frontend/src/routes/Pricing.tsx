@@ -40,6 +40,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Model impact analysis — selection, uncommitted & branch changes', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },
+  { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs & tests', base: false, pro: true },
   { label: 'Priority support', base: false, pro: true },
 ];
 

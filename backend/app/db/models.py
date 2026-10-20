@@ -249,3 +249,76 @@ class LicenseState(Base):
     customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     license_key_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     limit_activations: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class AiConversation(Base):
+    """An Ask-mode chat thread about a project (wickd Pro AI)."""
+    __tablename__ = "ai_conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    messages: Mapped[list["AiMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="AiMessage.id"
+    )
+
+
+class AiMessage(Base):
+    __tablename__ = "ai_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("ai_conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))  # user | assistant | action | query
+    content: Mapped[str] = mapped_column(Text, default="")
+    # node selected when the question was asked (its context was sent to the model)
+    unique_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # role "action": a quick action (e.g. Document) run from this chat; shown inline with its result
+    proposal_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ai_proposals.id", ondelete="SET NULL"), nullable=True
+    )
+    proposal: Mapped["AiProposal | None"] = relationship()
+    # role "query": the AI-written SQL and, once run, its results (see api/ai_query.py)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    conversation: Mapped["AiConversation"] = relationship(back_populates="messages")
+
+
+class AiProposal(Base):
+    """File changes the AI generated, waiting for the user to accept or reject each file."""
+    __tablename__ = "ai_proposals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(32))  # document
+    unique_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    # generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing)
+    status: Mapped[str] = mapped_column(String(16), default="generating")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # what the AI produced, kept for the chat history: {"description", "columns": {name: text}}
+    result_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    files: Mapped[list["AiProposalFile"]] = relationship(
+        back_populates="proposal", cascade="all, delete-orphan", order_by="AiProposalFile.id"
+    )
+
+
+class AiProposalFile(Base):
+    __tablename__ = "ai_proposal_files"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    proposal_id: Mapped[int] = mapped_column(ForeignKey("ai_proposals.id", ondelete="CASCADE"), index=True)
+    path: Mapped[str] = mapped_column(String(1024))  # relative to the project root (posix)
+    original_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # None → new file
+    proposed_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | accepted | rejected
+
+    proposal: Mapped["AiProposal"] = relationship(back_populates="files")

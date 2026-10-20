@@ -15,26 +15,33 @@ const PROJECT_EVENT_TYPES = [
   'drift_started', 'drift_progress', 'drift_finished',
   'freshness_started', 'freshness_finished',
   'column_lineage_compiling', 'column_lineage_started', 'column_lineage_progress', 'column_lineage_finished',
+  'ai_proposal_updated', 'ai_proposal_progress', 'ai_query_updated',
 ];
+
+/** Events on the `global` topic (not tied to a project). */
+const GLOBAL_EVENT_TYPES = ['ai_model_download'];
 
 const RECONNECT_DELAY_MS = 3000;
 
 /**
- * One EventSource per project, shared by every useProjectEvents() subscriber.
+ * One EventSource per stream (a project's, or the global one), shared by every
+ * subscriber to it.
  *
  * Browsers cap HTTP/1.1 at 6 open connections per host. With one EventSource
  * per hook, a page with 6+ subscribers (homepage, bottom pane, panels…) uses
  * every slot, and all later fetches queue forever — the app hangs until reload.
  */
-interface SharedProjectStream {
+interface SharedStream {
+  url: string;
+  types: readonly string[];
   listeners: Set<SseHandler>;
   es: EventSource | null;
   retryTimer: ReturnType<typeof setTimeout> | null;
 }
 
-const projectStreams = new Map<number, SharedProjectStream>();
+const sharedStreams = new Map<string, SharedStream>();
 
-function dispatch(stream: SharedProjectStream, type: string, raw: string) {
+function dispatch(stream: SharedStream, type: string, raw: string) {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -51,10 +58,10 @@ function dispatch(stream: SharedProjectStream, type: string, raw: string) {
   });
 }
 
-function openProjectStream(projectId: number, stream: SharedProjectStream) {
-  const es = new EventSource(`/api/projects/${projectId}/events`);
+function openStream(stream: SharedStream) {
+  const es = new EventSource(stream.url);
   stream.es = es;
-  PROJECT_EVENT_TYPES.forEach((type) => {
+  stream.types.forEach((type) => {
     es.addEventListener(type, (e: MessageEvent) => dispatch(stream, type, e.data));
   });
   es.onerror = () => {
@@ -63,17 +70,17 @@ function openProjectStream(projectId: number, stream: SharedProjectStream) {
     if (stream.listeners.size === 0) return;
     stream.retryTimer = setTimeout(() => {
       stream.retryTimer = null;
-      if (projectStreams.get(projectId) === stream) openProjectStream(projectId, stream);
+      if (sharedStreams.get(stream.url) === stream) openStream(stream);
     }, RECONNECT_DELAY_MS);
   };
 }
 
-function subscribeToProject(projectId: number, listener: SseHandler): () => void {
-  let stream = projectStreams.get(projectId);
+function subscribeToStream(url: string, types: readonly string[], listener: SseHandler): () => void {
+  let stream = sharedStreams.get(url);
   if (!stream) {
-    stream = { listeners: new Set(), es: null, retryTimer: null };
-    projectStreams.set(projectId, stream);
-    openProjectStream(projectId, stream);
+    stream = { url, types, listeners: new Set(), es: null, retryTimer: null };
+    sharedStreams.set(url, stream);
+    openStream(stream);
   }
   const active = stream;
   active.listeners.add(listener);
@@ -82,7 +89,7 @@ function subscribeToProject(projectId: number, listener: SseHandler): () => void
     if (active.listeners.size > 0) return;
     active.es?.close();
     if (active.retryTimer) clearTimeout(active.retryTimer);
-    projectStreams.delete(projectId);
+    sharedStreams.delete(url);
   };
 }
 
@@ -97,8 +104,19 @@ export function useProjectEvents(projectId: number | null, onEvent: SseHandler) 
 
   useEffect(() => {
     if (projectId === null) return;
-    return subscribeToProject(projectId, (event) => handlerRef.current(event));
+    const url = `/api/projects/${projectId}/events`;
+    return subscribeToStream(url, PROJECT_EVENT_TYPES, (event) => handlerRef.current(event));
   }, [projectId]);
+}
+
+/** useGlobalEvents — events not tied to a project (e.g. AI model downloads); shared like useProjectEvents. */
+export function useGlobalEvents(onEvent: SseHandler) {
+  const handlerRef = useRef(onEvent);
+  handlerRef.current = onEvent;
+
+  useEffect(() => {
+    return subscribeToStream('/api/events/global', GLOBAL_EVENT_TYPES, (event) => handlerRef.current(event));
+  }, []);
 }
 
 /**

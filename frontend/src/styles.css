@@ -284,3 +284,9 @@ html[data-theme="light"] .node-selected .node-name {
   color: rgb(var(--gray-400));
   margin: 1em 0;
 }
+
+/* Wicky review: the change selected in the list, highlighted in the diff */
+.wicky-focus-line {
+  background: rgb(var(--brand-500) / 0.18);
+  border-left: 2px solid rgb(var(--brand-500));
+}

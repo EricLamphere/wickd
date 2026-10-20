@@ -290,6 +290,42 @@ license_state
   customer_id     TEXT (nullable)  -- Polar customer id, captured from validate(); required to cancel a subscription
   license_key_id  TEXT (nullable)  -- Polar's internal id for this key (not the key string), captured from validate(); required to look up activation count
   limit_activations INTEGER (nullable)  -- max devices allowed on this key (from Polar's "Limit Activations" benefit); null means unlimited
+
+ai_conversations                     -- Ask-mode chat threads (wickd Pro AI)
+  id              INTEGER PK
+  project_id      INTEGER FK→projects (CASCADE)
+  title           TEXT(255)  -- first question, truncated
+  created_at / updated_at  DATETIME
+
+ai_messages
+  id              INTEGER PK
+  conversation_id INTEGER FK→ai_conversations (CASCADE)
+  role            TEXT(16)   -- user | assistant | action (a quick action run from the chat) | query (SQL Wicky wrote)
+  content         TEXT
+  unique_id       TEXT(512) (nullable)  -- node selected when asked (its context was sent to the model)
+  proposal_id     INTEGER FK→ai_proposals (SET NULL, nullable)  -- for role 'action': the proposal it produced
+  payload_json    TEXT (nullable)  -- for role 'query': {question, sql, explanation, status, error, columns, rows, truncated}; waiting/running reset to error on restart
+  created_at      DATETIME
+
+ai_proposals                         -- AI-generated file changes awaiting review
+  id              INTEGER PK
+  project_id      INTEGER FK→projects (CASCADE)
+  kind            TEXT(32)   -- document | tests
+  unique_id       TEXT(512) (nullable)
+  title           TEXT(255)
+  status          TEXT(16)   -- generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing)
+  error_message   TEXT (nullable)
+  result_json     TEXT       -- what the AI produced, kept for chat history: {description, columns: {name: text}} or {tests: [{column, test, reason, values?, to?, field?, failures}]}
+  created_at / updated_at  DATETIME
+  -- Proposals still 'generating' are reset to 'error' on server restart
+
+ai_proposal_files
+  id              INTEGER PK
+  proposal_id     INTEGER FK→ai_proposals (CASCADE)
+  path            TEXT(1024) -- relative to the project root
+  original_text   TEXT (nullable)  -- file content the proposal was made against; null = new file
+  proposed_text   TEXT
+  status          TEXT(16)   -- pending | accepted | rejected
 ```
 
 ---
@@ -327,6 +363,27 @@ PUT    /api/projects/{id}/models/{unique_id}/sql
 POST   /api/projects/{id}/column-lineage/start            start async column lineage scan (202, or 200 if a fresh snapshot already exists); returns ColumnLineageSnapshot — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage                 get the latest ColumnLineageSnapshot for a project — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage/{snapshot_id}   get a specific ColumnLineageSnapshot by id — Pro feature, 403 if not entitled
+
+GET    /api/ai/status                                     AI readiness: entitled, Pro package installed, llama-server found, endpoint in use, selected model, per-model download state, `ready`
+POST   /api/ai/models/{model_id}/download                 start (or resume) downloading a catalog model (202); progress on the `global` topic — Pro, 403 if not entitled
+DELETE /api/ai/models/{model_id}/download                 cancel a download (the partial file is kept for resume)
+DELETE /api/ai/models/{model_id}                          delete a downloaded model (409 while downloading)
+GET    /api/projects/{id}/ai/conversations                Ask chats, most recent first — Pro (403/503)
+POST   /api/projects/{id}/ai/conversations                new chat
+GET    /api/projects/{id}/ai/conversations/{cid}          chat + messages (action messages embed their proposal)
+DELETE /api/projects/{id}/ai/conversations/{cid}          delete a chat
+POST   /api/projects/{id}/ai/conversations/{cid}/messages body {content, unique_id?, mode: ask | explain_failure}; streams the answer as text/event-stream (`delta` × N, then `done` or `error`); both turns are saved
+POST   /api/projects/{id}/ai/document                     body {unique_id, overwrite, conversation_id?}; records an `action` message in that chat; 202 AiProposal (status generating); generates in the background, 409 if already generating for that node
+POST   /api/projects/{id}/ai/conversations/{cid}/query    body {content, unique_id?}; Wicky writes ONE read-only SELECT (not run); returns [user message, `query` message] — status proposed, or invalid if it fails app/ai/sql_guard.py
+POST   /api/projects/{id}/ai/messages/{mid}/run           body {sql} (may be edited); re-validated, then `dbt show --inline --limit 101` behind the project's dbt lock (202; waiting → running → done/error via `ai_query_updated`; 120s timeout; 100 rows kept)
+POST   /api/projects/{id}/ai/messages/{mid}/answer        streams an answer from a finished query's rows (text/event-stream, saved as an assistant message)
+POST   /api/projects/{id}/ai/tests                        body {unique_id, conversation_id?}; 202 AiProposal (kind tests); suggests + pre-checks generic tests in the background
+GET    /api/projects/{id}/ai/proposals?unique_id=         proposals needing attention (generating | ready | error | empty)
+GET    /api/projects/{id}/ai/proposals/{pid}              one proposal with its files
+DELETE /api/projects/{id}/ai/proposals/{pid}              dismiss (status → dismissed; the row is kept for chat history)
+PUT    /api/projects/{id}/ai/proposals/{pid}/selection     body {keys, accepted}; keys = items kept (not rejected), accepted = those already accepted in review; keep only these items (tests "t0"…, "description", "col:<name>"): the file is rebuilt from its original text via app/ai/selection.py; accept is refused (409) when nothing is selected
+POST   /api/projects/{id}/ai/proposals/{pid}/files/{fid}/accept   write the proposed file; 409 if the file changed since the proposal was made; triggers a compile
+POST   /api/projects/{id}/ai/proposals/{pid}/files/{fid}/reject   leave the file alone
 
 GET    /api/license                                      current cached entitlement status (does not force a fresh Polar check); includes the plaintext license_key and can_cancel
 PUT    /api/license                                       set (or clear, if license_key is null) the license key; immediately checks it against Polar
@@ -443,6 +500,7 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `project:{id}` | All project routes (RunPanel always mounted) | Runner, Watcher, Init pipeline, compile |
 | `init:{session_id}` | New project terminal modal | PTY reader, pip install stream |
 | `terminal:{session_id}` | TerminalPanel | PTY reader (bash/zsh) |
+| `global` | Wicky panel (`useGlobalEvents`) | AI model downloader (`ai_model_download`: `model_id`, `state` downloading/verifying/done/error/cancelled, `bytes_done`, `bytes_total`, `error`) |
 
 ### Project-scoped Event Types
 
@@ -477,6 +535,9 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `column_lineage_started` | `column_lineage.py` | DagFilterBar shows lineage loading state |
 | `column_lineage_progress` | `column_lineage.py` | DagFilterBar updates checked/total counter; invalidates column-lineage query |
 | `column_lineage_finished` | `column_lineage.py` | Invalidates column-lineage query → DAG lineage trace becomes available |
+| `ai_proposal_updated` | `ai_proposals.py` | Invalidates `['ai-proposals', id]` → Wicky chat shows generating / ready to review / error |
+| `ai_query_updated` | `ai_query.py` | A Query data query changed status (waiting/running/done/error); invalidates the Wicky conversation |
+| `ai_proposal_progress` | `ai_proposals.py` | Wicky chat renders descriptions / suggested tests as they stream (`phase`: columns, sampling, writing, checking; partial JSON `text`, throttled to ~4/s) |
 
 ### Init Session Event Types
 
@@ -658,6 +719,22 @@ In the frontend (`Models.tsx`):
 - Highlighted `{node, column}` pairs are passed as props into each `ModelNode`; nodes and edges outside the trace are dimmed
 - None of this blocks other queries/interactions — the scan runs fully server-side in background worker processes; the frontend only ever does small polling GETs and SSE-driven invalidation.
 
+### 10b. Local AI — Wicky (wickd Pro)
+
+User-facing overview of context, limits, safety and locality: [wicky.md](wicky.md).
+
+The UI is **Wicky**, a right-hand panel in `ProjectLayout` on every project page (⌘I), using the page's selected node as context (or the whole project when nothing is selected).
+
+AI runs on the user's machine. `app/ai/runtime.py` manages a bundled **llama-server** (llama.cpp, fetched by `task ai:runtime` into `src-tauri/binaries/llama/` and shipped as an app resource): started on the first AI request with the selected model, on a free localhost port, with thinking disabled; stopped after 10 idle minutes, on model change and on shutdown. Models come from a pinned catalog (`app/ai/catalog.py`: exact Hugging Face file + SHA-256) and are downloaded on demand into `<data_dir>/models` by `app/ai/download.py` (resumable `.part` file, renamed only after the checksum matches). Setting `ai_endpoint_url` points every AI feature at any OpenAI-compatible server instead (Ollama, LM Studio, …). Both paths go through the same tiny client (`app/ai/client.py`).
+
+Same open-core split as column lineage: prompts, dbt context building and output validation live in `wickd_pro.ai`, behind the public shim `app/ai/pro.py` (plain dicts cross the boundary). Routes gate on entitlement (403) and on the Pro package being installed (503).
+
+- **Ask** — `POST .../ai/conversations/{cid}/messages` builds messages from the manifest (selected node's SQL, columns, tests, upstream descriptions, project overview with exact documentation-coverage counts computed up front, since the node list is truncated on large projects; budgeted to fit a small context window) and streams the reply on the response itself, not the bus.
+- **Query data** — `api/ai_query.py`, a fixed two-step flow (no agent loop): the model writes one SELECT using `{{ ref() }}`/`{{ source() }}` from a relations list (`wickd_pro.ai.query`); the user reviews/edits and clicks Run. `app/ai/sql_guard.py` is the backstop: only literal `ref`/`source` Jinja (no `{% %}`, no other macros — they can run SQL at compile time), and sqlglot (adapter dialect) must see exactly one query with no write/DDL/session statements anywhere. Queries with their own LIMIT are wrapped in a subquery, since `dbt show --limit` appends one. Runs behind the project's dbt lock (`runner.is_project_busy()` → `waiting`); `runner.run()` now kills dbt if its caller is cancelled (timeouts). Answering sends the result rows to the model — automatic with the bundled model, a button (with a warning) when a remote endpoint is set.
+- **Run results in context** — `app/ai/run_context.py` adds the node's latest status/message and its tests' results (from `model_statuses` + the manifest's `attached_node` links) to Ask. **Explain failure** (`mode: explain_failure`) also re-runs up to 2 failing tests with `dbt show --limit 10` and sends those rows.
+- **Add tests** — `app/ai/test_generation.py`: warehouse columns, a 500-row `dbt show` sample summarised per column (nulls, distinct, values when few), then a schema-constrained answer limited to real columns, the 4 generic tests and parent/grandparent relationship targets (validated again in `wickd_pro.ai.tests`). Every suggestion is pre-checked in ONE `dbt show --inline` union query (failing-row counts shown in review), then spliced in by `app/dbt/schema_tests.py` (uses the column's/entry's `data_tests:`/`tests:` key, else by dbt version; `arguments:` block on dbt 1.10+).
+- **Document with AI** — `POST .../ai/document` creates an `ai_proposals` row and generates in the background: warehouse columns via `probe_warehouse_columns()` (falls back to manifest + catalog columns), the node's entry planned with `schema_yaml.plan_document_node()`, descriptions from a JSON-schema-constrained streamed completion (partial output published as `ai_proposal_progress` so the chat shows them being written), spliced in by `schema_descriptions.set_descriptions()` (only columns without a description are sent to the model unless `overwrite`; if nothing is missing it returns `empty` without calling the model). Nothing is written until the user accepts the file in the review modal (Monaco diff, with the proposal's items listed beside it — click one to reveal it in the diff, accept or reject each; rejecting re-derives the file from the original without that item, through the same splicers and checks, never by patching the diff); accepting refuses with 409 if the file changed meanwhile.
+
 ### 10a. Licensing (wickd Pro entitlement)
 
 Entitlement resolution (`app/licensing/entitlements.py`) wraps a thin async Polar client (`app/licensing/polar_client.py`, `httpx`-based) with a persistent grace-period cache (`license_state` table, single row, id=1) so Pro features keep working through brief offline periods:
@@ -810,6 +887,7 @@ Behavior:
 | `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app, passed in by the Tauri shell) | App storage: SQLite database, dbt venv, generated docs, API logs. Not a user-facing setting — the dev default is fixed and the desktop app sets it from Tauri's `app_data_dir()` |
 | `WICKD_DATABASE_URL` | _(derived from DATA_DIR)_ | Override SQLite path |
 | `WICKD_LOG_LEVEL` | `INFO` | structlog level |
+| `WICKD_LLAMA_SERVER_PATH` | _(bundled copy, then `PATH`)_ | llama-server binary for local AI — see Key Flows → Local AI |
 | `WICKD_FRONTEND_DIST` | `frontend/dist` (dev) / resolved next to the packaged binary | Directory the SPA is served from — see `_mount_spa()` |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment to validate license keys against — sandbox or production |
 | `POLAR_SANDBOX_ORGANIZATION_ID` | _(none)_ | Polar sandbox org id (not a secret) |

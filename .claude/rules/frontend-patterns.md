@@ -66,6 +66,9 @@ When handling SSE events, invalidate the relevant query:
 | `init_pipeline_finished` | `['project', projectId]`, `['init-steps', projectId]` (init status/logs are now persisted to the DB, so the cached project + step rows need to catch up once the run settles; the UI itself still updates live from `init_step` events during the run) |
 | `freshness_finished` | `['freshness-latest', projectId]` |
 | `git_status_changed`, `files_changed`, `graph_changed` | `['impact-changes', projectId]` (via `lib/useImpactChanges.ts`) |
+| `ai_proposal_updated` | `['ai-proposals', projectId]` (via `components/Wicky/useAi.ts`) |
+| `ai_query_updated` | `['ai-conversation', projectId]` (via `components/Wicky/useAi.ts`) |
+| `ai_model_download` (global stream) | `['ai-status']` once the download settles |
 
 When adding a new event type that signals stale data, add an entry here.
 

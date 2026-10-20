@@ -61,6 +61,9 @@ The rules that matter most:
 | `WICKD_GLOBAL_REQUIREMENTS_PATH` | _(none)_ | `requirements.txt` installed into the dbt venv on every project open |
 | `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app) | App storage (SQLite DB, dbt venv, docs, logs). Set automatically — not configurable in the UI |
 | `WICKD_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `WICKD_AI_MODEL` | `qwen3.5-4b` | Bundled local model for AI features (Pro); set in Global Settings or the AI tab |
+| `WICKD_AI_ENDPOINT_URL` / `WICKD_AI_ENDPOINT_MODEL` | _(none)_ | OpenAI-compatible server (and model name) to use instead of the bundled model; Global Settings |
+| `WICKD_LLAMA_SERVER_PATH` | _(bundled copy, then `PATH`)_ | llama-server binary for local AI. `task ai:runtime` fetches the pinned build for dev |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment (sandbox/production) license checks talk to |
 | `POLAR_SANDBOX_ORGANIZATION_ID` / `POLAR_PRODUCTION_ORGANIZATION_ID` | _(none)_ | Polar org id used to validate license keys (not a secret) |
 | `POLAR_SANDBOX_API_KEY` / `POLAR_PRODUCTION_API_KEY` | _(none)_ | Polar API key — **secret**, set in `backend/.env` only, never commit |
@@ -81,7 +84,7 @@ Per-project settings are stored in `project_env_vars` and injected into every db
 
 ## wickd Pro and the open-core split
 
-Pro features (currently column-level lineage) are gated by a license check in this repo, but the actual lineage algorithm lives in a separate private package, `wickd-pro`. `backend/app/dbt/column_lineage.py` is a thin public shim that raises `ColumnLineageUnavailable` when the package isn't installed.
+Pro features (column-level lineage and AI) are gated by a license check in this repo, but the proprietary parts live in a separate private package, `wickd-pro`. `backend/app/dbt/column_lineage.py` and `backend/app/ai/pro.py` are thin public shims that raise `ColumnLineageUnavailable` / `AiUnavailable` when the package isn't installed. The AI model runtime, downloads, API and review UI live here.
 
 **You don't need `wickd-pro` to contribute.** Everything else builds and runs without it. Pro features just show as unavailable, exactly as they do for a free user.
 

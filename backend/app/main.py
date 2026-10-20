@@ -7,6 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api import ai_chat as ai_chat_api
+from app.api import ai_model as ai_model_api
+from app.api import ai_proposals as ai_proposals_api
+from app.api import ai_query as ai_query_api
 from app.api import column_lineage as column_lineage_api
 from app.api import debug as debug_api
 from app.api import docs as docs_api
@@ -31,6 +35,7 @@ from app.api import sql as sql_api
 from app.api import git as git_api
 from app.api import terminal as terminal_api
 from app.api import workspace as workspace_api
+from app.ai.runtime import llama_server
 from app.config import settings
 from app.db.engine import SessionLocal
 from app.db.migrations import init_db
@@ -74,6 +79,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await watcher_manager.stop()
+        await llama_server.stop()
         log.info("shutdown")
 
 
@@ -97,6 +103,10 @@ app.include_router(debug_api.router)
 app.include_router(drift_api.router)
 app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)
+app.include_router(ai_model_api.router)
+app.include_router(ai_chat_api.router)
+app.include_router(ai_proposals_api.router)
+app.include_router(ai_query_api.router)
 app.include_router(impact_api.router)
 app.include_router(runs_api.router)
 app.include_router(sql_api.router)

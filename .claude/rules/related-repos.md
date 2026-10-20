@@ -34,7 +34,9 @@ package or git submodule.
 
 - Contains the actual sqlglot-based column-lineage tracing algorithm (the
   proprietary part: case-insensitive matching, UNPIVOT stripping, etc.) —
-  this is the IP that Pro licensing gates. Also `row_dependencies.py`
+  this is the IP that Pro licensing gates. Also `wickd_pro/ai/` (prompts,
+  manifest → context building, documentation response schema + validation)
+  behind the public `backend/app/ai/pro.py` shim. Also `row_dependencies.py`
   (`trace_row_dependencies()` / `trace_job_full()`): the columns each model
   filters, joins or groups on, used by column-level impact analysis. Its
   tests run against sqlglot 30.18 in its own venv, but the shipped app uses

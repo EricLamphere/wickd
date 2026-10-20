@@ -2,12 +2,45 @@ import type { Config } from 'tailwindcss';
 import colors from 'tailwindcss/colors';
 import plugin from 'tailwindcss/plugin';
 
+// Accent hues are theme-aware, like gray. The UI is designed dark-first: tinted
+// pills and highlights pair a dark fill (900/950) with light text (300/400),
+// which on a white background turns into a faint wash behind pale text. In the
+// light theme those shades swap for their mirror (a light fill behind dark
+// text). Mid shades (500–700) are solid fills under white text and stay put.
+const ACCENT_HUES = [
+  'red', 'orange', 'amber', 'yellow', 'lime', 'green', 'emerald', 'teal', 'cyan',
+  'sky', 'blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose',
+] as const;
+const SHADES = [50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950] as const;
+// Fills land one step darker than an exact mirror so /30–/60 tints stay visible.
+const LIGHT_THEME_SHADE: Partial<Record<(typeof SHADES)[number], number>> = {
+  200: 800, 300: 700, 400: 600, 800: 300, 900: 200, 950: 100,
+};
+
+const channels = (hex: string) =>
+  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(' ');
+
+const accentVars = (shadeFor: (shade: number) => number) =>
+  Object.fromEntries(
+    ACCENT_HUES.flatMap((hue) =>
+      SHADES.map((shade) => [`--${hue}-${shade}`, channels(colors[hue][shadeFor(shade) as keyof typeof colors.red])]),
+    ),
+  );
+
+const accentColors = Object.fromEntries(
+  ACCENT_HUES.map((hue) => [
+    hue,
+    Object.fromEntries(SHADES.map((shade) => [shade, `rgb(var(--${hue}-${shade}) / <alpha-value>)`])),
+  ]),
+);
+
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
-    // Spread all built-in colors, then override gray with CSS variables
+    // Spread all built-in colors, then override gray and the accent hues with CSS variables
     colors: {
       ...colors,
+      ...accentColors,
       // Gray scale — theme-aware via CSS variables (inverted in light mode)
       gray: {
         100: 'rgb(var(--gray-100) / <alpha-value>)',
@@ -64,6 +97,10 @@ export default {
     },
   },
   plugins: [
+    plugin(({ addBase }) => addBase({
+      ':root': accentVars((shade) => shade),
+      'html[data-theme="light"]': accentVars((shade) => LIGHT_THEME_SHADE[shade as keyof typeof LIGHT_THEME_SHADE] ?? shade),
+    })),
     // `mod:` — applies while Cmd/Ctrl is held (class toggled by useModifierKeyClass)
     plugin(({ addVariant }) => addVariant('mod', 'html.mod-held &')),
   ],

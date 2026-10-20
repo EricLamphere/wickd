@@ -142,6 +142,10 @@ Rules:
 - When a file exceeds ~400 lines, extract sub-components into the same directory (e.g., `components/ProfileCard.tsx` alongside `Environment.tsx`)
 - Organize by feature, not by type — keep related components co-located
 
+## Colors and the Light Theme
+
+Style for dark first. Gray, brand and every accent hue (red, amber, purple, …) are CSS-variable backed (`tailwind.config.ts`, `styles.css`), and the light theme mirrors the shades used for tints: a dark-theme pill like `bg-purple-950/40 text-purple-300 border-purple-900/60` automatically becomes a light fill behind dark text. Shades 500–700 stay the same in both themes (solid fills under white text). So use the usual tinted-pill classes rather than `dark:`/light-specific variants, and only reach for a fixed `rgb(...)` when a color must look the same in both themes (e.g. the Pro button's gradient border).
+
 ## Tailwind Class Ordering
 
 Order classes: layout → spacing → sizing → color → typography → state/interaction

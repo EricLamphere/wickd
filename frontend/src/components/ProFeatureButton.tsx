@@ -24,15 +24,14 @@ export function ProFeatureButton({ onClick, children, title, className = '', dis
         text-brand-300 bg-surface-elevated disabled:opacity-60 disabled:pointer-events-none
         transition-transform duration-150 hover:scale-[1.03] active:scale-[0.98] ${className}`}
     >
-      {/* Animated gradient border. brand-300/400/500/600 are remapped to dark
-          teal-on-light-bg text colors in light mode (for text contrast), which
-          would make this border look dull there — brand-200/700 are the pair
-          that stay real, vivid teal in both themes. */}
+      {/* Animated gradient border. Most of the brand ramp is remapped in light
+          mode (for text contrast), which would make this border look dull
+          there — so it uses fixed teal-700/teal-200, vivid in both themes. */}
       <span
         className="pointer-events-none absolute inset-0 rounded bg-[length:200%_100%] animate-pro-shimmer opacity-90"
         style={{
           background:
-            'linear-gradient(110deg, rgb(var(--brand-700)) 0%, rgb(var(--brand-200)) 25%, rgb(var(--brand-700)) 50%, rgb(var(--brand-200)) 75%, rgb(var(--brand-700)) 100%)',
+            'linear-gradient(110deg, rgb(15 118 110) 0%, rgb(153 246 228) 25%, rgb(15 118 110) 50%, rgb(153 246 228) 75%, rgb(15 118 110) 100%)',
           backgroundSize: '200% 100%',
         }}
       />

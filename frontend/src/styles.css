@@ -68,6 +68,14 @@ html[data-theme="light"] {
   --brand-400:  13 148 136;  /* teal-600 — interactive highlights */
   --brand-500:  17  94  89;  /* teal-800 — hover states */
   --brand-600:  19  78  74;  /* teal-900 — pressed/active */
+
+  /* Dark-first tints (brand-900/50 fills, brand-200 text on them) flip to a
+     light teal fill behind dark teal text — same mirror as the accent hues
+     in tailwind.config.ts. */
+  --brand-200:  17  94  89;  /* teal-800 */
+  --brand-800:  94 234 212;  /* teal-300 */
+  --brand-900: 153 246 228;  /* teal-200 */
+  --brand-950: 204 251 241;  /* teal-100 */
 }
 
 @layer base {

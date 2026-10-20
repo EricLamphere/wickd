@@ -1,8 +1,21 @@
+"""File watching for every project through ONE shared watcher.
+
+A watcher per project made startup crawl with many projects: watchfiles'
+`awatch()` builds its Rust watcher synchronously on the event loop (so each
+project's setup blocked the next) and parks a worker thread per project, and
+projects in the same repo each watched that repo's whole `.git` dir. Instead,
+one `watchfiles.watch()` runs on a dedicated thread over the deduplicated roots
+(project dirs + their `.git` dirs) and batches are routed back to projects by
+path on the event loop.
+"""
+
 import asyncio
+import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
-from watchfiles import Change, awatch
+from watchfiles import Change, watch
 
 from app.db.engine import SessionLocal
 from app.db.models import ModelStatus, Project
@@ -17,21 +30,114 @@ WATCHED_SUBDIRS = ("models", "tests", "seeds", "snapshots", "macros", "analyses"
 # .git paths whose changes indicate branch/index state flipped
 _GIT_STATUS_FILES = {"HEAD", "index", "ORIG_HEAD", "FETCH_HEAD", "MERGE_HEAD", "CHERRY_PICK_HEAD"}
 
+# Noisy dirs inside a project that never matter (dbt logs, installed packages,
+# Python envs, ...). Dropped before batches reach the event loop.
+_IGNORED_PROJECT_DIRS = {
+    "logs", "dbt_packages", "node_modules", "__pycache__", "site-packages", ".venv", "venv",
+}
+
+_RESYNC_SECONDS = 10.0
+_DEBOUNCE_MS = 200
+
+Changes = set[tuple[Change, str]]
+
+
+@dataclass(frozen=True)
+class WatchedProject:
+    project_id: int
+    path: Path
+    git_dir: Path | None
+
+
+@dataclass(frozen=True)
+class WatchPlan:
+    projects: tuple[WatchedProject, ...]
+    roots: tuple[Path, ...]
+
+
+def _is_under(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def collapse_roots(paths: list[Path]) -> tuple[Path, ...]:
+    """Dedupe and drop any path nested inside another — a recursive watch covers it."""
+    unique = sorted(set(paths), key=lambda p: len(p.parts))
+    kept: list[Path] = []
+    for p in unique:
+        if not any(_is_under(p, k) for k in kept):
+            kept.append(p)
+    return tuple(sorted(kept))
+
+
+def build_plan(projects: list[tuple[int, Path]]) -> WatchPlan:
+    """Resolve each existing project's git dir and the minimal set of roots to watch."""
+    watched: list[WatchedProject] = []
+    for project_id, path in projects:
+        if not path.is_dir():
+            continue
+        repo_root = find_repo_root(path)
+        git_dir = repo_root / ".git" if repo_root is not None else None
+        if git_dir is not None and not git_dir.is_dir():
+            git_dir = None  # worktree/submodule .git file — nothing to watch
+        watched.append(WatchedProject(project_id, path, git_dir))
+    roots = [w.path for w in watched] + [w.git_dir for w in watched if w.git_dir is not None]
+    return WatchPlan(projects=tuple(watched), roots=collapse_roots(roots))
+
+
+def is_relevant(plan: WatchPlan, path: Path) -> bool:
+    """Cheap pre-filter run on the watcher thread for every raw change."""
+    for wp in plan.projects:
+        if wp.git_dir is not None and _is_under(path, wp.git_dir):
+            rel = path.relative_to(wp.git_dir).parts
+            return bool(rel) and (rel[0] in _GIT_STATUS_FILES or rel[0] == "refs")
+    for wp in plan.projects:
+        if _is_under(path, wp.path):
+            rel = path.relative_to(wp.path).parts
+            if not any(part in _IGNORED_PROJECT_DIRS for part in rel):
+                return True
+    return False
+
+
+def route_changes(plan: WatchPlan, changes: Changes) -> dict[int, Changes]:
+    """Split one batch into per-project batches (a .git change goes to every project in that repo)."""
+    routed: dict[int, Changes] = {}
+    for change in changes:
+        path = Path(change[1])
+        for wp in plan.projects:
+            in_project = _is_under(path, wp.path)
+            in_git = wp.git_dir is not None and _is_under(path, wp.git_dir)
+            if in_project or in_git:
+                routed.setdefault(wp.project_id, set()).add(change)
+    return routed
+
 
 class WatcherManager:
     def __init__(self) -> None:
-        self._tasks: dict[int, asyncio.Task] = {}
+        self._plan = WatchPlan(projects=(), roots=())
+        self._thread_stop: threading.Event | None = None
+        self._queue: asyncio.Queue[tuple[WatchPlan, Changes]] | None = None
+        self._tasks: list[asyncio.Task] = []
         self._stop = asyncio.Event()
 
     async def start(self) -> None:
         self._stop.clear()
-        asyncio.create_task(self._supervisor_loop())
+        self._queue = asyncio.Queue()
+        self._tasks = [
+            asyncio.create_task(self._supervisor_loop()),
+            asyncio.create_task(self._dispatch_loop()),
+        ]
 
     async def stop(self) -> None:
         self._stop.set()
-        for task in list(self._tasks.values()):
+        self._stop_thread()
+        for task in self._tasks:
             task.cancel()
-        self._tasks.clear()
+        self._tasks = []
+
+    def _stop_thread(self) -> None:
+        if self._thread_stop is not None:
+            self._thread_stop.set()
+            self._thread_stop = None
 
     async def _supervisor_loop(self) -> None:
         while not self._stop.is_set():
@@ -40,42 +146,65 @@ class WatcherManager:
             except Exception as exc:
                 log.warning("watcher_sync_error", error=str(exc))
             try:
-                await asyncio.wait_for(self._stop.wait(), timeout=10.0)
+                await asyncio.wait_for(self._stop.wait(), timeout=_RESYNC_SECONDS)
             except asyncio.TimeoutError:
                 pass
 
     async def _sync_watchers(self) -> None:
         async with SessionLocal() as session:
-            result = await session.execute(select(Project))
-            projects = list(result.scalars().all())
-        want = {p.id: Path(p.path) for p in projects}
-        for pid in list(self._tasks.keys()):
-            if pid not in want:
-                self._tasks.pop(pid).cancel()
-        for pid, path in want.items():
-            if pid not in self._tasks and path.exists():
-                self._tasks[pid] = asyncio.create_task(self._watch(pid, path))
+            result = await session.execute(select(Project.id, Project.path))
+            rows = [(pid, Path(path)) for pid, path in result.all()]
+        plan = await asyncio.to_thread(build_plan, rows)
+        if plan == self._plan:
+            return
+        self._stop_thread()
+        self._plan = plan
+        if not plan.roots:
+            return
+        stop = threading.Event()
+        self._thread_stop = stop
+        loop = asyncio.get_running_loop()
+        threading.Thread(
+            target=self._watch_thread, args=(plan, stop, loop), name="wickd-watcher", daemon=True
+        ).start()
+        log.info("watcher_start", projects=len(plan.projects), roots=[str(r) for r in plan.roots])
 
-    async def _watch(self, project_id: int, project_path: Path) -> None:
-        log.info("watcher_start", project_id=project_id, path=str(project_path))
-        topic = f"project:{project_id}"
-
-        # Determine extra watch roots: the .git dir if the project lives in a repo
-        repo_root = find_repo_root(project_path)
-        git_dir = (repo_root / ".git") if repo_root is not None else None
-        watch_roots: list[Path] = [project_path]
-        if git_dir is not None and git_dir.is_dir() and git_dir not in [project_path]:
-            watch_roots.append(git_dir)
-
+    def _watch_thread(
+        self, plan: WatchPlan, stop: threading.Event, loop: asyncio.AbstractEventLoop
+    ) -> None:
+        queue = self._queue
+        if queue is None:
+            return
         try:
-            async for changes in awatch(
-                *watch_roots, stop_event=self._stop, debounce=200, recursive=True
+            for changes in watch(
+                *plan.roots,
+                watch_filter=lambda _c, p: is_relevant(plan, Path(p)),
+                stop_event=stop,
+                debounce=_DEBOUNCE_MS,
+                recursive=True,
+                ignore_permission_denied=True,
+                raise_interrupt=False,
             ):
-                await self._handle_changes(project_id, project_path, git_dir, topic, changes)
-        except asyncio.CancelledError:
-            pass
+                loop.call_soon_threadsafe(queue.put_nowait, (plan, changes))
         except Exception as exc:
-            log.warning("watcher_error", project_id=project_id, error=str(exc))
+            log.warning("watcher_error", error=str(exc))
+
+    async def _dispatch_loop(self) -> None:
+        if self._queue is None:
+            return
+        while True:
+            plan, changes = await self._queue.get()
+            if plan != self._plan:
+                continue  # batch from a watcher that has since been replaced
+            by_id = {wp.project_id: wp for wp in plan.projects}
+            for project_id, project_changes in route_changes(plan, changes).items():
+                wp = by_id[project_id]
+                try:
+                    await self._handle_changes(
+                        project_id, wp.path, wp.git_dir, f"project:{project_id}", project_changes
+                    )
+                except Exception as exc:
+                    log.warning("watcher_dispatch_error", project_id=project_id, error=str(exc))
 
     async def _handle_changes(
         self,

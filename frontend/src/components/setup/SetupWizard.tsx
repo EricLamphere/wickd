@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, setupFieldError, type SettingsDto } from '../../lib/api';
 import { applyTheme } from '../../lib/useTheme';
 import { InstallStep } from './InstallStep';
+import { WickdIcon } from '../WickdIcon';
 import { PackagesStep, PreferencesStep, ProjectsStep, PythonStep, ReviewStep, WelcomeStep } from './steps';
 import { defaultRequirementsPath, FIELD_STEP, STEPS, type SetupForm, type StepId, type StepProps } from './types';
 
@@ -113,7 +114,10 @@ export function SetupWizard({ settings, onFinish }: Props) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-surface-app">
       <div className="flex flex-col w-full max-w-2xl h-[min(640px,100%)] bg-surface-panel border border-gray-800 rounded-xl shadow-2xl overflow-hidden">
         <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-800 shrink-0">
-          <span className="text-sm font-semibold text-brand-400">Wickd setup</span>
+          <span className="flex items-center gap-2 text-sm font-semibold text-brand-400">
+            <WickdIcon className="h-6 w-auto" />
+            Wickd setup
+          </span>
           <ol className="flex flex-1 items-center gap-1.5">
             {STEPS.map((s, i) => (
               <li

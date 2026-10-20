@@ -98,7 +98,9 @@ The desktop app is a Tauri shell around the PyInstaller-bundled backend and the 
 
 Each one builds the app and installs it to `/Applications/Wickd.app`. The build output (`.app` and `.dmg`) lands in `src-tauri/target/release/bundle/`. Local builds are ad-hoc signed, which is fine for running on your own Mac.
 
-The app icon's source is `src-tauri/icons/icon.svg` (also served as the browser favicon from `frontend/public/favicon.svg`). After editing it, regenerate the bundled sizes with `cargo tauri icon src-tauri/icons/icon.svg -o /tmp/wickd-icons` and copy `32x32.png`, `128x128.png`, `128x128@2x.png` and `icon.icns` into `src-tauri/icons/` (the only files `tauri.conf.json` uses), then update `frontend/public/favicon.svg` to match.
+The app icon's source is `src-tauri/icons/icon.svg`. After editing it, regenerate the bundled sizes with `cargo tauri icon src-tauri/icons/icon.svg -o /tmp/wickd-icons` and copy `32x32.png`, `128x128.png`, `128x128@2x.png` and `icon.icns` into `src-tauri/icons/` (the only files `tauri.conf.json` uses).
+
+Inside the app (header, loading screen, setup wizard) and in browser tabs, Wickd uses the *mark*: the icon's flame without the tile, from `frontend/public/` — `wickd-mark.svg` for dark backgrounds, `wickd-mark-light.svg` for light ones (`components/WickdIcon.tsx` picks by theme), and `favicon.svg`, which switches between the two with `prefers-color-scheme`. Keep them in sync with `icon.svg` when the flame changes; the lamphere-labs site uses copies of the same three files in `assets/img/`.
 
 ## Releasing (maintainers)
 

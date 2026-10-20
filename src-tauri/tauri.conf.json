@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Wickd",
+  "productName": "wickd",
   "version": "1.0.0",
   "identifier": "com.lampherelabs.wickd",
   "build": {
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Wickd",
+        "title": "wickd",
         "url": "http://127.0.0.1:8001",
         "width": 1400,
         "height": 900,

@@ -59,7 +59,7 @@ export function PythonInterpreterRow({ appSettings }: { appSettings: SettingsDto
           <span className="text-gray-600 italic">
             {editable
               ? 'Python that dbt runs on; switching rebuilds the dbt environment'
-              : "dbt shares Wickd's own venv (WICKD_DBT_VENV_DIR) — can't switch"}
+              : "dbt shares wickd's own venv (WICKD_DBT_VENV_DIR) — can't switch"}
           </span>
         </div>
         <span className="text-gray-600">=</span>

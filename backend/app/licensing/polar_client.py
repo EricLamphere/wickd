@@ -64,7 +64,7 @@ class LicenseKeyNotEntitled(Exception):
 class ActivationLimitReached(Exception):
     """activate() refused because this key already has its maximum number of
     active devices (Polar's "Limit Activations" benefit setting — 2 for
-    Wickd Pro). This is NOT "not entitled": the subscription is fine, the
+    wickd Pro). This is NOT "not entitled": the subscription is fine, the
     user just needs to deactivate an old device (self-serve, via their Polar
     customer portal, since "Enable user to deactivate instances" is on) or
     contact support. Surfaced separately from LicenseKeyNotEntitled so the UI

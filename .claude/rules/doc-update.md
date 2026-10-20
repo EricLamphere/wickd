@@ -2,7 +2,7 @@
 
 ## MANDATORY: Update docs after every code change
 
-After **any code change** that affects the observable behavior of Wickd, you MUST update the relevant docs before marking work complete. This is not optional — skipping doc updates is a bug.
+After **any code change** that affects the observable behavior of wickd, you MUST update the relevant docs before marking work complete. This is not optional — skipping doc updates is a bug.
 
 Changes that require doc updates:
 - New API endpoints or routes

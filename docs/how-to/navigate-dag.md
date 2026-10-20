@@ -147,7 +147,7 @@ The switch at the left of the Impact tab's toolbar picks what to analyze:
 - **Branch**: everything on the current branch since it split from a base branch, plus uncommitted changes. Pick the base in the **vs** dropdown (it defaults to the remote's default branch, or `main`/`master`)
 
 **Column-level impact (Pro).** In **Selection** mode, turn on **Columns** in the toolbar, load column lineage if prompted, then pick the columns you're changing (or **all columns**, e.g. for a filter or join change). The list narrows to what those columns actually reach:
-- An **Affected columns** column shows the downstream columns each node gets them through. `all · rows via <model>.<column>` means the node filters, joins or groups on an affected column, so every row and column can change. `all · not traced` means Wickd couldn't trace that model's SQL, so it's assumed fully affected.
+- An **Affected columns** column shows the downstream columns each node gets them through. `all · rows via <model>.<column>` means the node filters, joins or groups on an affected column, so every row and column can change. `all · not traced` means wickd couldn't trace that model's SQL, so it's assumed fully affected.
 - **Tests** shows how many of each node's tests check an affected column ("3 of 12"), and the toolbar shows how many downstream nodes are unaffected.
 - **Build impacted** builds exactly the affected nodes.
 

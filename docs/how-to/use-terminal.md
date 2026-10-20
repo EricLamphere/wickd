@@ -1,6 +1,6 @@
 # How to Use the Integrated Terminal
 
-Wickd includes an integrated bash/zsh terminal available from any project page. Use it to run dbt commands manually, inspect files, or run any shell command in the context of your project.
+wickd includes an integrated bash/zsh terminal available from any project page. Use it to run dbt commands manually, inspect files, or run any shell command in the context of your project.
 
 ## Opening the terminal
 
@@ -39,7 +39,7 @@ The terminal is useful for:
 - Inspecting generated artifacts in `target/`
 - Installing packages with `pip install` or `dbt deps`
 
-The terminal shares the same working environment as Wickd's subprocess execution — it does **not** automatically inherit the project env vars set in the Environment tab. If you need those vars, set them in the terminal session manually or source them from your project's init scripts.
+The terminal shares the same working environment as wickd's subprocess execution — it does **not** automatically inherit the project env vars set in the Environment tab. If you need those vars, set them in the terminal session manually or source them from your project's init scripts.
 
 ## Relationship to the init pipeline
 
@@ -64,4 +64,4 @@ Standard terminal shortcuts work as expected:
 
 **Session exits immediately** — Check Project Logs for error output. The shell binary may not be found, or there may be a PTY startup error.
 
-**Changes in the terminal don't appear in the UI** — Wickd watches the filesystem for changes. If you modify files in the terminal and the DAG doesn't update, check that the file watcher is active and that you saved the file.
+**Changes in the terminal don't appear in the UI** — wickd watches the filesystem for changes. If you modify files in the terminal and the DAG doesn't update, check that the file watcher is active and that you saved the file.

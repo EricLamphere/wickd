@@ -131,7 +131,7 @@ export default function Header() {
           className="flex items-center gap-2 text-brand-400 hover:text-brand-300 font-semibold text-sm transition-colors"
         >
           <WickdIcon className="h-7 w-auto" />
-          Wickd
+          wickd
         </Link>
         <NavArrows />
       </div>
@@ -180,7 +180,7 @@ export default function Header() {
         {!isPricingPage && (
           <button
             onClick={() => navigate('/pricing')}
-            title={license?.entitled ? 'View your Wickd Pro subscription' : undefined}
+            title={license?.entitled ? 'View your wickd Pro subscription' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600/10 border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 font-medium transition-colors"
           >
             <Sparkles size={12} />

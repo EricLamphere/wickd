@@ -1,4 +1,4 @@
-"""Column-level lineage — Wickd Pro feature.
+"""Column-level lineage — wickd Pro feature.
 
 The actual sqlglot-based tracing algorithm lives in the private `wickd_pro`
 package (not in this public repo — see the wickd-pro repo, and the
@@ -8,7 +8,7 @@ thin shim: it exposes the same names the API layer imports
 wickd_pro isn't installed, so:
 
   - a contributor building from this public repo alone gets a working
-    Wickd with column lineage simply unavailable, not a broken import;
+    wickd with column lineage simply unavailable, not a broken import;
   - the entitlement check (api/column_lineage.py, app/licensing/) still
     lives in the public repo, since it must run inside the distributed app
     regardless of who can read the source.
@@ -62,7 +62,7 @@ def _pro():
         from wickd_pro import column_lineage as pro_column_lineage
     except ImportError as exc:
         raise ColumnLineageUnavailable(
-            "Column-level lineage requires the Wickd Pro package, which isn't "
+            "Column-level lineage requires the wickd Pro package, which isn't "
             "installed in this build."
         ) from exc
     return pro_column_lineage

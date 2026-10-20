@@ -1,9 +1,9 @@
 ---
 name: sync-feature-lists
-description: Sync Wickd's Base vs. Pro feature lists across the README, the in-app Pricing page, and the lamphere-labs product page. Use after adding, renaming, removing, or re-tiering (Base ↔ Pro) any user-facing feature.
+description: Sync wickd's Base vs. Pro feature lists across the README, the in-app Pricing page, and the lamphere-labs product page. Use after adding, renaming, removing, or re-tiering (Base ↔ Pro) any user-facing feature.
 ---
 
-Wickd's feature set is listed in four places across two repos. Nothing enforces
+wickd's feature set is listed in four places across two repos. Nothing enforces
 that they agree, so every user-facing feature change must update all of them in
 the same session.
 

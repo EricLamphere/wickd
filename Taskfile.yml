@@ -349,17 +349,17 @@ tasks:
     internal: true
     cmds:
       - |
-        BUNDLE="src-tauri/target/release/bundle/macos/Wickd.app"
+        BUNDLE="src-tauri/target/release/bundle/macos/wickd.app"
         if [ ! -d "$BUNDLE" ]; then
           echo "No build found at $BUNDLE — the app build step must have failed."
           exit 1
         fi
         pkill -9 -f wickd-backend 2>/dev/null || true
-        pkill -9 -f "Wickd.app" 2>/dev/null || true
+        pkill -9 -f "wickd.app" 2>/dev/null || true
         sleep 1
-        rm -rf /Applications/Wickd.app
-        cp -R "$BUNDLE" /Applications/Wickd.app
-        echo "Installed to /Applications/Wickd.app"
+        rm -rf /Applications/wickd.app
+        cp -R "$BUNDLE" /Applications/wickd.app
+        echo "Installed to /Applications/wickd.app"
 
   _package:build-with-env:
     desc: |
@@ -456,8 +456,8 @@ tasks:
   # Tauri reads these to sign + notarize the .app; the backend binaries are
   # signed by _package:sign-backend, and the .dmg is notarized + stapled here.
   # The dmg is uploaded twice: once with its versioned name, and once as
-  # Wickd_aarch64.dmg so the marketing site can link to the stable URL
-  # https://github.com/EricLamphere/wickd/releases/latest/download/Wickd_aarch64.dmg
+  # wickd_aarch64.dmg so the marketing site can link to the stable URL
+  # https://github.com/EricLamphere/wickd/releases/latest/download/wickd_aarch64.dmg
   # and start the download directly.
   release:
     desc: Build, sign, notarize, and publish the production app as GitHub release v<version>
@@ -465,9 +465,9 @@ tasks:
     vars:
       VERSION:
         sh: python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])"
-      DMG: src-tauri/target/release/bundle/dmg/Wickd_{{.VERSION}}_aarch64.dmg
-      STABLE_DMG: src-tauri/target/release/bundle/dmg/Wickd_aarch64.dmg
-      APP: src-tauri/target/release/bundle/macos/Wickd.app
+      DMG: src-tauri/target/release/bundle/dmg/wickd_{{.VERSION}}_aarch64.dmg
+      STABLE_DMG: src-tauri/target/release/bundle/dmg/wickd_aarch64.dmg
+      APP: src-tauri/target/release/bundle/macos/wickd.app
     preconditions:
       # Everything here is checked before the (slow) build so mistakes fail fast.
       - sh: "! gh release view v{{.VERSION}} >/dev/null 2>&1"
@@ -494,4 +494,4 @@ tasks:
       - spctl --assess --type execute --verbose "{{.APP}}"
       - spctl --assess --type open --context context:primary-signature --verbose "{{.DMG}}"
       - cp "{{.DMG}}" "{{.STABLE_DMG}}"
-      - gh release create "v{{.VERSION}}" "{{.DMG}}" "{{.STABLE_DMG}}" --title "Wickd v{{.VERSION}}" --generate-notes
+      - gh release create "v{{.VERSION}}" "{{.DMG}}" "{{.STABLE_DMG}}" --title "wickd v{{.VERSION}}" --generate-notes

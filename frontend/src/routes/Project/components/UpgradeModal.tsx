@@ -12,7 +12,7 @@ interface UpgradeModalProps {
 }
 
 const REASON_COPY: Record<string, string> = {
-  not_licensed: 'This is a Wickd Pro feature. Enter your license key to unlock it.',
+  not_licensed: 'This is a wickd Pro feature. Enter your license key to unlock it.',
   not_entitled: 'Your subscription is no longer active. Renew or enter a new license key to continue.',
   unreachable: "Couldn't verify your license and the offline grace period has expired. Check your connection and try again.",
   activation_limit_reached: "This license key has reached its device activation limit. Free up a seat in your Polar customer portal, then retry.",
@@ -64,14 +64,14 @@ export function UpgradeModal({ onClose, feature = 'Column-level lineage' }: Upgr
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-200">
             <Lock className="w-4 h-4 text-brand-400" />
-            Upgrade to Wickd Pro
+            Upgrade to wickd Pro
           </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 text-sm">✕</button>
         </div>
 
         <div className="px-4 py-4 flex flex-col gap-3">
           <p className="text-xs text-gray-400">
-            {feature} requires an active Wickd Pro subscription.
+            {feature} requires an active wickd Pro subscription.
           </p>
           {reasonCopy && (
             <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/30 rounded px-3 py-2">

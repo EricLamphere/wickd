@@ -109,7 +109,7 @@ async def change_python_path(session: AsyncSession, raw: str) -> None:
     if venv.is_own_venv():
         raise HTTPException(
             status_code=400,
-            detail="WICKD_DBT_VENV_DIR points at the venv Wickd itself runs from, "
+            detail="WICKD_DBT_VENV_DIR points at the venv wickd itself runs from, "
             "which can't be rebuilt — point it at a separate directory to switch Python.",
         )
     loop = asyncio.get_running_loop()

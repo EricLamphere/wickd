@@ -1,10 +1,10 @@
 # How to Run, Build, and Test Models
 
-This guide explains how to execute dbt commands against your models using Wickd.
+This guide explains how to execute dbt commands against your models using wickd.
 
 ## Overview
 
-Wickd exposes three dbt commands:
+wickd exposes three dbt commands:
 - **run** — executes model SQL and materializes results
 - **build** — runs models, tests, seeds, and snapshots together
 - **test** — executes tests without building models

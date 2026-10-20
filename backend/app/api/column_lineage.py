@@ -92,7 +92,7 @@ def _manifest_needs_compile(manifest_path: Path) -> bool:
 
 
 async def _require_pro(session: AsyncSession) -> None:
-    """Column-level lineage is a Wickd Pro feature. Gates all three routes
+    """Column-level lineage is a wickd Pro feature. Gates all three routes
     below (start + both read routes) — not just start — because an already-
     computed ColumnLineageSnapshot persists in the DB indefinitely, so a
     lapsed subscription could otherwise keep reading old results forever

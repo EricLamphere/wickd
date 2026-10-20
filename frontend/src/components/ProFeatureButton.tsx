@@ -10,7 +10,7 @@ interface ProFeatureButtonProps {
 }
 
 /**
- * Standard "shiny" treatment for gated Wickd Pro features — an animated
+ * Standard "shiny" treatment for gated wickd Pro features — an animated
  * gradient border/sheen so locked Pro actions read as premium, not disabled.
  * Use this for every Pro-gated action button in the app.
  */

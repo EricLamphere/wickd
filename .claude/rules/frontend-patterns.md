@@ -1,4 +1,4 @@
-# Frontend Patterns for Wickd
+# Frontend Patterns for wickd
 
 ## API Calls — Always Use api.ts
 

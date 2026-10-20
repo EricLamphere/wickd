@@ -83,16 +83,14 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
   When updating one, also refresh the corresponding resized copy in
   `lamphere-labs/assets/img/` and check whether `tools/wickd/index.html`
   references it by name — the two repos' filenames don't always match
-  (e.g. this repo's `dag_impact_wicky.png` → the site's hero shot
-  `dag_impact_wicky_2000.png`, kept at its 2000px source width rather than
-  upscaled to 2560). As of 2026-10-20 the old pre-rebrand ("dbt-ui")
-  screenshots were deleted from both repos; the site's second showcase
-  section and gallery are commented out in `index.html` until new
-  screenshots replace them.
+  (e.g. this repo's `main_pro.png` → the site's top hero shot
+  `main_pro_2560.png`, `main_base.png` → the "Editing, not just browsing"
+  hero `main_base_2560.png`; every other `img/` screenshot is a gallery
+  item as `<name>_1200.png` / `<name>_2400.png`).
 - When this repo's `img/` screenshots change (new screenshot, rename,
   deletion), check whether `lamphere-labs/tools/wickd/index.html`'s
   gallery grid needs the same update. This repo's README only shows
-  `img/dag_impact_wicky.png` (under the intro); the full gallery lives on the site.
+  `img/main_pro.png` (under the intro); the full gallery lives on the site.
   See
   [doc-update.md](./doc-update.md) for this repo's own doc-sync rules;
   lamphere-labs isn't covered by that checklist since it's a separate repo,

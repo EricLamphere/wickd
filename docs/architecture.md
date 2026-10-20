@@ -507,7 +507,7 @@ Standard project events do not replay.
 On startup and on `POST /api/projects/rescan`:
 1. `_effective_workspace()` in `service.py` resolves the active projects path: checks `app_settings` DB table first, falls back to `WICKD_PROJECTS_PATH` env var, returns `None` if unconfigured
 2. If `None`, rescan is a no-op; Home page shows a blocking banner
-3. `discovery.py` walks the workspace for `dbt_project.yml` files (in a worker thread, off the event loop)
+3. `discovery.py` walks the workspace for `dbt_project.yml` files (in a worker thread, off the event loop), skipping excluded dirs (`target`, `dbt_packages`, `node_modules`, dot-dirs, …) and Python environments of any name (detected by `pyvenv.cfg` or `conda-meta/`)
 4. For each project, reads `profile:` from the YAML and looks up the adapter type in `profiles.yml` (each profiles.yml is parsed once per pass)
 5. `service.py` upserts rows into `projects`
 

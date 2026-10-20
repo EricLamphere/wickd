@@ -83,7 +83,7 @@ wickd/
 │   │   │   ├── discovery.py         # Walk workspace for dbt_project.yml; infer platform
 │   │   │   └── service.py           # list_projects, rescan_projects; _effective_workspace()
 │   │   └── watcher/
-│   │       └── service.py           # watchfiles task per project; routes to bus.publish
+│   │       └── service.py           # ONE shared watchfiles watcher thread for all projects; routes changes to bus.publish per project
 │   ├── pyproject.toml
 │   └── tests/
 ├── frontend/
@@ -763,7 +763,7 @@ Session state (`sessionStorage`) persists open file path, expanded tree nodes, a
 
 ### 15. File Watching
 
-`WatcherManager` runs one `watchfiles.awatch` task per project. Watched paths: `models/`, `tests/`, `seeds/`, `snapshots/`, `macros/`, `analyses/`, `target/`.
+`WatcherManager` runs a single `watchfiles.watch()` on a dedicated thread over the deduplicated roots (every project dir + each repo's `.git` dir, nested roots collapsed), so startup never blocks the event loop and projects sharing a repo watch its `.git` once. A watch filter on that thread drops noise (`.git/objects`, `logs/`, `dbt_packages/`, Python envs), and each batch is routed to the owning project(s) on the event loop — a `.git` change goes to every project in that repo. The supervisor re-reads the project list every 10s and restarts the watcher only when the plan changes. Project changes that matter: `models/`, `tests/`, `seeds/`, `snapshots/`, `macros/`, `analyses/`, `target/`.
 
 - `manifest.json` / `run_results.json` changes → `graph_changed`
 - `.sql` / `.yml` / `.yaml` changes → `files_changed`

@@ -62,7 +62,7 @@ backend/app/
     repo.py       — find_repo_root() walks upward for .git/; parse_porcelain_v2() parses git status --porcelain=v2 -z; parse_name_status_z() parses git diff --name-status -z
     changeset.py  — working_changes() / branch_changes(base) / resolve_base() / current_branch() over a GitCall; to_project_files() narrows repo paths to the dbt project; used by api/impact.py (GET /impact/changes?scope=working|branch&base=)
   watcher/
-    service.py    — WatcherManager (watchfiles, per-project); also watches .git/HEAD, .git/index, .git/refs/ to emit git_status_changed
+    service.py    — WatcherManager (ONE shared watchfiles thread for all projects, routes changes by path); also watches .git/HEAD, .git/index, .git/refs/ to emit git_status_changed
 
 frontend/src/
   lib/
@@ -339,6 +339,7 @@ useInitSessionEvents(sessionId, onEvent, useCallback(() => { /* on close */ }, [
 ### File Watcher
 
 - `WatcherManager` in `watcher/service.py` — Rust-backed watchfiles, ~200ms debounce
+- One `watchfiles.watch()` on a dedicated thread for all projects (never one per project: `awatch()` builds its watcher on the event loop and parks a worker thread each, which made startup crawl with many projects); `build_plan()` / `is_relevant()` / `route_changes()` are pure and unit-tested in `test_watcher.py`
 - Watches per project: `models/`, `tests/`, `seeds/`, `snapshots/`, `macros/`, `analyses/`, `target/`
 - `manifest.json` or `run_results.json` changed → publishes `graph_changed`
 - `.sql` / `.yml` / `.yaml` changed → publishes `files_changed`

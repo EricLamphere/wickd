@@ -51,3 +51,6 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `WICKD_GLOBAL_REQUIREMENTS_PATH` | `global_requirements_path` | `/home/user/dbt-projects/requirements.txt` |
 | `WICKD_PYTHON_PATH` | `python_path` | `/opt/homebrew/bin/python3.12` |
 | `WICKD_LOG_LEVEL` | `log_level` | `INFO` |
+| `WICKD_AI_MODEL` | `ai_model` | `qwen3.5-4b` |
+| `WICKD_AI_ENDPOINT_URL` | `ai_endpoint_url` | `http://localhost:11434` |
+| `WICKD_AI_ENDPOINT_MODEL` | `ai_endpoint_model` | `qwen3:8b` |

@@ -86,6 +86,10 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `column_lineage_started` | project | `api/column_lineage.py` — includes `snapshot_id`, `total` |
 | `column_lineage_progress` | project | `api/column_lineage.py` — includes `snapshot_id`, `checked`, `total`, `current` (model name) |
 | `column_lineage_finished` | project | `api/column_lineage.py` — includes `snapshot_id`, `ok` |
+| `ai_proposal_updated` | project | `api/ai_proposals.py` — includes `proposal_id`, `status`, `unique_id` |
+| `ai_query_updated` | project | `api/ai_query.py` — includes `message_id`, `status` |
+| `ai_proposal_progress` | project | `api/ai_proposals.py` — throttled while generating; includes `proposal_id`, `unique_id`, `phase`, `text` |
+| `ai_model_download` | global | `ai/download.py` — includes `model_id`, `state`, `bytes_done`, `bytes_total`, `error` (frontend: `useGlobalEvents`) |
 
 ## Adding a New Event Type
 

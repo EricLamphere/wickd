@@ -36,7 +36,8 @@
     "macOS": {
       "exceptionDomain": "127.0.0.1",
       "files": {
-        "Resources/binaries/wickd-backend": "./binaries/wickd-backend"
+        "Resources/binaries/wickd-backend": "./binaries/wickd-backend",
+        "Resources/binaries/llama": "./binaries/llama"
       }
     }
   }

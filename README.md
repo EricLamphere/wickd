@@ -44,6 +44,7 @@ task start
 - **Back / forward navigation** — header arrows (or ⌘[ / ⌘] or ⌘← / ⌘→ and mouse side buttons) step through your last 25 pages, in-page tabs, opened files, and selected DAG/docs nodes
 - **Arbitrary dbt commands** — type any `dbt …` command (from ⌘K or the project homepage) and it runs with your active profile and target, streams to the Run panel, and lands in run history
 - **Column-level lineage** (Pro) — click any column in the DAG to trace where its data comes from and where it goes, derived from each model's compiled SQL
+- **Wicky, the local AI assistant** (Pro) — a private AI model that runs on your machine (downloaded once; or point it at your own Ollama/LM Studio server), in a panel on every project page (⌘I). Ask questions about your project or the selected model (including its latest run and test results), explain failures, query your warehouse (Wicky writes a read-only SELECT you review and run, then answers from the rows), and generate model/column descriptions and data tests (checked against your warehouse first) that you review as a diff and accept before anything is written — see [how Wicky works](docs/wicky.md)
 - **Column-level impact** (Pro) — in the Impact tab, pick the columns you're changing to see only the downstream columns, models and tests they reach, including models that filter, join or group on them (which changes every row)
 
 ## Developing wickd

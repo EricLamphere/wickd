@@ -43,6 +43,11 @@ class DbtRunner:
         """True while any project has a dbt command in flight."""
         return any(lock.locked() for lock in self._locks.values())
 
+    def is_project_busy(self, project_id: int) -> bool:
+        """True while this project has a dbt command in flight (a new one would wait)."""
+        lock = self._locks.get(project_id)
+        return lock is not None and lock.locked()
+
     def cancel(self, project_id: int) -> bool:
         """Terminate the running dbt process for a project. Returns True if one was running."""
         proc = self._procs.get(project_id)
@@ -94,7 +99,14 @@ class DbtRunner:
                 stderr=asyncio.subprocess.PIPE,
                 env=req.env,
             )
-            stdout_bytes, stderr_bytes = await proc.communicate()
+            try:
+                stdout_bytes, stderr_bytes = await proc.communicate()
+            except asyncio.CancelledError:
+                # e.g. a caller's timeout: don't leave dbt running after the lock is released
+                proc.kill()
+                await proc.wait()
+                append_project_log(str(req.project_path), f"<<< dbt {req.command} CANCELLED", pid)
+                raise
             rc = proc.returncode or 0
             status = "OK" if rc == 0 else f"FAILED (rc={rc})"
             append_project_log(str(req.project_path), f"<<< dbt {req.command} {status}", pid)

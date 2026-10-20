@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     port: int = Field(default=8001)
     frontend_dist: Path = Field(default_factory=_default_frontend_dist)
     dbt_venv_dir: Path = Field(default_factory=_default_dbt_venv_dir)
+    # llama-server binary for local AI; unset → bundled copy, then PATH (app/ai/runtime.py)
+    llama_server_path: Path | None = Field(default=None)
 
     # Polar (polar.sh) licensing — organization ID is not a secret (it just
     # identifies which Polar org to validate license keys against), but the

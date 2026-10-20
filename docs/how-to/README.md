@@ -15,3 +15,5 @@ Step-by-step guides for using wickd.
 | [Use source control (Git)](use-git.md) | Stage, commit, push/pull, switch branches, and view diffs in the built-in SCM panel |
 | [Use the SQL workspace](use-sql-workspace.md) | Write and run ad-hoc SQL queries, inspect compiled SQL, and manage workspace files |
 | [View run history](view-run-history.md) | Browse past invocations, inspect per-node timings and logs, and track execution trends |
+| [Use Wicky, the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |
+| [Use the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |

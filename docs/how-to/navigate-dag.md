@@ -162,3 +162,5 @@ In the git modes the first group is **Changed**, and each node shows why it coun
 With a model selected, the SidePane is persistent — it stays open as you click different nodes. Resize it by dragging the left edge. Collapse it by clicking the collapse arrow.
 
 The **Edit in Files** button navigates to the File Explorer with the model's `.sql` file open. The **View Docs** button opens the native docs browser for that model.
+
+**Wicky** (Pro), the AI panel on the far right (⌘I), uses the selected node as context: it documents the node and answers questions about it. See [Use the AI assistant](use-ai.md).

@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react';
 import { InlineCode } from './fields';
+import { WickdIcon } from '../WickdIcon';
 
 interface Props {
   /** Seconds spent waiting for the backend so far. */
@@ -16,6 +17,7 @@ export function LoadingScreen({ waitedSecs }: Props) {
 
   return (
     <div className="flex flex-col items-center justify-center h-screen gap-4 p-6 bg-surface-app text-center">
+      <WickdIcon className="h-24 w-auto" />
       <span className="text-lg font-semibold text-brand-400">Wickd</span>
       <Loader2 className="w-6 h-6 text-brand-400 animate-spin" aria-hidden />
       <p className="text-sm text-gray-300" role="status">

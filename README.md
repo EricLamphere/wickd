@@ -2,7 +2,7 @@
 
 A local-first desktop app for [dbt-core](https://github.com/dbt-labs/dbt-core): an interactive dependency graph, live run/build/test with streaming logs, an in-app SQL editor, and Git, all running against your own dbt projects. No cloud account, and no data leaves your machine.
 
-![wickd dependency graph with live execution logs](img/dag_view.png)
+![wickd DAG with column-level impact analysis and Wicky, the local AI assistant](img/dag_impact_wicky.png)
 
 ## Getting Started
 

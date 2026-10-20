@@ -50,19 +50,33 @@ def _iter_dbt_project_files(root: Path) -> Iterator[Path]:
                 yield entry
 
 
-def _infer_platform(project_dir: Path, profile: str | None) -> str:
+def _load_profiles(path: Path, cache: dict[Path, dict | None]) -> dict | None:
+    """Parse a profiles.yml once per discovery pass — ~/.dbt/profiles.yml is shared by every project."""
+    if path not in cache:
+        data: dict | None = None
+        if path.exists():
+            try:
+                loaded = yaml.safe_load(path.read_text())
+                data = loaded if isinstance(loaded, dict) else {}
+            except (yaml.YAMLError, OSError):
+                data = None
+        cache[path] = data
+    return cache[path]
+
+
+def _infer_platform(
+    project_dir: Path, profile: str | None, cache: dict[Path, dict | None] | None = None
+) -> str:
     """Best-effort platform inference from profiles.yml if present; fall back to 'unknown'."""
+    profiles_cache: dict[Path, dict | None] = {} if cache is None else cache
     candidates = [
         project_dir / "profiles.yml",
         project_dir.parent / "profiles.yml",
         Path.home() / ".dbt" / "profiles.yml",
     ]
     for profiles_path in candidates:
-        if not profiles_path.exists():
-            continue
-        try:
-            data = yaml.safe_load(profiles_path.read_text()) or {}
-        except yaml.YAMLError:
+        data = _load_profiles(profiles_path, profiles_cache)
+        if data is None:
             continue
         if profile and profile in data:
             outputs = (data[profile] or {}).get("outputs") or {}
@@ -77,6 +91,7 @@ def _infer_platform(project_dir: Path, profile: str | None) -> str:
 
 def discover_projects(root: Path) -> list[DiscoveredProject]:
     results: list[DiscoveredProject] = []
+    profiles_cache: dict[Path, dict | None] = {}
     for project_file in _iter_dbt_project_files(root):
         try:
             data = yaml.safe_load(project_file.read_text()) or {}
@@ -89,7 +104,7 @@ def discover_projects(root: Path) -> list[DiscoveredProject]:
         profile = data.get("profile")
         profile_str = profile if isinstance(profile, str) else None
         project_dir = project_file.parent
-        platform = _infer_platform(project_dir, profile_str)
+        platform = _infer_platform(project_dir, profile_str, profiles_cache)
         results.append(
             DiscoveredProject(
                 name=name,

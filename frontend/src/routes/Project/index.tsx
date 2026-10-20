@@ -17,6 +17,7 @@ import {
 } from './components/SidePane/PropertiesTab';
 import { QuickRunBar, type RunKind } from './components/QuickRunBar';
 import { DbtCommandRow } from './components/DbtCommandRow';
+import { CommandBadge } from './components/CommandBadge';
 
 const PLATFORM_ICONS: Record<string, string> = {
   postgres: '🐘', bigquery: '☁️', snowflake: '❄️', redshift: '🔴',
@@ -488,10 +489,10 @@ function RecentRuns({ runs, onViewAll }: { runs: RunInvocationDto[]; onViewAll: 
               <span className={`inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-medium uppercase tracking-wider shrink-0 ${statusStyle}`}>
                 {run.status}
               </span>
-              <div className="flex-1 min-w-0">
-                <span className="text-xs text-gray-200 font-mono font-medium">dbt {run.command}</span>
+              <div className="flex flex-1 items-center gap-2 min-w-0">
+                <CommandBadge command={run.command} />
                 {run.selector && (
-                  <span className="ml-1.5 text-xs text-gray-500 font-mono truncate">{selector}</span>
+                  <span className="text-xs text-gray-500 font-mono truncate">{selector}</span>
                 )}
               </div>
               <div className="flex items-center gap-3 shrink-0 text-right">

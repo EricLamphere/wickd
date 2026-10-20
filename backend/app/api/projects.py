@@ -1,4 +1,6 @@
+import asyncio
 import subprocess
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.db.engine import get_session
-from app.db.models import Project
+from app.db.models import Project, RunInvocation
 from app.projects.service import list_projects, rescan_projects
+from app.projects.summary import manifest_node_counts
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -94,6 +97,67 @@ async def get_projects(session: AsyncSession = Depends(get_session)) -> list[Pro
 async def post_rescan(session: AsyncSession = Depends(get_session)) -> list[ProjectOut]:
     rows = await rescan_projects(session)
     return [ProjectOut.from_row(r) for r in rows]
+
+
+class NodeCountsOut(BaseModel):
+    models: int
+    sources: int
+    seeds: int
+    tests: int
+
+
+class LatestRunOut(BaseModel):
+    status: str
+    finished_at: datetime | None
+
+
+class ProjectSummaryOut(BaseModel):
+    project_id: int
+    counts: NodeCountsOut | None
+    latest_run: LatestRunOut | None
+
+
+async def _latest_runs(session: AsyncSession) -> dict[int, RunInvocation]:
+    """Most recently started invocation per project, in one query."""
+    latest_started = (
+        select(RunInvocation.project_id, func.max(RunInvocation.started_at).label("started_at"))
+        .group_by(RunInvocation.project_id)
+        .subquery()
+    )
+    result = await session.execute(
+        select(RunInvocation)
+        .join(
+            latest_started,
+            (RunInvocation.project_id == latest_started.c.project_id)
+            & (RunInvocation.started_at == latest_started.c.started_at),
+        )
+        .order_by(RunInvocation.id)
+    )
+    # Ties on started_at are possible; the highest id wins.
+    return {inv.project_id: inv for inv in result.scalars().all()}
+
+
+@router.get("/summaries", response_model=list[ProjectSummaryOut])
+async def get_project_summaries(
+    session: AsyncSession = Depends(get_session),
+) -> list[ProjectSummaryOut]:
+    """Node-type counts + latest run for every project, for the home page cards."""
+    rows = await list_projects(session)
+    latest = await _latest_runs(session)
+    counts = await asyncio.gather(
+        *(asyncio.to_thread(manifest_node_counts, Path(r.path)) for r in rows)
+    )
+    summaries: list[ProjectSummaryOut] = []
+    for row, c in zip(rows, counts):
+        inv = latest.get(row.id)
+        summaries.append(
+            ProjectSummaryOut(
+                project_id=row.id,
+                counts=NodeCountsOut(**asdict(c)) if c else None,
+                latest_run=LatestRunOut(status=inv.status, finished_at=inv.finished_at) if inv else None,
+            )
+        )
+    return summaries
 
 
 @router.get("/applications", response_model=list[str])

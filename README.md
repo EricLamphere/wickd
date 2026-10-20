@@ -1,7 +1,5 @@
 # Wickd — the desktop app for dbt
 
-*Wickd is pronounced "wicked."*
-
 A local-first desktop app for [dbt-core](https://github.com/dbt-labs/dbt-core): an interactive dependency graph, live run/build/test with streaming logs, an in-app SQL editor, and Git, all running against your own dbt projects. No cloud account, and no data leaves your machine.
 
 ![Wickd dependency graph with live execution logs](img/dag_view.png)

@@ -11,7 +11,7 @@ from sqlalchemy import select, func
 
 from app.db.engine import get_session
 from app.db.models import Project, RunInvocation
-from app.projects.service import list_projects, rescan_projects
+from app.projects.service import list_projects, rescan_projects, wait_for_startup_scan
 from app.projects.summary import manifest_node_counts
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -87,6 +87,7 @@ class ProjectOut(BaseModel):
 
 @router.get("", response_model=list[ProjectOut])
 async def get_projects(session: AsyncSession = Depends(get_session)) -> list[ProjectOut]:
+    await wait_for_startup_scan()
     rows = await list_projects(session)
     if not rows:
         rows = await rescan_projects(session)
@@ -95,6 +96,7 @@ async def get_projects(session: AsyncSession = Depends(get_session)) -> list[Pro
 
 @router.post("/rescan", response_model=list[ProjectOut])
 async def post_rescan(session: AsyncSession = Depends(get_session)) -> list[ProjectOut]:
+    await wait_for_startup_scan()
     rows = await rescan_projects(session)
     return [ProjectOut.from_row(r) for r in rows]
 
@@ -142,6 +144,7 @@ async def get_project_summaries(
     session: AsyncSession = Depends(get_session),
 ) -> list[ProjectSummaryOut]:
     """Node-type counts + latest run for every project, for the home page cards."""
+    await wait_for_startup_scan()
     rows = await list_projects(session)
     latest = await _latest_runs(session)
     counts = await asyncio.gather(

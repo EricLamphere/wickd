@@ -11,6 +11,7 @@ path on the event loop.
 
 import asyncio
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,6 +119,14 @@ class WatcherManager:
         self._queue: asyncio.Queue[tuple[WatchPlan, Changes]] | None = None
         self._tasks: list[asyncio.Task] = []
         self._stop = asyncio.Event()
+        self._sync_lock = asyncio.Lock()
+
+    async def resync(self) -> None:
+        """Re-read the project list now (e.g. right after a rescan) instead of waiting for the next tick."""
+        try:
+            await self._sync_watchers()
+        except Exception as exc:
+            log.warning("watcher_sync_error", error=str(exc))
 
     async def start(self) -> None:
         self._stop.clear()
@@ -151,10 +160,16 @@ class WatcherManager:
                 pass
 
     async def _sync_watchers(self) -> None:
+        async with self._sync_lock:
+            await self._sync_watchers_locked()
+
+    async def _sync_watchers_locked(self) -> None:
         async with SessionLocal() as session:
             result = await session.execute(select(Project.id, Project.path))
             rows = [(pid, Path(path)) for pid, path in result.all()]
+        started = time.perf_counter()
         plan = await asyncio.to_thread(build_plan, rows)
+        plan_ms = round((time.perf_counter() - started) * 1000)
         if plan == self._plan:
             return
         self._stop_thread()
@@ -167,7 +182,12 @@ class WatcherManager:
         threading.Thread(
             target=self._watch_thread, args=(plan, stop, loop), name="wickd-watcher", daemon=True
         ).start()
-        log.info("watcher_start", projects=len(plan.projects), roots=[str(r) for r in plan.roots])
+        log.info(
+            "watcher_start",
+            projects=len(plan.projects),
+            roots=len(plan.roots),
+            plan_ms=plan_ms,
+        )
 
     def _watch_thread(
         self, plan: WatchPlan, stop: threading.Event, loop: asyncio.AbstractEventLoop

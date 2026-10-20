@@ -1,4 +1,6 @@
 import asyncio
+import time
+from collections.abc import Awaitable
 from pathlib import Path
 
 from sqlalchemy import select
@@ -7,6 +9,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import AppSetting, Project
 from app.projects.discovery import DiscoveredProject, discover_projects
 from app.config import settings
+from app.logging_setup import get_logger
+
+log = get_logger(__name__)
+
+# The startup rescan runs in the background so the server answers requests
+# (and the UI leaves its loading screen) while a large workspace is walked.
+# Endpoints that return the project list await it via wait_for_startup_scan().
+_startup_scan: asyncio.Task[None] | None = None
+
+
+def begin_startup_scan(scan: Awaitable[None]) -> None:
+    global _startup_scan
+    _startup_scan = asyncio.ensure_future(scan)
+
+
+async def wait_for_startup_scan() -> None:
+    task = _startup_scan
+    if task is not None and not task.done():
+        # shield: a client disconnecting mid-wait must not cancel the scan itself
+        await asyncio.shield(task)
 
 
 async def _effective_workspace(session: AsyncSession) -> Path | None:
@@ -29,7 +51,14 @@ async def rescan_projects(session: AsyncSession) -> list[Project]:
     if workspace is None:
         return await list_projects(session)
     # Walking the workspace is blocking filesystem I/O — keep it off the event loop.
+    started = time.perf_counter()
     discovered: list[DiscoveredProject] = await asyncio.to_thread(discover_projects, workspace)
+    log.info(
+        "discovery_done",
+        workspace=str(workspace),
+        projects=len(discovered),
+        duration_ms=round((time.perf_counter() - started) * 1000),
+    )
     existing = await list_projects(session)
     by_path = {p.path: p for p in existing}
 

@@ -1,20 +1,20 @@
-# Wickd — the desktop app for dbt
+# wickd — the desktop app for dbt
 
 A local-first desktop app for [dbt-core](https://github.com/dbt-labs/dbt-core): an interactive dependency graph, live run/build/test with streaming logs, an in-app SQL editor, and Git, all running against your own dbt projects. No cloud account, and no data leaves your machine.
 
-![Wickd dependency graph with live execution logs](img/dag_view.png)
+![wickd dependency graph with live execution logs](img/dag_view.png)
 
 ## Getting Started
 
-**[Download Wickd from lampherelabs.com](https://lampherelabs.com/tools/wickd)**
+**[Download wickd from lampherelabs.com](https://lampherelabs.com/tools/wickd)**
 
 1. Download the `.dmg` for macOS (Apple Silicon).
-2. Open it and drag **Wickd** into **Applications**.
-3. Launch Wickd and point it at the folder that holds your dbt projects.
+2. Open it and drag **wickd** into **Applications**.
+3. Launch wickd and point it at the folder that holds your dbt projects.
 
 The app is signed and notarized by Apple, so it opens like any other Mac app. You'll need `git` on your `PATH`. dbt itself is installed for you: on first launch a setup wizard asks where your projects live and which Python to use, then installs dbt into an isolated environment.
 
-Wickd is free and open source. [Wickd Pro](https://lampherelabs.com/tools/wickd#pricing) is an optional subscription that adds advanced features and supports continued development. You can upgrade from **Upgrade to Pro** in the app's header.
+wickd is free and open source. [wickd Pro](https://lampherelabs.com/tools/wickd#pricing) is an optional subscription that adds advanced features and supports continued development. You can upgrade from **Upgrade to Pro** in the app's header.
 
 Don't feel like downloading the app or paying for pro? Run it for free in your browser instead:
 ```sh
@@ -39,14 +39,14 @@ task start
 - **Integrated terminal & project creation** — multi-tab terminal in the bottom pane; `dbt init` runs in an in-app terminal with adapter install and `profiles.yml` setup handled for you
 - **Command palette** — ⌘K to jump to any page, project, or model, or run a dbt command
 - **Node DAG** — a bottom-pane tab showing the full upstream and downstream lineage of whatever node you have selected, on any page, filterable by type, materialization, and status
-- **Live sync with disk** — Wickd watches your project, so a dbt run or compile from another terminal updates the DAG and run statuses, and commits or branch switches made outside the app show up in the Git panel, all without a reload
+- **Live sync with disk** — wickd watches your project, so a dbt run or compile from another terminal updates the DAG and run statuses, and commits or branch switches made outside the app show up in the Git panel, all without a reload
 - **Light & dark themes** — the whole app, switchable from Global Settings
 - **Back / forward navigation** — header arrows (or ⌘[ / ⌘] or ⌘← / ⌘→ and mouse side buttons) step through your last 25 pages, in-page tabs, opened files, and selected DAG/docs nodes
 - **Arbitrary dbt commands** — type any `dbt …` command (from ⌘K or the project homepage) and it runs with your active profile and target, streams to the Run panel, and lands in run history
 - **Column-level lineage** (Pro) — click any column in the DAG to trace where its data comes from and where it goes, derived from each model's compiled SQL
 - **Column-level impact** (Pro) — in the Impact tab, pick the columns you're changing to see only the downstream columns, models and tests they reach, including models that filter, join or group on them (which changes every row)
 
-## Developing Wickd
+## Developing wickd
 
 You'll need Python 3.11+, Node.js 20+, and [Task](https://taskfile.dev) (`brew install go-task`).
 
@@ -55,7 +55,7 @@ task install    # set up the Python venv and npm packages
 task start      # run the app in your browser at http://localhost:5173
 ```
 
-`task start` runs the backend and frontend dev servers with hot reload, installing (or updating) Python and npm dependencies first if needed — so on a fresh clone or after a `git pull`, it works on its own. It's the fastest way to work on Wickd.
+`task start` runs the backend and frontend dev servers with hot reload, installing (or updating) Python and npm dependencies first if needed — so on a fresh clone or after a `git pull`, it works on its own. It's the fastest way to work on wickd.
 
 To test your changes in the desktop app itself:
 
@@ -71,4 +71,4 @@ Built with <img src="img/claude-code.png" width="30" height="30" align="center">
 
 MIT
 
-dbt and dbt Core are trademarks of dbt Labs, Inc. Wickd is an independent project and is not affiliated with or endorsed by dbt Labs.
+dbt and dbt Core are trademarks of dbt Labs, Inc. wickd is an independent project and is not affiliated with or endorsed by dbt Labs.

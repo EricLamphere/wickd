@@ -116,7 +116,7 @@ export function SetupWizard({ settings, onFinish }: Props) {
         <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-800 shrink-0">
           <span className="flex items-center gap-2 text-sm font-semibold text-brand-400">
             <WickdIcon className="h-6 w-auto" />
-            Wickd setup
+            wickd setup
           </span>
           <ol className="flex flex-1 items-center gap-1.5">
             {STEPS.map((s, i) => (

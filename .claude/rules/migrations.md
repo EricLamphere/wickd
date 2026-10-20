@@ -1,4 +1,4 @@
-# Database Migrations for Wickd
+# Database Migrations for wickd
 
 ## No Alembic — Idempotent DDL on Startup
 

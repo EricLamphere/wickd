@@ -1,10 +1,10 @@
 ---
 name: release
-description: Cut a new Wickd desktop release — bump the version everywhere it lives, then run `task release` to build the production app and publish the GitHub release. Use when the user asks to release, ship, or publish a new version of Wickd.
+description: Cut a new wickd desktop release — bump the version everywhere it lives, then run `task release` to build the production app and publish the GitHub release. Use when the user asks to release, ship, or publish a new version of wickd.
 argument-hint: "[patch|minor|major|X.Y.Z]  (default: patch)"
 ---
 
-# Release Wickd
+# Release wickd
 
 Arguments: `$ARGUMENTS` — `patch` (default when empty), `minor`, `major`, or an explicit `X.Y.Z`.
 
@@ -22,11 +22,11 @@ Run these and stop with a clear message if any fail:
 - `gh release view v<new>` must fail (no existing release with that tag).
 - `git status --short` — if there are uncommitted changes, list them for the user as a heads-up, but continue.
 
-Tell the user in one line: `Releasing Wickd <old> → <new>`.
+Tell the user in one line: `Releasing wickd <old> → <new>`.
 
 ## 2. Bump the version in every file
 
-The version lives in exactly these places. Change only the Wickd version field itself — never a dependency that happens to share the same version string.
+The version lives in exactly these places. Change only the wickd version field itself — never a dependency that happens to share the same version string.
 
 | File | What to change |
 |------|----------------|
@@ -59,7 +59,7 @@ Run `task release` from the repo root **in the background** (`run_in_background:
 1. refuses if a release for this version already exists,
 2. runs `task package:production` (builds the Pro + Polar-production app, Developer-ID signed — backend binaries included — and notarized by Tauri, and installs it to `/Applications`),
 3. notarizes and staples the `.dmg`, then checks both with `spctl` — if notarization is rejected, get the reason with `xcrun notarytool log <submission-id>` (credentials from `.env.signing`),
-4. creates GitHub release `v<new>` with both `Wickd_<new>_aarch64.dmg` and `Wickd_aarch64.dmg` (the stable name the lamphere-labs site's Download buttons link to).
+4. creates GitHub release `v<new>` with both `wickd_<new>_aarch64.dmg` and `wickd_aarch64.dmg` (the stable name the lamphere-labs site's Download buttons link to).
 
 Wait for the completion notification; don't poll. If it fails, show the relevant tail of the output, diagnose, and do not retry blindly — a failure after the release was created must not create a second one.
 
@@ -68,10 +68,10 @@ Wait for the completion notification; don't poll. If it fails, show the relevant
 ```bash
 gh release view v<new> --json tagName,url,assets -q '.tagName, .url, (.assets[].name)'
 curl -sIL -o /dev/null -w '%{http_code} %{url_effective}\n' \
-  https://github.com/EricLamphere/wickd/releases/latest/download/Wickd_aarch64.dmg
+  https://github.com/EricLamphere/wickd/releases/latest/download/wickd_aarch64.dmg
 ```
 
-The release should list both dmg files, and the curl should end in `200` with `filename=Wickd_aarch64.dmg` in the final URL.
+The release should list both dmg files, and the curl should end in `200` with `filename=wickd_aarch64.dmg` in the final URL.
 
 ## 5. Report
 

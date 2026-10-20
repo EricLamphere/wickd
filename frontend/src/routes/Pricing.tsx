@@ -112,11 +112,11 @@ export default function Pricing() {
       <div className="flex flex-col items-center text-center gap-1.5">
         <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/30 text-brand-300 text-xs font-medium">
           <Sparkles size={12} />
-          Wickd Pro
+          wickd Pro
         </div>
         <h1 className="text-xl font-semibold text-gray-100">{isPro ? "You're on Pro" : 'Upgrade to Pro'}</h1>
         <p className="text-xs text-gray-500 max-w-md">
-          Wickd is free and open-source. Pro is a monthly subscription that unlocks advanced features and supports continued development.
+          wickd is free and open-source. Pro is a monthly subscription that unlocks advanced features and supports continued development.
         </p>
       </div>
 
@@ -237,7 +237,7 @@ export default function Pricing() {
         <div className="flex flex-col items-center gap-3 pb-6">
           <div className="flex items-center justify-center gap-1.5 text-center text-brand-300 text-sm font-medium">
             <Lock size={14} />
-            Wickd Pro is active on this device
+            wickd Pro is active on this device
           </div>
           <button
             onClick={() => setManageSubscriptionOpen(true)}
@@ -254,7 +254,7 @@ export default function Pricing() {
       )}
 
       <p className="pb-4 text-center text-[11px] text-gray-600">
-        dbt and dbt Core are trademarks of dbt Labs, Inc. Wickd is not affiliated with or endorsed by dbt Labs.
+        dbt and dbt Core are trademarks of dbt Labs, Inc. wickd is not affiliated with or endorsed by dbt Labs.
       </p>
     </div>
   );

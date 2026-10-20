@@ -151,9 +151,9 @@ def find_system_python() -> str:
         if version is not None and version >= _MIN_PYTHON:
             return candidate
     raise RuntimeError(
-        f"No Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ interpreter found. Wickd needs "
+        f"No Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]}+ interpreter found. wickd needs "
         "one to create the isolated environment where dbt gets installed — install "
-        "Python (e.g. https://www.python.org/downloads/) and restart Wickd."
+        "Python (e.g. https://www.python.org/downloads/) and restart wickd."
     )
 
 
@@ -247,7 +247,7 @@ def validate_python(path: str) -> str:
         raise InvalidPythonError(f"Could not run {p} as a Python interpreter.")
     if version < _MIN_PYTHON:
         raise InvalidPythonError(
-            f"{p} is Python {version[0]}.{version[1]}; Wickd needs "
+            f"{p} is Python {version[0]}.{version[1]}; wickd needs "
             f"Python {_MIN_PYTHON[0]}.{_MIN_PYTHON[1]} or newer."
         )
     return str(p)
@@ -319,7 +319,7 @@ def rebuild_venv(python: str) -> Path:
     """Delete the dbt venv and recreate it from `python`. Everything installed in
     it (dbt-core, adapters) is gone afterwards — re-run global setup."""
     if is_own_venv():
-        raise RuntimeError("Refusing to rebuild the venv Wickd itself is running from.")
+        raise RuntimeError("Refusing to rebuild the venv wickd itself is running from.")
     venv_dir = _venv_dir()
     with _venv_lock:
         shutil.rmtree(venv_dir, ignore_errors=True)

@@ -67,13 +67,13 @@ Some views (e.g. the SidePane "SQL" action) open the SQL editor in a fullscreen 
 
 For models with `{{ ref() }}` and Jinja expressions, you can view the compiled SQL:
 - Click **Compile** (or the compiled SQL button) in the SidePane or editor toolbar
-- Wickd runs `dbt compile` for that specific model and shows the rendered SQL
+- wickd runs `dbt compile` for that specific model and shows the rendered SQL
 
 This is useful for debugging Jinja templating and verifying macro output without running a full build.
 
 ## File watcher integration
 
-Wickd watches your project directory for changes. If you edit files outside Wickd (e.g. in VS Code), the UI updates automatically:
+wickd watches your project directory for changes. If you edit files outside wickd (e.g. in VS Code), the UI updates automatically:
 - SQL/YAML changes trigger a `files_changed` event
 - Manifest changes (after a compile or run) trigger a `graph_changed` event and re-render the DAG
 

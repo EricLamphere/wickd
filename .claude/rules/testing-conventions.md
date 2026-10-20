@@ -1,4 +1,4 @@
-# Testing Conventions for Wickd
+# Testing Conventions for wickd
 
 ## Backend Test Setup
 

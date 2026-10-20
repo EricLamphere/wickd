@@ -1,4 +1,4 @@
-# Wickd
+# wickd
 
 Local web UI for managing dbt projects. No auth, single user, runs on localhost only.
 Backend on `:8001`, frontend on `:5173`.
@@ -44,7 +44,7 @@ backend/app/
     drift.py      — diff_columns() + is_eligible_for_drift_check() — column schema diff helpers
     probe.py      — probe_warehouse_columns() — a built node's real column names via `dbt show --inline`; shared by drift and the docs generator
     schema_yaml.py — document_node() — docs generator: adds `- name:` entries for a model/seed/snapshot + columns to its schema YAML (patch_path file → folder YAML with the resource key → new schema.yml). Never re-serialises: ruamel.yaml only locates line positions, new lines are spliced in matching the file's indent style, and the result is re-parsed and verified before writing
-    column_lineage.py — Wickd Pro feature (gated via app/licensing). Public shim only: defines the real, always-importable ColumnRef/LineageJob dataclasses (required at import time by api/column_lineage.py) and lazily delegates prepare_lineage_jobs()/trace_job()/trace_job_full() (projection lineage + row dependencies; falls back to no row deps on older Pro builds, see supports_row_dependencies())/build_column_lineage() to the private `wickd_pro` package (separate repo), raising ColumnLineageUnavailable if it isn't installed. The actual sqlglot-based tracing algorithm (case-insensitive matching, UNPIVOT stripping, etc.) lives in wickd-pro, not this repo.
+    column_lineage.py — wickd Pro feature (gated via app/licensing). Public shim only: defines the real, always-importable ColumnRef/LineageJob dataclasses (required at import time by api/column_lineage.py) and lazily delegates prepare_lineage_jobs()/trace_job()/trace_job_full() (projection lineage + row dependencies; falls back to no row deps on older Pro builds, see supports_row_dependencies())/build_column_lineage() to the private `wickd_pro` package (separate repo), raising ColumnLineageUnavailable if it isn't installed. The actual sqlglot-based tracing algorithm (case-insensitive matching, UNPIVOT stripping, etc.) lives in wickd-pro, not this repo.
   licensing/
     polar_client.py — thin async httpx client wrapping Polar's license-key validate/activate endpoints (sandbox or production per Settings.polar_use_sandbox)
     entitlements.py — check_entitlement() with 7-day grace-period cache (LicenseState) + 6h recheck interval; a definitive "not entitled" from Polar is always trusted immediately, bypassing the grace period
@@ -71,7 +71,7 @@ frontend/src/
     navHistoryContext.tsx — NavHistoryProvider (wraps the app inside BrowserRouter) + useNavHistory(); browser history is the source of truth (arrows call navigate(±n)); also binds ⌘[ / ⌘] or ⌘← / ⌘→ (not while typing) and mouse back/forward buttons
     useUrlTab.ts  — useUrlTab(param, allowed, fallback, rememberKey?) — in-page tab state in a URL search param so tab switches are history entries. Used by Health (?tab=, remembered per project), project home file tabs (?file=), Docs browse tabs (?browse=) and Docs node/project detail tabs (?view=). Side/bottom pane tabs deliberately stay local state
   components/
-    NavArrows.tsx — header back/forward buttons (right of the Wickd home link)
+    NavArrows.tsx — header back/forward buttons (right of the wickd home link)
   routes/
     Home.tsx      — Project list (respects WICKD_PROJECTS_PATH configured banner)
     Project/
@@ -397,7 +397,7 @@ task test            # pytest + tsc build
 task lint            # ruff check app tests
 task db:reset        # delete data/wickd.sqlite
 task package:app     # build + install the free desktop app (no wickd-pro, no .env needed)
-task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, then creates the GitHub release; also uploads Wickd_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)
+task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, then creates the GitHub release; also uploads wickd_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)
 ```
 
 Single test file: `cd backend && .venv/bin/pytest tests/test_x.py -xvs`

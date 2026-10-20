@@ -75,7 +75,7 @@ The page restores its state when you navigate away and return within the same br
 
 ## Limitations
 
-- Runs are recorded only while the Wickd server is running. Runs executed directly in the terminal (outside Wickd) are not recorded.
+- Runs are recorded only while the wickd server is running. Runs executed directly in the terminal (outside wickd) are not recorded.
 - A maximum of 1,000 invocations are stored per project. Older entries are retained until the limit is reached.
-- Log capture is only available for runs triggered through Wickd. If a run was recorded before log capture was introduced, the Log tab will show "No log captured for this invocation."
+- Log capture is only available for runs triggered through wickd. If a run was recorded before log capture was introduced, the Log tab will show "No log captured for this invocation."
 - The per-node trend sparkline covers the last 20 runs in which that specific node appeared, not the last 20 project runs.

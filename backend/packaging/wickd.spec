@@ -1,4 +1,4 @@
-# PyInstaller spec for the Wickd backend, bundled as a Tauri resource.
+# PyInstaller spec for the wickd backend, bundled as a Tauri resource.
 #
 # Build with:
 #   cd backend && .venv/bin/pyinstaller packaging/wickd.spec --distpath dist --workpath build --noconfirm

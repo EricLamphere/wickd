@@ -1,6 +1,6 @@
 # How-To Guides
 
-Step-by-step guides for using Wickd.
+Step-by-step guides for using wickd.
 
 | Guide | What it covers |
 |---|---|

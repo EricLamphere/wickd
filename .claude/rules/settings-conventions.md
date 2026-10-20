@@ -1,4 +1,4 @@
-# Settings Conventions for Wickd
+# Settings Conventions for wickd
 
 ## Where Settings Live in the UI
 

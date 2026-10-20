@@ -1,6 +1,6 @@
 # Related Repositories
 
-Wickd spans three separate git repositories on disk, each with a distinct
+wickd spans three separate git repositories on disk, each with a distinct
 purpose and audience. Claude should know which repo owns what before making
 changes that might actually belong in a sibling repo.
 
@@ -11,7 +11,7 @@ changes that might actually belong in a sibling repo.
   lamphere-labs/     private — marketing site (lampherelabs.com), Cloudflare Pages
 ```
 
-## Wickd (this repo) — public product
+## wickd (this repo) — public product
 
 FastAPI + React app described in the rest of this `.claude/` tree. Free and
 open source. Ships as a Tauri desktop app or runs from source.
@@ -40,7 +40,7 @@ package or git submodule.
   tests run against sqlglot 30.18 in its own venv, but the shipped app uses
   the backend venv's sqlglot (30.20 at time of writing), and sqlglot renames
   internals between minor versions, so run its tests under both.
-- Depends on Wickd's backend at dev time for the shared `ColumnRef`/
+- Depends on wickd's backend at dev time for the shared `ColumnRef`/
   `LineageJob` types (`pip install -e ../wickd/backend` before installing
   `wickd-pro` itself — see `wickd-pro/pyproject.toml`'s comment on why this
   isn't a normal package dependency: pip requires an absolute `file://` path
@@ -48,7 +48,7 @@ package or git submodule.
 - For day-to-day development, `task start:pro` runs the dev servers with the
   live checkout on `PYTHONPATH` (nothing installed; uvicorn reloads on edits in
   either repo). It takes precedence over any copy `task package:pro` installed.
-- Installed into Wickd's **shared backend venv** via `task package:pro`
+- Installed into wickd's **shared backend venv** via `task package:pro`
   (plain `pip install`, deliberately **not** `-e`/editable — PyInstaller's
   static analysis can't see through an editable install's import-finder
   indirection, so an editable install silently produces a build missing
@@ -68,7 +68,7 @@ Static site (plain HTML/CSS/JS, no build step, no framework) for
 lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
 `main` → live in ~1-2 minutes, no CI/CD workflow file).
 
-- `tools/wickd/index.html` is Wickd's product page
+- `tools/wickd/index.html` is wickd's product page
   (lampherelabs.com/tools/wickd) — hero shots, feature grid, screenshot
   gallery with a click-to-enlarge/arrow-key-navigable lightbox, pricing,
   install steps.

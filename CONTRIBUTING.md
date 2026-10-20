@@ -1,6 +1,6 @@
-# Contributing to Wickd
+# Contributing to wickd
 
-Thanks for helping out. This guide covers setting up a dev environment, the project's conventions, and how the desktop app is built and released. For what Wickd is and how to download it, see the [README](README.md).
+Thanks for helping out. This guide covers setting up a dev environment, the project's conventions, and how the desktop app is built and released. For what wickd is and how to download it, see the [README](README.md).
 
 ## Getting set up
 
@@ -67,7 +67,7 @@ The rules that matter most:
 | `POLAR_SANDBOX_CHECKOUT_URL` / `POLAR_PRODUCTION_CHECKOUT_URL` | _(none)_ | Checkout link behind the in-app **Upgrade to Pro** button |
 | `POLAR_SANDBOX_ORGANIZATION_SLUG` / `POLAR_PRODUCTION_ORGANIZATION_SLUG` | `lamphere-labs` | Builds the Polar customer portal link (`https://[sandbox.]polar.sh/<slug>/portal`) shown for lost license keys and device seats; set to empty to hide it |
 
-You don't need any of the Polar variables to work on Wickd. Without them, Pro features simply stay locked.
+You don't need any of the Polar variables to work on wickd. Without them, Pro features simply stay locked.
 
 Per-project settings are stored in `project_env_vars` and injected into every dbt subprocess:
 
@@ -79,7 +79,7 @@ Per-project settings are stored in `project_env_vars` and injected into every db
 | `dbt_target` | Target dropdown | Active dbt target, passed as `--target` on every invocation | _(profiles.yml default)_ |
 | _(any key)_ | Init scripts | Any `export KEY=value` in a custom init script is captured automatically | — |
 
-## Wickd Pro and the open-core split
+## wickd Pro and the open-core split
 
 Pro features (currently column-level lineage) are gated by a license check in this repo, but the actual lineage algorithm lives in a separate private package, `wickd-pro`. `backend/app/dbt/column_lineage.py` is a thin public shim that raises `ColumnLineageUnavailable` when the package isn't installed.
 
@@ -96,11 +96,11 @@ The desktop app is a Tauri shell around the PyInstaller-bundled backend and the 
 | `task package:sandbox:pro` | Pro features, Polar sandbox | Maintainers (needs `wickd-pro` + `backend/.env.sandbox`) |
 | `task package:production` | Pro features, Polar production | Maintainers — the real release build |
 
-Each one builds the app and installs it to `/Applications/Wickd.app`. The build output (`.app` and `.dmg`) lands in `src-tauri/target/release/bundle/`. Local builds are ad-hoc signed, which is fine for running on your own Mac.
+Each one builds the app and installs it to `/Applications/wickd.app`. The build output (`.app` and `.dmg`) lands in `src-tauri/target/release/bundle/`. Local builds are ad-hoc signed, which is fine for running on your own Mac.
 
 The app icon's source is `src-tauri/icons/icon.svg`. After editing it, regenerate the bundled sizes with `cargo tauri icon src-tauri/icons/icon.svg -o /tmp/wickd-icons` and copy `32x32.png`, `128x128.png`, `128x128@2x.png` and `icon.icns` into `src-tauri/icons/` (the only files `tauri.conf.json` uses).
 
-Inside the app (header, loading screen, setup wizard) and in browser tabs, Wickd uses the *mark*: the icon's flame without the tile, from `frontend/public/` — `wickd-mark.svg` for dark backgrounds, `wickd-mark-light.svg` for light ones (`components/WickdIcon.tsx` picks by theme), and `favicon.svg`, which switches between the two with `prefers-color-scheme`. Keep them in sync with `icon.svg` when the flame changes; the lamphere-labs site uses copies of the same three files in `assets/img/`.
+Inside the app (header, loading screen, setup wizard) and in browser tabs, wickd uses the *mark*: the icon's flame without the tile, from `frontend/public/` — `wickd-mark.svg` for dark backgrounds, `wickd-mark-light.svg` for light ones (`components/WickdIcon.tsx` picks by theme), and `favicon.svg`, which switches between the two with `prefers-color-scheme`. Keep them in sync with `icon.svg` when the flame changes; the lamphere-labs site uses copies of the same three files in `assets/img/`.
 
 ## Releasing (maintainers)
 
@@ -109,7 +109,7 @@ Releases are Developer ID signed and notarized by Apple.
 1. Put your Apple credentials in `.env.signing` (gitignored; copy `.env.signing.example`). You need a **Developer ID Application** certificate in your keychain and an app-specific password.
 2. Run `/release` in Claude Code, which bumps the version everywhere and runs the release, or bump the version yourself and run `task release`.
 
-`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, and creates GitHub release `v<version>`. It uploads the `.dmg` twice: with its versioned name, and as `Wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
+`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, and creates GitHub release `v<version>`. It uploads the `.dmg` twice: with its versioned name, and as `wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
 
 ## Submitting changes
 

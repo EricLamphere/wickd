@@ -1,10 +1,10 @@
 ---
 name: new-endpoint
-description: Scaffold a new FastAPI endpoint for Wickd — creates the router function, Pydantic DTOs, migration (if needed), and api.ts typed helper following project conventions.
+description: Scaffold a new FastAPI endpoint for wickd — creates the router function, Pydantic DTOs, migration (if needed), and api.ts typed helper following project conventions.
 argument-hint: "<METHOD> <path> — <what it does>"
 ---
 
-You are scaffolding a new FastAPI endpoint in the Wickd project. Follow these steps precisely.
+You are scaffolding a new FastAPI endpoint in the wickd project. Follow these steps precisely.
 
 ## Parse the Arguments
 

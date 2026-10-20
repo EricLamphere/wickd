@@ -9,7 +9,7 @@ background asyncio.Task that fans work out across a ProcessPoolExecutor, and
 progress/completion are observable both via polling GET and via SSE events on
 the bus.
 
-Column-level lineage is a Wickd Pro feature (see app/licensing/): the real
+Column-level lineage is a wickd Pro feature (see app/licensing/): the real
 tracing algorithm lives in the private wickd_pro package, not this repo.
 These tests don't need it installed — `_entitled` below forces
 check_entitlement() to report entitled for every test in this file (a

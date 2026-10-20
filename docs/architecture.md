@@ -1,6 +1,6 @@
-# Wickd Architecture
+# wickd Architecture
 
-Wickd is a local-first web UI that wraps dbt-core. It runs as a local dev server pair (FastAPI + Vite), discovers dbt projects from a configured workspace directory, and provides a live-updating DAG view with run/build/test controls, an integrated terminal, an in-browser SQL editor, a PTY-backed `dbt init` terminal, and a native docs browser.
+wickd is a local-first web UI that wraps dbt-core. It runs as a local dev server pair (FastAPI + Vite), discovers dbt projects from a configured workspace directory, and provides a live-updating DAG view with run/build/test controls, an integrated terminal, an in-browser SQL editor, a PTY-backed `dbt init` terminal, and a native docs browser.
 
 ---
 
@@ -626,9 +626,9 @@ It's shown in two places: `SidePane/ImpactSummary.tsx` (a card in PropertiesTab,
 5. Publishes `docs_generated {ok, generated_at}`
 6. Frontend invalidates `['docs-status', projectId]`; the native docs browser (`Docs.tsx`) re-fetches `GET /api/projects/{id}/docs/data`
 
-### 10. Column-Level Lineage (Wickd Pro)
+### 10. Column-Level Lineage (wickd Pro)
 
-Column-level lineage is the first paid ("Pro") feature — all three routes (`start`, latest, and by-snapshot-id) call `_require_pro(session)` (`api/column_lineage.py`), which raises `403 {"error": "pro_feature_required", "reason": <Entitlement.reason>}` when `entitlements.check_entitlement()` returns not-entitled. Both GET routes are gated too, not just `start`, because an already-computed snapshot persists in the DB indefinitely and would otherwise keep serving results forever after a subscription lapses. See "Licensing (Wickd Pro)" below for the entitlement system itself.
+Column-level lineage is the first paid ("Pro") feature — all three routes (`start`, latest, and by-snapshot-id) call `_require_pro(session)` (`api/column_lineage.py`), which raises `403 {"error": "pro_feature_required", "reason": <Entitlement.reason>}` when `entitlements.check_entitlement()` returns not-entitled. Both GET routes are gated too, not just `start`, because an already-computed snapshot persists in the DB indefinitely and would otherwise keep serving results forever after a subscription lapses. See "Licensing (wickd Pro)" below for the entitlement system itself.
 
 **Open-core split:** the actual sqlglot-based tracing algorithm (`prepare_lineage_jobs`, `trace_job`, `build_column_lineage`, and their private helpers) lives in a separate private repo, `wickd-pro` (not in this repo) — all licensing/entitlement enforcement stays in this public repo, since that code must run inside the distributed app regardless of who can read the source. `backend/app/dbt/column_lineage.py` in *this* repo is a thin public shim: it defines the real, always-importable `ColumnRef`/`LineageJob` dataclasses (required at server-startup import time by `api/column_lineage.py`, so they can't be `TYPE_CHECKING`-only) and lazily imports `wickd_pro.column_lineage` inside each function, raising `ColumnLineageUnavailable` if the private package isn't installed. The public repo therefore builds and runs completely standalone for contributors; only maintainer/release builds of the packaged desktop app install `wickd-pro`: run `task package:pro` (installs `wickd-pro` from a sibling checkout — a plain, non-editable install, since PyInstaller can't see through an editable install) before a Pro build (`task package:sandbox:pro` / `task package:production`); contributors build the free app with `task package:app`. `packaging/wickd.spec` detects whether `wickd_pro` is importable at build time (`importlib.util.find_spec`) and only adds it to PyInstaller's `hiddenimports` when present — required because it's imported lazily at call time, which PyInstaller's static analysis can't discover on its own. Skipping `package:pro` produces a normal public build with lineage unavailable; nothing else in the packaging flow changes.
 
@@ -657,7 +657,7 @@ In the frontend (`Models.tsx`):
 - Highlighted `{node, column}` pairs are passed as props into each `ModelNode`; nodes and edges outside the trace are dimmed
 - None of this blocks other queries/interactions — the scan runs fully server-side in background worker processes; the frontend only ever does small polling GETs and SSE-driven invalidation.
 
-### 10a. Licensing (Wickd Pro entitlement)
+### 10a. Licensing (wickd Pro entitlement)
 
 Entitlement resolution (`app/licensing/entitlements.py`) wraps a thin async Polar client (`app/licensing/polar_client.py`, `httpx`-based) with a persistent grace-period cache (`license_state` table, single row, id=1) so Pro features keep working through brief offline periods:
 

@@ -131,7 +131,7 @@ async def generate_documentation(
     missing = [c for c in columns if overwrite or c.lower() not in existing.columns]
     if not missing and existing.node and not overwrite:
         raise NothingToDocument(
-            "Everything already has a description. Turn on “Replace existing” to rewrite them."
+            "Everything already has a description. Choose “Rewrite all” to replace them."
         )
     asked = missing[:MAX_AI_COLUMNS]
     prompt = pro.documentation_prompt(manifest, unique_id, asked)
@@ -163,7 +163,7 @@ async def generate_documentation(
     if changes.text == (plan.original or ""):
         raise NothingToDocument(
             "Everything already has a description."
-            + ("" if overwrite else " Turn on “Replace existing” to rewrite them.")
+            + ("" if overwrite else " Choose “Rewrite all” to replace them.")
         )
     described = {c.lower() for c in changes.columns}
     summary = {

@@ -240,9 +240,9 @@ async def test_document_from_chat_stays_in_history(client, db_session, entitled,
     await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/files/{fid}/accept")
 
     detail = (await client.get(f"/api/projects/{pid}/ai/conversations/{cid}")).json()
-    assert detail["title"] == "Document orders (replace existing)"
+    assert detail["title"] == "Document orders (rewrite all)"
     [action] = detail["messages"]
-    assert action["role"] == "action" and action["content"] == "Document orders (replace existing)"
+    assert action["role"] == "action" and action["content"] == "Document orders (rewrite all)"
     assert action["proposal"]["status"] == "applied"
     assert action["proposal"]["result"]["columns"] == {"id": "Order key."}
 

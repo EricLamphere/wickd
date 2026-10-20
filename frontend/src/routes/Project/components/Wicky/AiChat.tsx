@@ -36,6 +36,8 @@ interface Pending {
   answer: string;
   /** what's being waited for before any text arrives */
   waiting: string;
+  /** a streamed answer can be stopped; writing a query can't */
+  stoppable: boolean;
 }
 
 /** Ask = answers from the project's code and docs; Query = Wicky writes SQL you run. */
@@ -88,7 +90,7 @@ export function AiChat({
     start: (conversationId: number, handlers: AskHandlers) => Promise<AskResult>,
   ) => {
     setError(null);
-    setPending({ question, answer: '', waiting: 'Thinking…' });
+    setPending({ question, answer: '', waiting: 'Thinking…', stoppable: true });
     const controller = new AbortController();
     abortRef.current = controller;
     let id: number | null = null;
@@ -114,7 +116,7 @@ export function AiChat({
   /** Query mode: Wicky writes the SQL; it shows up in the chat for you to review and run. */
   const writeQuery = async (question: string) => {
     setError(null);
-    setPending({ question, answer: '', waiting: 'Writing a query…' });
+    setPending({ question, answer: '', waiting: 'Writing a query…', stoppable: false });
     try {
       const id = await ensureConversation();
       await aiApi.writeQuery(projectId, id, { content: question, unique_id: model?.unique_id ?? null });
@@ -260,10 +262,18 @@ export function AiChat({
             placeholder={chatMode === 'query' ? 'Ask a question about your data…' : 'Ask Wicky…'}
             className="flex-1 resize-none px-2 py-1.5 rounded bg-surface-elevated border border-gray-700 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
           />
-          {pending ? (
-            <button onClick={() => abortRef.current?.abort()} className="p-2 rounded text-gray-400 hover:text-gray-200" title="Stop">
-              <Square size={14} />
+          {pending?.stoppable ? (
+            <button
+              onClick={() => abortRef.current?.abort()}
+              className="flex items-center justify-center w-7 h-7 mb-0.5 rounded-full bg-gray-700 text-gray-100 hover:bg-gray-600"
+              title="Stop generating"
+            >
+              <Square size={10} fill="currentColor" />
             </button>
+          ) : pending ? (
+            <span className="p-2 text-brand-300" title={pending.waiting}>
+              <Loader2 size={14} className="animate-spin" />
+            </span>
           ) : (
             <button onClick={() => send(input)} disabled={!input.trim()} className="p-2 rounded text-brand-300 hover:text-brand-200 disabled:opacity-30" title="Send (Enter)">
               <Send size={14} />

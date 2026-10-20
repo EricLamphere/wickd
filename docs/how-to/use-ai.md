@@ -24,11 +24,11 @@ Wicky follows what you have selected: pick a node in the DAG, open a model's fil
 ## Document a model
 
 1. Select a model, seed or snapshot and open Wicky.
-2. Under **Quick actions**, click **Document**. Leave **Replace existing** off to fill in only missing descriptions; turn it on to rewrite them all.
+2. Under **Quick actions**, click **Document**, then choose **Fill in missing** (only the model and columns without a description) or **Rewrite all** (replace existing descriptions too).
 3. Watch the descriptions being written in the chat. When they're done (usually under a minute), click **Review** in that message to see a side-by-side diff of the schema YAML.
 4. Accept or reject each description from the list on the left (click one to jump to it in the diff), or use **Accept all**. The file is written once everything is decided, and the model recompiles so docs update. **Reject** discards it. With several files, use **Next file**.
 
-Wicky reads the model's real columns from the warehouse when it's built, and otherwise uses the columns your project already knows about. Without **Replace existing**, Wicky only writes descriptions for columns that don't have one yet; if everything is already described, it says so straight away. If the YAML file changed after the docs were generated, accepting is refused so your edits aren't lost; generate again.
+Wicky reads the model's real columns from the warehouse when it's built, and otherwise uses the columns your project already knows about. With **Fill in missing**, Wicky only writes descriptions for columns that don't have one yet; if everything is already described, it says so straight away. If the YAML file changed after the docs were generated, accepting is refused so your edits aren't lost; generate again.
 
 ## Add tests
 

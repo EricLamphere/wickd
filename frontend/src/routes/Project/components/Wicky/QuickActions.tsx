@@ -19,6 +19,19 @@ interface QuickActionsProps {
 
 type ProposalKind = 'document' | 'tests';
 
+const DOCUMENT_OPTIONS = [
+  {
+    overwrite: false,
+    label: 'Fill in missing',
+    description: 'Only describe the model and columns that don\u2019t have a description yet. Existing descriptions stay as they are.',
+  },
+  {
+    overwrite: true,
+    label: 'Rewrite all',
+    description: 'Write new descriptions for everything, replacing existing ones. You\u2019ll review every change before it\u2019s saved.',
+  },
+] as const;
+
 const BUTTON = 'flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-elevated border border-gray-700 text-gray-200 hover:bg-gray-700 disabled:opacity-50';
 
 /** One-click Wicky actions for the selected node. Results appear in the chat below. */
@@ -26,7 +39,7 @@ export function QuickActions({
   projectId, model, proposals, ensureConversation, failing, onExplainFailure,
 }: QuickActionsProps) {
   const qc = useQueryClient();
-  const [overwrite, setOverwrite] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [starting, setStarting] = useState<ProposalKind | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +47,8 @@ export function QuickActions({
     (p) => p.kind === kind && p.unique_id === model.unique_id && p.status === 'generating',
   );
 
-  const run = async (kind: ProposalKind) => {
+  const run = async (kind: ProposalKind, overwrite = false) => {
+    setChoosing(false);
     setStarting(kind);
     setError(null);
     try {
@@ -70,7 +84,7 @@ export function QuickActions({
         {editable && (
           <>
             <button
-              onClick={() => run('document')}
+              onClick={() => setChoosing((v) => !v)}
               disabled={busy('document')}
               title="Write descriptions for this node and its columns; review them before anything is saved"
               className={BUTTON}
@@ -90,11 +104,27 @@ export function QuickActions({
           </>
         )}
       </div>
-      {editable && (
-        <label className="flex items-center gap-1 text-gray-500 cursor-pointer self-start">
-          <input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} />
-          Document: replace existing descriptions
-        </label>
+      {choosing && (
+        <div
+          className="flex flex-col gap-1.5 p-2 rounded border border-gray-700 bg-surface-elevated/60"
+          onKeyDown={(e) => { if (e.key === 'Escape') setChoosing(false); }}
+        >
+          <span className="text-gray-400">What should Wicky document?</span>
+          {DOCUMENT_OPTIONS.map((option, i) => (
+            <button
+              key={option.label}
+              autoFocus={i === 0}
+              onClick={() => run('document', option.overwrite)}
+              className="flex flex-col items-start gap-0.5 px-2.5 py-1.5 rounded border border-gray-700 text-left hover:border-brand-600 hover:bg-gray-800 focus:outline-none focus:border-brand-500"
+            >
+              <span className="font-medium text-gray-200">{option.label}</span>
+              <span className="text-gray-500">{option.description}</span>
+            </button>
+          ))}
+          <button onClick={() => setChoosing(false)} className="self-end px-2 py-0.5 text-gray-500 hover:text-gray-300">
+            Cancel
+          </button>
+        </div>
       )}
       {error && <span className="text-red-400 break-words">{error}</span>}
     </div>

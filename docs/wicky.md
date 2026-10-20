@@ -39,7 +39,7 @@ Switch the chat box to **Query data** and ask about the data itself. Two fixed s
 | Action | What happens |
 |---|---|
 | **Explain failure** | Shown when the node or one of its tests failed in the latest run. Wicky reads the error, the test's SQL and a few failing rows, then explains what failed, the likely cause and how to fix it. |
-| **Document** | Writes the model and column descriptions that are missing (or all of them, with *Replace existing*). |
+| **Document** | Writes the model and column descriptions that are missing (or rewrites all of them, if you choose *Rewrite all*). |
 | **Add tests** | Suggests generic tests (`unique`, `not_null`, `accepted_values`, `relationships`), checks each one against the warehouse, and shows which pass today. |
 
 Document and Add tests produce a **proposal**: a diff of your schema YAML. In the review window
@@ -86,7 +86,7 @@ re-running those tests with `dbt show`.
 ### Document
 About 7,000 tokens of node context, plus the list of columns to describe. Column names come from
 the warehouse (`dbt show --limit 1`; only the names are used) or, if the model isn't built, from
-your YAML and `catalog.json`. Up to 150 columns per request; without *Replace existing*, only
+your YAML and `catalog.json`. Up to 150 columns per request; with *Fill in missing*, only
 columns that have no description are sent.
 
 ### Add tests

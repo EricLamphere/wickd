@@ -96,7 +96,7 @@ async def document_with_ai(
         session, project_id, dto.unique_id, dto.conversation_id,
         kind="document",
         title=f"Documentation for {name}",
-        action=f"Document {name}" + (" (replace existing)" if dto.overwrite else ""),
+        action=f"Document {name}" + (" (rewrite all)" if dto.overwrite else ""),
         options={"overwrite": dto.overwrite},
     )
 

@@ -6,6 +6,7 @@ import NavRail from './components/NavRail';
 import { api, ModelTimingDto, NodeTrendPoint, RunInvocationDetailDto, RunInvocationDto } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
 import { DataTable } from '../../components/DataTable';
+import { CommandBadge } from './components/CommandBadge';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE, useOpenInFiles } from './lib/openInFiles';
 
 type FileNav = ReturnType<typeof useOpenInFiles>;
@@ -46,22 +47,6 @@ function formatTime(iso: string | null): string {
     month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
-}
-
-const CMD_COLORS: Record<string, string> = {
-  run:   'cmd-badge-run',
-  build: 'cmd-badge-build',
-  test:  'cmd-badge-test',
-  seed:  'cmd-badge-seed',
-};
-
-function CommandBadge({ command }: { command: string }) {
-  const cls = CMD_COLORS[command] ?? 'text-gray-300 bg-surface-elevated';
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium ${cls}`}>
-      {command}
-    </span>
-  );
 }
 
 // ── Sparkline ────────────────────────────────────────────────────────────────

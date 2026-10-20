@@ -19,7 +19,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { api, type Project } from '../lib/api';
+import { api, type Project, type ProjectSummary } from '../lib/api';
 import NewProjectModal from './Project/components/NewProjectModal';
 import { GlobalSettingsModal } from '../components/GlobalSettingsModal';
 import { HomeCommandPalette } from '../components/HomeCommandPalette';
@@ -97,6 +97,20 @@ function CountChip({ label, count }: { label: string; count: number }) {
   );
 }
 
+// ── Project summaries ─────────────────────────────────────────────────────────
+
+const SUMMARIES_KEY = ['project-summaries'] as const;
+const EMPTY_COUNTS = { models: 0, sources: 0, seeds: 0, tests: 0 };
+
+/** One request for every card's node counts + latest run (per-card fetches queue behind the browser's connection cap). */
+function useProjectSummaries<T>(select: (all: ProjectSummary[]) => T) {
+  return useQuery({
+    queryKey: SUMMARIES_KEY,
+    queryFn: api.projects.summaries,
+    select,
+  }).data;
+}
+
 // ── Project card ──────────────────────────────────────────────────────────────
 
 interface ProjectCardProps {
@@ -116,28 +130,10 @@ interface ProjectCardProps {
 function ProjectCard({ project, focused, shortcutKey, cardRef, onClick, onContextMenu, onFocus, onKeyDown, dragStyle, dragHandleProps, extraClassName }: ProjectCardProps) {
   const meta = platformMeta(project.platform);
 
-  const { data: history } = useQuery({
-    queryKey: ['run-history-latest', project.id],
-    queryFn: () => api.runHistory.list(project.id, { limit: 1 }),
-    staleTime: 60_000,
-  });
-
-  const { data: graph } = useQuery({
-    queryKey: ['graph', project.id],
-    queryFn: () => api.models.graph(project.id),
-    staleTime: 5 * 60_000,
-  });
-
-  const latest = history?.items[0];
-
-  const counts = graph
-    ? {
-        models:  graph.nodes.filter((n: { resource_type: string }) => n.resource_type === 'model').length,
-        sources: graph.nodes.filter((n: { resource_type: string }) => n.resource_type === 'source').length,
-        seeds:   graph.nodes.filter((n: { resource_type: string }) => n.resource_type === 'seed').length,
-        tests:   graph.nodes.filter((n: { resource_type: string }) => n.resource_type === 'test').length,
-      }
-    : null;
+  const summary = useProjectSummaries((all) => all.find((x) => x.project_id === project.id));
+  const latest = summary?.latest_run ?? null;
+  // A project that has never been compiled has no manifest — show zeros, not "loading…".
+  const counts = summary === undefined ? null : summary.counts ?? EMPTY_COUNTS;
 
   return (
     <button
@@ -471,32 +467,18 @@ export default function Home() {
     enabled: isConfigured,
   });
 
-  // Most recent run across all projects for the stats bar
-  const { data: lastRunAt = null } = useQuery({
-    queryKey: ['run-history-all-recent', projects.map((p) => p.id).join(',')],
-    queryFn: async () => {
-      const results = await Promise.all(
-        projects.slice(0, 10).map((p) => api.runHistory.list(p.id, { limit: 1 }))
-      );
-      const items = results.flatMap((r) => r.items);
-      items.sort((a, b) => {
-        const ta = a.finished_at ? new Date(a.finished_at).getTime() : 0;
-        const tb = b.finished_at ? new Date(b.finished_at).getTime() : 0;
-        return tb - ta;
-      });
-      return items[0]?.finished_at ?? null;
-    },
-    enabled: isConfigured && projects.length > 0,
-    staleTime: 60_000,
-  });
+  const summaries = useProjectSummaries((all) => all);
 
-  // Model counts for sort-by-models (pulled from cached graph queries)
+  // Most recent run across all projects for the stats bar
+  const lastRunAt = (summaries ?? []).reduce<string | null>((best, sm) => {
+    const t = sm.latest_run?.finished_at ?? null;
+    if (!t) return best;
+    return !best || new Date(t).getTime() > new Date(best).getTime() ? t : best;
+  }, null);
+
+  // Model counts for sort-by-models
   const modelCounts = new Map<number, number>(
-    projects.map((p) => {
-      const graph = qc.getQueryData<{ nodes: { resource_type: string }[] }>(['graph', p.id]);
-      const count = graph?.nodes.filter((n) => n.resource_type === 'model').length ?? 0;
-      return [p.id, count];
-    })
+    (summaries ?? []).map((sm) => [sm.project_id, sm.counts?.models ?? 0]),
   );
 
   useEffect(() => {
@@ -555,6 +537,7 @@ export default function Home() {
   const handleRescan = async () => {
     await api.projects.rescan();
     qc.invalidateQueries({ queryKey: ['projects'] });
+    qc.invalidateQueries({ queryKey: SUMMARIES_KEY });
   };
 
   const handleIgnore = useCallback(async (id: number, ignored: boolean) => {

@@ -85,6 +85,12 @@ export interface RunResponseDto {
   select: string | null;
 }
 
+export interface ProjectSummary {
+  project_id: number;
+  counts: { models: number; sources: number; seeds: number; tests: number } | null;
+  latest_run: { status: string; finished_at: string | null } | null;
+}
+
 export interface Project {
   id: number;
   name: string;
@@ -635,6 +641,7 @@ export const api = {
   projects: {
     list: () => get<Project[]>('/projects'),
     get: (id: number) => get<Project>(`/projects/${id}`),
+    summaries: () => get<ProjectSummary[]>('/projects/summaries'),
     rescan: () => post<Project[]>('/projects/rescan'),
     listApplications: () => get<string[]>('/projects/applications'),
     openInApp: (appName: string, path: string) =>

@@ -56,6 +56,7 @@ backend/app/
   projects/
     discovery.py  — Walk workspace for dbt_project.yml
     service.py    — Upsert projects to DB; _effective_workspace() for WICKD_PROJECTS_PATH
+    summary.py    — manifest_node_counts() for GET /projects/summaries (home page cards: one request for all projects; cached by manifest mtime/size)
   git/
     runner.py     — GitRunner singleton; subprocess + serialization lock per project; stream() publishes git_started/git_log/git_finished
     repo.py       — find_repo_root() walks upward for .git/; parse_porcelain_v2() parses git status --porcelain=v2 -z; parse_name_status_z() parses git diff --name-status -z

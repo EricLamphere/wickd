@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from sqlalchemy import select
@@ -27,7 +28,8 @@ async def rescan_projects(session: AsyncSession) -> list[Project]:
     workspace = await _effective_workspace(session)
     if workspace is None:
         return await list_projects(session)
-    discovered: list[DiscoveredProject] = discover_projects(workspace)
+    # Walking the workspace is blocking filesystem I/O — keep it off the event loop.
+    discovered: list[DiscoveredProject] = await asyncio.to_thread(discover_projects, workspace)
     existing = await list_projects(session)
     by_path = {p.path: p for p in existing}
 

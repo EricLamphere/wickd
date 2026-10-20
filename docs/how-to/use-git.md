@@ -6,7 +6,7 @@ wickd includes a VSCode-style Source Control panel for the active dbt project. I
 
 Click **Source Control** in the left rail of any project page. The panel loads the current branch, ahead/behind counts, and the list of changed files.
 
-Like VS Code, the panel is a stack of collapsible sections: **Changes** (expanded), **Impact** (expanded) and **Commit History** (collapsed), with the branch/commit/push box always at the bottom. Click a section header to collapse or expand it; wickd remembers your choice.
+Like VS Code, the commit message box and **Commit** button sit at the top, the branch chip and push/pull button sit in the **Source Control** title row, and below them is a stack of collapsible sections: **Changes** (expanded), **Impact** (expanded) and **Commit History** (collapsed). While **Changes** is expanded it fills the free space, so the other sections sit at the bottom of the panel. Click a section header to collapse or expand it; wickd remembers your choice.
 
 If the project is not inside a git repository, the panel shows "Not a git repository" with no file list.
 
@@ -38,11 +38,11 @@ The **+** button in a section header stages / unstages all files in that group.
 
 ## Committing
 
-Type a commit message in the text area at the bottom of the changes panel. Press **⌘↵** (or **Ctrl↵**) or click the **Commit** button to commit staged files. The button shows the number of staged files.
+Type a commit message in the box at the top of the changes panel (it starts one line tall and grows as you type). Press **⌘↵** (or **Ctrl↵**) or click the **Commit** button to commit staged files. The button shows the number of staged files.
 
 ## Push and Pull
 
-The **push / pull** icon button appears next to the branch chip. It pushes if you are ahead of the upstream, or pulls if you are behind. Output streams live into a log area above the commit message box.
+The **push / pull** icon button appears next to the branch chip in the title row. It pushes if you are ahead of the upstream, or pulls if you are behind. Output streams live into a log area below the **Commit** button.
 
 Authentication uses your existing `~/.gitconfig` credential helper or SSH agent — no credentials are entered in wickd. If auth fails, fix your credential helper externally and retry.
 
@@ -56,7 +56,7 @@ Click the **branch chip** (showing the current branch name) to open the branch p
 
 ## Commit History
 
-Expand the **Commit History** section (collapsed by default) to see the commit log. The log shows the 200 most recent commits (hash, author, date, message) and refreshes after commits, pulls and branch switches. While a file is selected, an **All / <file>** toggle lets you narrow the log to commits that touched that file (it defaults to All). Drag the top edge of the Commit History section to resize it (double-click to reset); the size and open state are remembered.
+Expand the **Commit History** section (collapsed by default) to see the commit log. The log shows the 200 most recent commits (hash, author, date, message) and refreshes after commits, pulls and branch switches. While a file is selected, an **All / <file>** toggle lets you narrow the log to commits that touched that file (it defaults to All). When expanded, Commit History fills the rest of the panel (split evenly with **Changes** if both are open); its open state is remembered.
 
 ## Impact of Your Changes
 

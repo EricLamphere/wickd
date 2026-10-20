@@ -8,6 +8,7 @@ import { useReportSelectedNode } from '../lib/selectedNodeContext';
 import { nodeForRepoPath } from '../lib/nodeForPath';
 import { ChangesList } from './components/ChangesList';
 import { CommitBox } from './components/CommitBox';
+import { BranchControls } from './components/BranchControls';
 import { ImpactSection } from './components/ImpactSection';
 import { PaneSectionHeader, usePersistedOpen } from './components/PaneSection';
 import { DiffView } from './components/DiffView';
@@ -34,7 +35,8 @@ export default function GitPage() {
   const [selectedPath, setSelectedPath] = useState<string | null>(
     () => sessionStorage.getItem(SESSION_KEY)
   );
-  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  // chip rect the branch picker anchors to; null = closed
+  const [branchAnchor, setBranchAnchor] = useState<DOMRect | null>(null);
   const [discardConfirm, setDiscardConfirm] = useState<string[] | null>(null);
   const [deleteNewConfirm, setDeleteNewConfirm] = useState<string[] | null>(null);
   const [syncOutput, setSyncOutput] = useState<string[]>([]);
@@ -195,10 +197,20 @@ export default function GitPage() {
         style={{ width: changesWidth }}
         className="shrink-0 flex flex-col bg-surface-panel border-r border-zinc-800 overflow-hidden"
       >
-        <div className="px-3 py-2 shrink-0">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+        <div className="flex items-center justify-between gap-2 h-9 pl-3 pr-2 shrink-0">
+          <h2 className="shrink-0 text-xs font-semibold uppercase tracking-widest text-zinc-400">
             Source Control
           </h2>
+          {status && (
+            <BranchControls
+              projectId={id}
+              currentBranch={branch?.name ?? null}
+              ahead={branch?.ahead ?? 0}
+              behind={branch?.behind ?? 0}
+              onBranchClick={(anchor) => setBranchAnchor((a) => (a ? null : anchor))}
+              syncing={syncing}
+            />
+          )}
         </div>
 
         {/* Not a git repo */}
@@ -218,11 +230,13 @@ export default function GitPage() {
 
         {status && (
           <>
-            {/* VS Code-style stacked sections; the commit box stays pinned at the bottom */}
+            {/* VS Code-style: commit input on top, then stacked collapsible sections */}
+            <CommitBox projectId={id} stagedCount={stagedCount} syncOutput={syncOutput} />
+
             <PaneSectionHeader title="Changes" open={changesOpen} onToggle={toggleChanges} count={changes.length} />
-            {/* natural height; shrinks and scrolls once the list outgrows the panel */}
+            {/* fills the free space, pushing the sections below to the bottom (shares it with Commit History when that's open) */}
             {changesOpen && (
-              <div className="shrink min-h-0 overflow-y-auto">
+              <div className="flex-1 min-h-24 overflow-y-auto">
                 <ChangesList
                   changes={changes}
                   selectedPath={selectedPath}
@@ -238,20 +252,6 @@ export default function GitPage() {
             <ImpactSection projectId={id} />
 
             <HistorySection projectId={id} selectedPath={selectedPath} />
-
-            {/* sections stack from the top; leftover space sits above the commit box */}
-            <div className="flex-1" />
-
-            <CommitBox
-              projectId={id}
-              stagedCount={stagedCount}
-              currentBranch={branch?.name ?? null}
-              ahead={branch?.ahead ?? 0}
-              behind={branch?.behind ?? 0}
-              onBranchClick={() => setBranchPickerOpen((o) => !o)}
-              syncOutput={syncOutput}
-              syncing={syncing}
-            />
           </>
         )}
       </div>
@@ -280,22 +280,22 @@ export default function GitPage() {
       </div>
 
       {/* Branch picker popover */}
-      {branchPickerOpen && (
+      {branchAnchor && (
         <>
           <div
             className="fixed inset-0 z-40"
-            onClick={() => setBranchPickerOpen(false)}
+            onClick={() => setBranchAnchor(null)}
           />
           <div
-            className="fixed z-50 bottom-32 left-64 w-72 bg-surface-panel border border-zinc-700 rounded-lg shadow-xl overflow-hidden"
-            style={{ left: changesWidth + 192 - 20 }}
+            className="fixed z-50 w-72 bg-surface-panel border border-zinc-700 rounded-lg shadow-xl overflow-hidden"
+            style={{ top: branchAnchor.bottom + 4, left: Math.min(branchAnchor.left, window.innerWidth - 296) }}
           >
             <BranchPicker
               projectId={id}
               currentBranch={branch?.name ?? null}
               ahead={branch?.ahead ?? 0}
               behind={branch?.behind ?? 0}
-              onClose={() => setBranchPickerOpen(false)}
+              onClose={() => setBranchAnchor(null)}
             />
           </div>
         </>

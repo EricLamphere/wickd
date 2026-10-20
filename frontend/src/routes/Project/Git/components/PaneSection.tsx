@@ -36,7 +36,7 @@ interface PaneSectionHeaderProps {
 /** VS Code-style collapsible section header for the Source Control panel. */
 export function PaneSectionHeader({ title, open, onToggle, count, actions }: PaneSectionHeaderProps) {
   return (
-    <div className="group flex items-center h-7 pr-2 border-t border-zinc-800 shrink-0 select-none hover:bg-surface-elevated/60">
+    <div className="group flex items-center h-7 -mt-px pr-2 border-y border-zinc-800 shrink-0 select-none bg-surface-elevated/50 hover:bg-surface-elevated">
       <button
         onClick={onToggle}
         aria-expanded={open}

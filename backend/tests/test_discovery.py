@@ -88,3 +88,20 @@ def test_platform_inferred_from_profiles(tmp_path: Path) -> None:
     results = discover_projects(tmp_path)
     assert len(results) == 1
     assert results[0].platform == "postgres"
+
+
+@pytest.mark.parametrize("marker", ["pyvenv.cfg", "conda-meta"])
+def test_discover_skips_python_envs_with_any_name(tmp_path: Path, marker: str) -> None:
+    _write_project(tmp_path, "real", "real_project")
+    env_dir = tmp_path / "real" / "dbt-env"
+    env_dir.mkdir()
+    if marker == "conda-meta":
+        (env_dir / marker).mkdir()
+    else:
+        (env_dir / marker).write_text("home = /usr/bin\n")
+    # dbt packages ship sample projects inside site-packages; these must not be discovered
+    _write_project(env_dir, "lib/python3.12/site-packages/some_pkg", "bundled_project")
+
+    results = discover_projects(tmp_path)
+
+    assert [p.name for p in results] == ["real_project"]

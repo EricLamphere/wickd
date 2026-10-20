@@ -21,6 +21,15 @@ EXCLUDE_DIRS = {
 }
 
 
+# Marker files identifying a Python environment regardless of its folder name
+# (virtualenv/venv write pyvenv.cfg; conda envs have conda-meta/).
+_ENV_MARKERS = ("pyvenv.cfg", "conda-meta")
+
+
+def _is_python_env(path: Path) -> bool:
+    return any((path / marker).exists() for marker in _ENV_MARKERS)
+
+
 @dataclass(frozen=True)
 class DiscoveredProject:
     name: str
@@ -43,6 +52,8 @@ def _iter_dbt_project_files(root: Path) -> Iterator[Path]:
         for entry in entries:
             if entry.is_dir():
                 if entry.name in EXCLUDE_DIRS or entry.name.startswith("."):
+                    continue
+                if _is_python_env(entry):
                     continue
                 stack.append(entry)
                 continue

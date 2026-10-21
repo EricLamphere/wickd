@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 import type { GraphDto } from '../../../../lib/api';
 import { WickyContent } from './WickyContent';
+import type { ChatRequest } from './AiChat';
+import { OPEN_WICKY_EVENT, type OpenWickyDetail } from '../../lib/wickyEvents';
 
 interface WickyPaneProps {
   projectId: number;
@@ -38,10 +40,24 @@ export function WickyPane({ projectId, graph, selectedNodeId }: WickyPaneProps) 
   const [open, setOpen] = useState(() => readStored(OPEN_KEY) === 'true');
   const [width, setWidth] = useState(storedWidth);
   const drag = useRef<{ startX: number; startW: number } | null>(null);
+  const [request, setRequest] = useState<ChatRequest | null>(null);
 
   const model = selectedNodeId ? graph?.nodes.find((n) => n.unique_id === selectedNodeId) ?? null : null;
 
   useEffect(() => writeStored(OPEN_KEY, String(open)), [open]);
+
+  // Closing drops a request that never reached the chat (e.g. Wicky not set up yet)
+  useEffect(() => { if (!open) setRequest(null); }, [open]);
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const { question = '', chatMode } = (e as CustomEvent<OpenWickyDetail>).detail ?? {};
+      setOpen(true);
+      setRequest({ nonce: Date.now(), text: question, mode: 'ask', chatMode });
+    };
+    window.addEventListener(OPEN_WICKY_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_WICKY_EVENT, onOpen);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -121,7 +137,13 @@ export function WickyPane({ projectId, graph, selectedNodeId }: WickyPaneProps) 
               </span>
             </div>
             <div className="flex-1 min-h-0">
-              <WickyContent projectId={projectId} model={model} graph={graph} />
+              <WickyContent
+                projectId={projectId}
+                model={model}
+                graph={graph}
+                request={request}
+                onRequestTaken={() => setRequest(null)}
+              />
             </div>
           </div>
         )}

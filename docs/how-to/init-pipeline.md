@@ -23,10 +23,11 @@ You can change the init directory path in the **Settings** section of the Enviro
 
 ### Method 2: Link an external script
 
-1. Navigate to **Init Scripts** in the project nav.
-2. Click **+ Add Step**.
-3. Enter a name and an absolute path to an existing `.sh` script.
-4. Click **Save**.
+1. Navigate to **Initialization** in the project nav.
+2. Click the dashed **+ Add step** tile at the end of the flow, then **Use existing script**.
+3. Pick the `.sh` script in the file picker.
+
+(**Create new script** on the same tile opens an editor and saves the script into the init directory.)
 
 Linked scripts are tracked in the database independently of the init directory. They survive directory changes and can live anywhere on the filesystem.
 
@@ -34,15 +35,25 @@ Linked scripts are tracked in the database independently of the init directory. 
 
 In the **Init Scripts** page, drag steps to reorder them. Base steps (`base: pip install`, `base: dbt deps`) always run first and cannot be moved below custom steps.
 
+## Reading the flow
+
+Steps are drawn as a staggered flow, numbered in run order and joined by connectors. During a run the active step glows blue and the connector into it flows quickly. Finished steps turn green, and a failed step turns red (the connector after it goes solid red, since the run stopped there). Hover a step's status icon for its log.
+
+## Testing a script before saving
+
+The script editor (new script, or **Edit** on a custom step) has a **Test** button. It runs the editor's current text, unsaved edits included, exactly as a real run would: `bash -euo pipefail`, the project's layered env vars (global, active profile, project), and the script's folder as the working directory (the init directory for a new script). The output appears below the editor, along with which captured vars the script exported and which it didn't.
+
+A test saves nothing. Step status is untouched and captured vars are only reported. Tests stop after 5 minutes, and return an error while the init pipeline is running.
+
 ## Enabling and disabling steps
 
 Click the toggle on any step to enable or disable it without deleting it. Disabled steps are skipped during the pipeline but remain in the list.
 
 ## Capturing env vars from a script
 
-Any variable exported by a custom init script is automatically captured and stored as a project env var. This means:
+A custom step can capture variables its script exports and save them as project env vars. List the names to capture under **Captured vars**, either on the step's tile or in the script editor (**+ add**; names are upper-cased). After each successful run:
 
-- No extra code needed in your scripts — just use `export MY_VAR=value`
+- Only the listed variables are captured, and only if the script `export`s them (`export MY_VAR=value`)
 - Captured vars persist across server restarts (stored in the database)
 - Subsequent init steps and all dbt commands see the captured vars automatically
 

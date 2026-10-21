@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setupFieldError, type SettingsDto } from '../../lib/api';
 import { applyTheme } from '../../lib/useTheme';
+import { EnvVarsStep } from './EnvVarsStep';
 import { InstallStep } from './InstallStep';
+import { GLOBAL_ENV_QUERY_KEY } from '../GlobalEnvVarsSection';
 import { WickdIcon } from '../WickdIcon';
 import { PackagesStep, PreferencesStep, ProjectsStep, PythonStep, ReviewStep, WelcomeStep } from './steps';
 import { defaultRequirementsPath, FIELD_STEP, STEPS, type SetupForm, type StepId, type StepProps } from './types';
@@ -12,6 +14,7 @@ const STEP_COMPONENTS: Record<Exclude<StepId, 'install'>, (props: StepProps) => 
   projects: ProjectsStep,
   python: PythonStep,
   packages: PackagesStep,
+  environment: EnvVarsStep,
   preferences: PreferencesStep,
   review: ReviewStep,
 };
@@ -29,6 +32,7 @@ function initialForm(settings: SettingsDto): SetupForm {
     createRequirementsFile: true,
     requirementsTouched: savedRequirements != null,
     theme: settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : currentTheme,
+    envVars: null,
   };
 }
 
@@ -47,6 +51,15 @@ export function SetupWizard({ settings, onFinish }: Props) {
   const [errors, setErrors] = useState<Partial<Record<StepId, string>>>({});
   const [saving, setSaving] = useState(false);
   const [installAttempt, setInstallAttempt] = useState(0);
+  const { data: savedEnvVars } = useQuery({
+    queryKey: GLOBAL_ENV_QUERY_KEY,
+    queryFn: () => api.globalEnv.list(),
+  });
+
+  // Seed the env var step with what's saved (a re-run edits the current set), unless already edited.
+  useEffect(() => {
+    if (savedEnvVars) setForm((prev) => (prev.envVars === null ? { ...prev, envVars: savedEnvVars } : prev));
+  }, [savedEnvVars]);
 
   const index = STEPS.findIndex((s) => s.id === step);
   const update = (patch: Partial<SetupForm>) => {
@@ -72,10 +85,12 @@ export function SetupWizard({ settings, onFinish }: Props) {
         global_requirements_path: form.requirementsPath,
         create_requirements_file: form.createRequirementsFile,
         theme: form.theme,
+        global_env_vars: form.envVars ?? undefined,
       });
       qc.setQueryData(['app-settings'], saved);
       qc.invalidateQueries({ queryKey: ['projects'] });
       qc.invalidateQueries({ queryKey: ['python-interpreters'] });
+      qc.invalidateQueries({ queryKey: GLOBAL_ENV_QUERY_KEY });
       setStep('install');
     } catch (e) {
       const fieldError = setupFieldError(e);

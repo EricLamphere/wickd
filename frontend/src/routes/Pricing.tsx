@@ -27,7 +27,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Docs browser', base: true, pro: true },
   { label: 'File explorer & Monaco SQL/YAML editor', base: true, pro: true },
   { label: 'Integrated terminal', base: true, pro: true },
-  { label: 'Init pipeline & environment profiles', base: true, pro: true },
+  { label: 'Init pipeline, global env vars & profiles', base: true, pro: true },
   { label: 'Source control (Git)', base: true, pro: true },
   { label: 'SQL Workspace', base: true, pro: true },
   { label: 'Health check, schema drift & source freshness', base: true, pro: true },

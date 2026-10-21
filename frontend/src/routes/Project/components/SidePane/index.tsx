@@ -257,9 +257,16 @@ export function SidePane({
     if (model || selectedModels.length > 1) setOpen(true);
   }, [model?.unique_id, selectedModels.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset tab to 'properties' when the selected model changes
+  // Last tab per node, so clicking away and back to a node returns to the same tab
+  const tabByNode = useRef(new Map<string, SidePaneTab>());
+  const selectTab = (tab: SidePaneTab) => {
+    if (model) tabByNode.current.set(model.unique_id, tab);
+    setActiveTab(tab);
+  };
+
+  // Restore the node's last tab (default 'properties') when the selected model changes
   useEffect(() => {
-    setActiveTab('properties');
+    setActiveTab((model && tabByNode.current.get(model.unique_id)) ?? 'properties');
   }, [model?.unique_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-switch to 'failed_rows' tab when failedTestUid matches the current test node
@@ -267,7 +274,7 @@ export function SidePane({
     if (!model || model.resource_type !== 'test') return;
     if (failedTestUid !== model.unique_id) return;
     onFailedTestConsumed?.();
-    setActiveTab('failed_rows');
+    selectTab('failed_rows');
   }, [failedTestUid, model?.unique_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -365,7 +372,7 @@ export function SidePane({
                 {tabs.map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
+                    onClick={() => selectTab(tab)}
                     className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px ${
                       activeTab === tab
                         ? 'border-brand-500 text-brand-300'

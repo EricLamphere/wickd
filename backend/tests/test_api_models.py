@@ -109,3 +109,30 @@ async def test_models_endpoint_returns_graph(
 async def test_models_project_not_found(client: AsyncClient) -> None:
     resp = await client.get("/api/projects/99999/models")
     assert resp.status_code == 404
+
+
+async def test_models_retries_manifest_caught_mid_write(
+    client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """dbt rewrites manifest.json on every invocation (e.g. `dbt show`); a read that lands
+    mid-write is retried rather than answered with an empty graph."""
+    import app.api.models as models_api
+
+    monkeypatch.setattr(settings, "dbt_projects_path", tmp_path)
+    _make_project_with_manifest(tmp_path)
+    pid = (await client.post("/api/projects/rescan")).json()[0]["id"]
+
+    real_load = models_api.load_manifest
+    calls = {"n": 0}
+
+    def flaky_load(path: Path):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real_load(path)
+
+    monkeypatch.setattr(models_api, "load_manifest", flaky_load)
+    monkeypatch.setattr(models_api, "MANIFEST_READ_RETRY_DELAY_S", 0)
+
+    resp = await client.get(f"/api/projects/{pid}/models")
+    assert resp.status_code == 200
+    assert {n["name"] for n in resp.json()["nodes"]} == {"orders", "customers"}
+    assert calls["n"] == 2

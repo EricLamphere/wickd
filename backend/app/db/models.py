@@ -99,6 +99,16 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+class GlobalEnvVar(Base):
+    """Default env vars applied to every dbt/init run and to global setup's pip install.
+    The active profile's vars override these; project env vars override both."""
+    __tablename__ = "global_env_vars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(255), unique=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class GlobalProfile(Base):
     __tablename__ = "global_profiles"
 

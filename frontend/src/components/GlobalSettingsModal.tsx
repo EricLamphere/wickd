@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { api, type GlobalProfileDto } from '../lib/api';
 import { applyTheme } from '../lib/useTheme';
+import { GlobalEnvVarsSection } from './GlobalEnvVarsSection';
 import { PythonInterpreterRow } from './PythonInterpreterRow';
 import { OPEN_SETUP_EVENT } from './setup/SetupGate';
 import { SubscriptionSection } from './SubscriptionSection';
@@ -11,6 +12,13 @@ type ModalTab = 'settings' | 'profiles' | 'requirements' | 'theme' | 'subscripti
 
 export function GlobalSettingsModal({ onClose, initialTab = 'settings' }: { onClose: () => void; initialTab?: ModalTab }) {
   const [activeTab, setActiveTab] = useState<ModalTab>(initialTab);
+
+  // Inline edit inputs stop propagation of their own Escape (cancel edit), so this only fires otherwise
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const tabs: { id: ModalTab; label: string }[] = [
     { id: 'settings', label: 'Settings' },
@@ -51,7 +59,12 @@ export function GlobalSettingsModal({ onClose, initialTab = 'settings' }: { onCl
 
         <div className="flex-1 overflow-auto p-5">
           {activeTab === 'settings' && <SettingsTab />}
-          {activeTab === 'profiles' && <GlobalProfilesSection />}
+          {activeTab === 'profiles' && (
+            <div className="flex flex-col gap-8">
+              <GlobalEnvVarsSection />
+              <GlobalProfilesSection />
+            </div>
+          )}
           {activeTab === 'requirements' && <RequirementsTab />}
           {activeTab === 'theme' && <ThemeTab />}
           {activeTab === 'subscription' && <SubscriptionSection />}
@@ -138,7 +151,7 @@ function SettingsTab() {
                     onChange={(e) => setEditValue(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleSave(key);
-                      if (e.key === 'Escape') setEditingKey(null);
+                      if (e.key === 'Escape') { e.stopPropagation(); setEditingKey(null); }
                     }}
                     placeholder={example ? `e.g. ${example}` : undefined}
                     className="flex-1 bg-surface-panel border border-brand-500 rounded px-2 py-0.5 text-gray-100 font-mono focus:outline-none placeholder-gray-600"
@@ -382,7 +395,7 @@ function GlobalProfilesSection() {
     <div className="flex flex-col gap-3">
       <div>
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Global Profiles</h3>
-        <p className="text-xs text-gray-500">Reusable env var sets. Activate a profile per project from the Environment page or the header dropdown.</p>
+        <p className="text-xs text-gray-500">Reusable env var sets. Activate a profile per project from the Environment page or the header dropdown. A profile's variables override the global ones above.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -503,7 +516,7 @@ function GlobalProfileCard({ profile, expanded, onToggle, onDelete }: GlobalProf
                     onChange={(e) => setEditValue(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleEditSave(v.key);
-                      if (e.key === 'Escape') setEditingKey(null);
+                      if (e.key === 'Escape') { e.stopPropagation(); setEditingKey(null); }
                     }}
                     className="flex-1 bg-surface-elevated border border-brand-500 rounded px-2 py-0.5 text-gray-100 font-mono focus:outline-none"
                   />

@@ -1,4 +1,4 @@
-import type { SetupFieldError } from '../../lib/api';
+import type { GlobalEnvVarDto, SetupFieldError } from '../../lib/api';
 
 export interface SetupForm {
   projectsPath: string;
@@ -11,6 +11,8 @@ export interface SetupForm {
   /** Once the user edits the requirements path, stop deriving it from the projects folder. */
   requirementsTouched: boolean;
   theme: 'dark' | 'light';
+  /** Global env vars; null until the current ones have loaded (null on save → left unchanged). */
+  envVars: GlobalEnvVarDto[] | null;
 }
 
 /** Suggested global requirements file: `<projects folder>/requirements.txt`. */
@@ -19,13 +21,22 @@ export function defaultRequirementsPath(projectsPath: string): string {
   return base ? `${base}/requirements.txt` : '';
 }
 
-export type StepId = 'welcome' | 'projects' | 'python' | 'packages' | 'preferences' | 'review' | 'install';
+export type StepId =
+  | 'welcome'
+  | 'projects'
+  | 'python'
+  | 'packages'
+  | 'environment'
+  | 'preferences'
+  | 'review'
+  | 'install';
 
 export const STEPS: { id: StepId; label: string }[] = [
   { id: 'welcome', label: 'Welcome' },
   { id: 'projects', label: 'Projects' },
   { id: 'python', label: 'Python' },
   { id: 'packages', label: 'dbt packages' },
+  { id: 'environment', label: 'Environment variables' },
   { id: 'preferences', label: 'Preferences' },
   { id: 'review', label: 'Review' },
   { id: 'install', label: 'Install' },
@@ -36,6 +47,7 @@ export const FIELD_STEP: Record<SetupFieldError['field'], StepId> = {
   dbt_projects_path: 'projects',
   python_path: 'python',
   global_requirements_path: 'packages',
+  global_env_vars: 'environment',
 };
 
 export interface StepProps {

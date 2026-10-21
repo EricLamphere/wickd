@@ -6,11 +6,34 @@ This guide covers environment variables, dbt targets, profiles, and requirements
 
 Navigate to a project and click **Environment** in the project nav. The page is divided into sections:
 
+- **Global Environment Variables** (read-only here) — defaults shared by every project
+- **Active Profile** — a global profile whose variables are layered on top
 - **Environment Variables** — free-form key/value pairs injected into every dbt subprocess
 - **Profiles** — named sets of env vars you can activate as a group
 - **Settings** — project-specific and global settings
 
 > wickd Pro subscription management (license key, cancellation) lives in the **Global Settings** modal, not here — see below.
+
+---
+
+## Precedence
+
+A variable can come from four places. When the same key is set in more than one, the highest wins:
+
+1. **Project environment variables** (highest)
+2. **Active profile**
+3. **Global environment variables**
+4. wickd's own process environment (lowest)
+
+This applies to dbt commands and init pipeline steps. Global setup's pip install (which has no project) uses only global environment variables over the process environment.
+
+---
+
+## Global Environment Variables
+
+Defaults applied to every project, and to the pip install that **Run global setup** (and the setup wizard's last step) performs, e.g. `PIP_INDEX_URL` / `PIP_EXTRA_INDEX_URL` for a private package index, or credentials your `profiles.yml` reads with `env_var()`.
+
+They're edited in **Global Settings → Profiles → Global Environment Variables** (above the Profiles list), or in the setup wizard's **Default environment variables** step. The project Environment page lists them read-only, with an **Edit in Global Settings** link. Names must be letters, digits and `_`, and can't start with a digit.
 
 ---
 
@@ -29,7 +52,7 @@ Click the value cell to open it for editing. Press Enter to save or Escape to ca
 **Delete a variable:**
 Click the trash icon on the variable row.
 
-Variables set here override process-level env vars of the same name. They are persisted in the database and survive server restarts.
+Variables set here take priority over the active profile, global environment variables and process-level env vars of the same name (see [Precedence](#precedence)). They are persisted in the database and survive server restarts.
 
 > Some well-known keys have special meaning:
 > - `dbt_target` — the active dbt target (managed by the Target dropdown, not directly here)
@@ -63,7 +86,7 @@ Profiles are named sets of environment variables that can be activated as a grou
 3. Add key/value pairs to the profile.
 
 **Activate a profile:**
-Click **Activate** on any profile. Its variables are merged into the subprocess env for dbt runs and init pipeline steps (on top of project env vars).
+Click **Activate** on any profile. Its variables are merged into the subprocess env for dbt runs and init pipeline steps, overriding global environment variables; project env vars override the profile.
 
 Only one profile can be active at a time. Deactivating clears the overlay without deleting the profile.
 

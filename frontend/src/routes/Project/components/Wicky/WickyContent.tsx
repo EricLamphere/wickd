@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { GraphDto, ModelNode } from '../../../../lib/api';
 import type { ChatRequest } from './AiChat';
@@ -13,6 +13,9 @@ interface WickyContentProps {
   projectId: number;
   model: ModelNode | null;
   graph: GraphDto | null;
+  /** A request from outside the pane (command palette); handed to the chat once it's ready. */
+  request: ChatRequest | null;
+  onRequestTaken: () => void;
 }
 
 const FAILED = new Set(['error', 'warn']);
@@ -26,7 +29,7 @@ function isFailing(model: ModelNode, graph: GraphDto | null): boolean {
 }
 
 /** Wicky, the AI assistant (wickd Pro): unlock → set up a local model → document + ask. */
-export function WickyContent({ projectId, model, graph }: WickyContentProps) {
+export function WickyContent({ projectId, model, graph, request, onRequestTaken }: WickyContentProps) {
   const { status, loading, downloads } = useAiStatus();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
@@ -58,13 +61,20 @@ export function WickyContent({ projectId, model, graph }: WickyContentProps) {
 
   if (!status.ready) return <AiSetup status={status} downloads={downloads} />;
 
-  return <WickyReady projectId={projectId} model={model} graph={graph} />;
+  return <WickyReady projectId={projectId} model={model} graph={graph} request={request} onRequestTaken={onRequestTaken} />;
 }
 
-function WickyReady({ projectId, model, graph }: WickyContentProps) {
+function WickyReady({ projectId, model, graph, request: external, onRequestTaken }: WickyContentProps) {
   const { proposals, progress } = useAiProposals(projectId);
   const chat = useWickyConversation(projectId);
   const [request, setRequest] = useState<ChatRequest | null>(null);
+
+  // Take ownership of an outside request so it isn't re-sent when the pane remounts
+  useEffect(() => {
+    if (!external) return;
+    setRequest(external);
+    onRequestTaken();
+  }, [external]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="flex flex-col h-full">
       {model && (

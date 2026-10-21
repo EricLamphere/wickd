@@ -1,15 +1,19 @@
-import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, type InitStepDto } from '../../lib/api';
 import NavRail from './components/NavRail';
 import { useProjectEvents } from '../../lib/sse';
 import { FilePickerModal } from './components/FilePickerModal';
-import { StatusLogPopover } from './components/StatusLogPopover';
-
-// ---- types ----
-
-type StepStatus = 'idle' | 'running' | 'success' | 'error';
+import { StepTile } from './components/InitPipeline/StepTile';
+import { StepConnector } from './components/InitPipeline/StepConnector';
+import { AddStepTile } from './components/InitPipeline/AddStepTile';
+import { ScriptEditorModal } from './components/InitPipeline/ScriptEditorModal';
+import { useElementWidth } from './components/InitPipeline/useElementWidth';
+import {
+  connectorState, laneCenterPct, laneOffsetPct,
+  type StepRunState, type StepStatus,
+} from './components/InitPipeline/flow';
 
 // Stable reference for the "no data yet" default below — `data: steps = []`
 // would otherwise allocate a brand-new empty array on every render where the
@@ -17,62 +21,6 @@ type StepStatus = 'idle' | 'running' | 'success' | 'error';
 // [steps])` an ever-changing "new" array and caused a render loop (visible
 // as React's "Maximum update depth exceeded" warning on this page).
 const EMPTY_STEPS: InitStepDto[] = [];
-
-interface StepRunState {
-  status: StepStatus;
-  log: string;
-  finishedAt: string | null;
-}
-
-// ---- status icon ----
-
-function StatusIcon({ status, log }: { status: StepStatus; log: string }) {
-  if (status === 'idle') return null;
-
-  const iconEl = (
-    <>
-      {status === 'running' && (
-        <svg className="w-4 h-4 text-blue-400 animate-spin" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
-        </svg>
-      )}
-      {status === 'success' && (
-        <svg className="w-4 h-4 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-        </svg>
-      )}
-      {status === 'error' && (
-        <svg className="w-4 h-4 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-        </svg>
-      )}
-    </>
-  );
-
-  let panel: React.ReactNode | null = null;
-  if (status === 'running') {
-    panel = <p className="text-xs text-gray-300">Running…</p>;
-  } else if (status === 'success') {
-    panel = (
-      <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-medium text-green-400">Complete</p>
-        {log && <pre className="text-[11px] font-mono text-gray-400 whitespace-pre-wrap leading-relaxed">{log}</pre>}
-      </div>
-    );
-  } else if (status === 'error') {
-    panel = (
-      <div className="flex flex-col gap-1.5">
-        <p className="text-xs font-medium text-red-400">Failed</p>
-        <pre className="text-[11px] font-mono text-gray-400 whitespace-pre-wrap leading-relaxed">
-          {log || 'No output captured.'}
-        </pre>
-      </div>
-    );
-  }
-
-  return <StatusLogPopover icon={iconEl} panel={panel} align="start" />;
-}
 
 // ---- main page ----
 
@@ -199,19 +147,7 @@ export default function InitScriptsPage() {
   const [newStepOpen, setNewStepOpen] = useState(false);
   const [editStep, setEditStep] = useState<InitStepDto | null>(null);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const [addDropdownOpen, setAddDropdownOpen] = useState(false);
-  const addBtnRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!addDropdownOpen) return;
-    const handleOutside = (e: MouseEvent) => {
-      if (addBtnRef.current && !addBtnRef.current.contains(e.target as Node)) {
-        setAddDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [addDropdownOpen]);
+  const [flowRef, flowWidth] = useElementWidth();
   const [localSteps, setLocalSteps] = useState<InitStepDto[]>([]);
   // Pointer-based drag, not native HTML5 drag-and-drop: WKWebView (Tauri's
   // macOS webview) has a long-standing bug where dragover/drop don't
@@ -401,6 +337,8 @@ export default function InitScriptsPage() {
     setDragIndex(idx);
   };
 
+  const statusOf = (name: string): StepStatus => stepStates[name]?.status ?? 'idle';
+
   const handleDelete = (step: InitStepDto) => {
     if (!confirm(`Delete script "${step.name.replace(/^custom:\s*/, '')}"? This cannot be undone.`)) return;
     deleteMutation.mutate(step.name);
@@ -419,7 +357,7 @@ export default function InitScriptsPage() {
 
   return (
     <PageShell id={id}>
-      <div className="max-w-2xl mx-auto p-6 flex flex-col gap-8">
+      <div className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
         {/* Header with Run Setup button */}
         <div className="flex items-center justify-between">
           <div>
@@ -443,64 +381,68 @@ export default function InitScriptsPage() {
           </button>
         </div>
 
-        {/* Setup steps section */}
+        {/* Setup steps section — a staggered flow of tiles joined by connectors */}
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Setup steps
-            </h2>
-            <div ref={addBtnRef} className="relative">
-              <button
-                onClick={() => setAddDropdownOpen((v) => !v)}
-                className="px-3 py-1 text-xs rounded bg-brand-600 hover:bg-brand-500 text-white font-medium transition-colors"
-              >
-                + Add script
-              </button>
-              {addDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1 z-30 bg-surface-panel border border-gray-700 rounded shadow-lg min-w-[180px]">
-                  <button
-                    onClick={() => { setAddDropdownOpen(false); setNewStepOpen(true); }}
-                    className="w-full text-left px-3 py-2 text-xs text-gray-200 hover:bg-surface-elevated transition-colors"
-                  >
-                    Create new script
-                  </button>
-                  <button
-                    onClick={() => { setAddDropdownOpen(false); setFilePickerOpen(true); }}
-                    className="w-full text-left px-3 py-2 text-xs text-gray-200 hover:bg-surface-elevated transition-colors"
-                  >
-                    Use existing script
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Setup steps
+          </h2>
 
-          {localSteps.length === 0 && (
-            <p className="text-sm text-gray-600 py-4">No steps configured yet.</p>
-          )}
+          {/* pl-3 leaves room for the step-number badges straddling each tile's left edge */}
+          <div className="pl-3">
+          <div ref={flowRef} className={`flex flex-col ${dragIndex !== null ? 'select-none' : ''}`}>
+            {localSteps.map((step, idx) => {
+              const status = statusOf(step.name);
+              return (
+                <Fragment key={step.name}>
+                  {idx > 0 && (
+                    <StepConnector
+                      width={flowWidth}
+                      fromPct={laneCenterPct(idx - 1)}
+                      toPct={laneCenterPct(idx)}
+                      state={connectorState(statusOf(localSteps[idx - 1].name), status)}
+                      dimmed={dragIndex !== null}
+                    />
+                  )}
+                  <StepTile
+                    step={step}
+                    index={idx}
+                    offsetPct={laneOffsetPct(idx)}
+                    projectId={id}
+                    runState={stepStates[step.name] ?? null}
+                    onToggle={(enabled) =>
+                      api.init.toggleStep(id, step.name, enabled).then(invalidate)
+                    }
+                    onRunStep={() => api.init.runStep(id, step.name)}
+                    onEdit={!step.is_base ? () => setEditStep(step) : undefined}
+                    onDelete={!step.is_base ? () => handleDelete(step) : undefined}
+                    onCapturedVarsChange={(vars) => capturedVarsMutation.mutate({ name: step.name, vars })}
+                    tileRef={(el) => {
+                      if (el) tileRefs.current.set(step.name, el);
+                      else tileRefs.current.delete(step.name);
+                    }}
+                    onHandlePointerDown={(e) => handlePointerDown(e, idx, step.name)}
+                    isDragging={dragIndex === idx}
+                  />
+                </Fragment>
+              );
+            })}
 
-          <div className={`flex flex-col gap-3 ${dragIndex !== null ? 'select-none' : ''}`}>
-            {localSteps.map((step, idx) => (
-              <StepTile
-                key={step.name}
-                step={step}
-                projectId={id}
-                runState={stepStates[step.name] ?? null}
-                onToggle={(enabled) =>
-                  api.init.toggleStep(id, step.name, enabled).then(invalidate)
-                }
-                onRunStep={() => api.init.runStep(id, step.name)}
-                onEdit={!step.is_base ? () => setEditStep(step) : undefined}
-                onDelete={!step.is_base ? () => handleDelete(step) : undefined}
-                onCapturedVarsChange={(vars) => capturedVarsMutation.mutate({ name: step.name, vars })}
-                tileRef={(el) => {
-                  if (el) tileRefs.current.set(step.name, el);
-                  else tileRefs.current.delete(step.name);
-                }}
-                onHandlePointerDown={(e) => handlePointerDown(e, idx, step.name)}
-                isDragging={dragIndex === idx}
+            {localSteps.length > 0 && (
+              <StepConnector
+                width={flowWidth}
+                fromPct={laneCenterPct(localSteps.length - 1)}
+                toPct={laneCenterPct(localSteps.length)}
+                state="add"
+                dimmed={dragIndex !== null}
               />
-            ))}
+            )}
+            <AddStepTile
+              offsetPct={laneOffsetPct(localSteps.length)}
+              isFirst={localSteps.length === 0}
+              onCreate={() => setNewStepOpen(true)}
+              onLinkExisting={() => setFilePickerOpen(true)}
+            />
+          </div>
           </div>
         </div>
       </div>
@@ -508,7 +450,7 @@ export default function InitScriptsPage() {
       {newStepOpen && (
         <ScriptEditorModal
           projectId={id}
-          initScriptPath={project?.init_script_path ?? 'init'}
+          initScriptPath={project?.init_script_path || 'wickd/init'}
           onClose={() => { setNewStepOpen(false); invalidate(); }}
         />
       )}
@@ -516,7 +458,7 @@ export default function InitScriptsPage() {
       {editStep && (
         <ScriptEditorModal
           projectId={id}
-          initScriptPath={project?.init_script_path ?? 'init'}
+          initScriptPath={project?.init_script_path || 'wickd/init'}
           existing={editStep}
           onClose={() => { setEditStep(null); invalidate(); }}
         />
@@ -552,343 +494,3 @@ function PageShell({ id, children }: { id: number; children: React.ReactNode }) 
   );
 }
 
-// ---- step tile ----
-
-const BASE_STEP_PREVIEWS: Record<string, string> = {
-  'pip install':       '# Install Python requirements\n# Reads global + project requirements.txt',
-  'dbt deps':          '# Install dbt package dependencies\n# Runs: dbt deps',
-  'dbt docs generate': '# Generate dbt docs and catalog\n# Runs: dbt compile --write-catalog (or dbt docs generate)',
-  'dbt compile':       '# Compile dbt models and populate compiled_code\n# Runs: dbt compile',
-};
-
-interface StepTileProps {
-  step: InitStepDto;
-  projectId: number;
-  runState: StepRunState | null;
-  onToggle: (enabled: boolean) => void;
-  onRunStep: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  onCapturedVarsChange: (vars: string[]) => void;
-  tileRef: (el: HTMLDivElement | null) => void;
-  onHandlePointerDown: (e: React.PointerEvent) => void;
-  isDragging: boolean;
-}
-
-function StepTile({ step, projectId, runState, onToggle, onRunStep, onEdit, onDelete, onCapturedVarsChange, tileRef, onHandlePointerDown, isDragging }: StepTileProps) {
-  const displayName = step.name.replace(/^(base|custom):\s*/, '');
-  const prefix = step.is_base ? 'base' : 'custom';
-  const status: StepStatus = runState?.status ?? 'idle';
-  const [preview, setPreview] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [newVar, setNewVar] = useState('');
-  const [varInputOpen, setVarInputOpen] = useState(false);
-  const varInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (varInputOpen) varInputRef.current?.focus();
-  }, [varInputOpen]);
-
-  const handleAddVar = useCallback(() => {
-    const trimmed = newVar.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    if (!trimmed || step.captured_vars.includes(trimmed)) { setNewVar(''); setVarInputOpen(false); return; }
-    onCapturedVarsChange([...step.captured_vars, trimmed]);
-    setNewVar('');
-    setVarInputOpen(false);
-  }, [newVar, step.captured_vars, onCapturedVarsChange]);
-
-  const handleRemoveVar = useCallback((v: string) => {
-    onCapturedVarsChange(step.captured_vars.filter((x) => x !== v));
-  }, [step.captured_vars, onCapturedVarsChange]);
-
-  useEffect(() => {
-    if (step.is_base) {
-      setPreview(BASE_STEP_PREVIEWS[displayName] ?? null);
-    } else {
-      api.init.getScriptContent(projectId, displayName)
-        .then((content) => {
-          const lines = content.split('\n').slice(0, 4).join('\n');
-          setPreview(lines || null);
-        })
-        .catch(() => setPreview(null));
-    }
-  }, [step.name]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleRun = async () => {
-    setRunning(true);
-    try {
-      await onRunStep();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      alert(message.startsWith('409') ? 'Init pipeline is already running for this project.' : message);
-    } finally {
-      setRunning(false);
-    }
-  };
-
-  return (
-    <div
-      ref={tileRef}
-      className={`rounded-xl border px-4 py-3 flex flex-col gap-2
-        ${isDragging
-          // The dragged tile's transform is written directly to the DOM on
-          // every pointermove (see the effect above) so it tracks the
-          // cursor at full frame rate — a CSS transition on transform here
-          // would fight that, easing toward each new position instead of
-          // following it 1:1. Other (non-dragged) tiles keep transition-all
-          // so their reflow when the array reorders reads as a smooth
-          // "make room" shift instead of an instant snap.
-          ? 'opacity-90 shadow-2xl scale-[1.02] z-10 relative'
-          : 'transition-all'}
-        ${step.enabled
-          ? 'bg-surface-panel border-gray-800'
-          : 'bg-surface-panel/50 border-gray-800/50 opacity-60'}`}
-    >
-      {/* Header row */}
-      <div className="flex items-center gap-2.5">
-        <span
-          onPointerDown={onHandlePointerDown}
-          className="text-gray-700 hover:text-gray-500 cursor-grab active:cursor-grabbing shrink-0 select-none text-sm leading-none touch-none"
-        >
-          ⠿
-        </span>
-
-        {/* Enable toggle */}
-        <button
-          onClick={() => onToggle(!step.enabled)}
-          title={step.enabled ? 'Disable' : 'Enable'}
-          className={`w-8 h-4 rounded-full transition-colors shrink-0 flex items-center px-0.5
-            ${step.enabled ? 'bg-brand-600 justify-end' : 'bg-gray-700 justify-start'}`}
-        >
-          <span className="w-3 h-3 rounded-full bg-white shadow" />
-        </button>
-
-        {/* Name */}
-        <div className="flex-1 min-w-0">
-          <span className="text-[10px] text-gray-600 font-mono mr-1.5">{prefix}:</span>
-          <span className="text-sm font-medium text-gray-200">{displayName}</span>
-        </div>
-
-        {/* Run this step */}
-        <button
-          onClick={handleRun}
-          disabled={running || status === 'running'}
-          title="Run this step"
-          className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-surface-elevated hover:bg-brand-900/40 text-gray-400 hover:text-brand-300 disabled:opacity-40 transition-colors shrink-0"
-        >
-          {(running || status === 'running') ? (
-            <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
-            </svg>
-          ) : (
-            <svg className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-            </svg>
-          )}
-          Run
-        </button>
-
-        <StatusIcon status={status} log={runState?.log ?? ''} />
-      </div>
-
-      {/* Code preview */}
-      {preview && (
-        <pre className="text-[11px] text-gray-500 font-mono bg-surface-elevated/60 rounded px-3 py-2 overflow-hidden leading-relaxed max-h-[4.5rem] select-none whitespace-pre-wrap break-all">
-          {preview}
-        </pre>
-      )}
-
-      {/* Captured variables (custom steps only) */}
-      {!step.is_base && (
-        <div className="flex flex-col gap-1.5 pt-0.5">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-[10px] text-gray-600 font-medium uppercase tracking-wider shrink-0">Captured vars</span>
-            {step.captured_vars.map((v) => (
-              <span
-                key={v}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-elevated border border-gray-700 text-[11px] font-mono text-gray-300"
-              >
-                {v}
-                <button
-                  onClick={() => handleRemoveVar(v)}
-                  className="text-gray-600 hover:text-red-400 transition-colors leading-none"
-                  title="Remove"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            {varInputOpen ? (
-              <input
-                ref={varInputRef}
-                value={newVar}
-                onChange={(e) => setNewVar(e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '_'))}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddVar(); } if (e.key === 'Escape') { setVarInputOpen(false); setNewVar(''); } }}
-                onBlur={handleAddVar}
-                placeholder="VAR_NAME"
-                className="w-28 px-1.5 py-0.5 rounded bg-surface-elevated border border-brand-600 text-[11px] font-mono text-gray-200 placeholder-gray-600 focus:outline-none"
-              />
-            ) : (
-              <button
-                onClick={() => setVarInputOpen(true)}
-                className="text-[10px] text-gray-600 hover:text-brand-400 transition-colors"
-                title="Add a variable to capture"
-              >
-                + add
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Action buttons */}
-      {(onEdit || onDelete) && (
-        <div className="flex gap-3 pt-0.5">
-          {onEdit && (
-            <button onClick={onEdit} className="text-xs text-gray-500 hover:text-brand-400 transition-colors">
-              Edit
-            </button>
-          )}
-          {onDelete && (
-            <button onClick={onDelete} className="text-xs text-gray-500 hover:text-red-400 transition-colors">
-              Delete
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---- script editor modal ----
-
-interface ScriptEditorProps {
-  projectId: number;
-  initScriptPath: string;
-  existing?: InitStepDto;
-  onClose: () => void;
-}
-
-function ScriptEditorModal({ projectId, initScriptPath, existing, onClose }: ScriptEditorProps) {
-  const isEdit = !!existing;
-  const bareExistingName = existing?.name.replace(/^custom:\s*/, '') ?? '';
-
-  const [name, setName] = useState(bareExistingName);
-  const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loadingContent, setLoadingContent] = useState(isEdit);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isEdit || !bareExistingName) return;
-    setLoadingContent(true);
-    api.init.getScriptContent(projectId, bareExistingName)
-      .then((text) => { setContent(text); })
-      .catch(() => { setContent(''); })
-      .finally(() => setLoadingContent(false));
-  }, [isEdit, projectId, bareExistingName]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) { setError('Name is required.'); return; }
-    if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
-      setError('Name may only contain letters, digits, underscores, and hyphens.');
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const nameChanged = isEdit && trimmed !== bareExistingName;
-      if (isEdit && !nameChanged) {
-        // Save content back to wherever the script actually lives (handles linked scripts)
-        await api.init.putScriptContent(projectId, trimmed, content);
-      } else if (isEdit && nameChanged) {
-        await api.init.createStep(projectId, trimmed, content);
-        await api.init.deleteStep(projectId, bareExistingName);
-      } else {
-        await api.init.createStep(projectId, trimmed, content);
-      }
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="flex flex-col bg-surface-panel border border-gray-700 rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh]">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800 shrink-0">
-          <h2 className="text-sm font-semibold text-gray-100">
-            {isEdit ? `Edit: ${bareExistingName}` : 'New custom script'}
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300">✕</button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 p-5 overflow-auto">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-gray-400 font-medium">Script name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="setup_env"
-              autoFocus={!isEdit}
-              className="bg-surface-elevated border border-gray-700 rounded px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-            <p className="text-[11px] text-gray-600">
-              {isEdit && existing?.script_path
-                ? <>Saved to <code className="font-mono text-gray-500">{existing.script_path}</code></>
-                : <>Saved as <code className="font-mono text-gray-500">{initScriptPath}/{name || 'script_name'}.sh</code></>
-              }
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-gray-400 font-medium">Shell script</label>
-            {loadingContent ? (
-              <div className="h-48 bg-surface-elevated rounded flex items-center justify-center text-gray-600 text-sm">
-                Loading…
-              </div>
-            ) : (
-              <textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder={'#!/usr/bin/env bash\nset -e\n\n# your setup here'}
-                rows={12}
-                autoFocus={isEdit}
-                className="bg-surface-elevated border border-gray-700 rounded px-3 py-2 text-sm text-gray-100 placeholder-gray-600 font-mono focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
-              />
-            )}
-          </div>
-
-          {error && (
-            <p className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 text-xs rounded bg-surface-elevated hover:bg-gray-700 text-gray-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || loadingContent}
-              className="px-4 py-1.5 text-xs rounded bg-brand-600 hover:bg-brand-500 text-white font-medium transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Saving…' : isEdit ? 'Save changes' : 'Create script'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}

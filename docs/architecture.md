@@ -109,7 +109,7 @@ wickd/
 │   │           │   └── bottomPaneEvents.ts       # openBottomTab() window event so the SidePane can open a bottom pane tab
 │   │       │   └── testCoverage.ts # Test coverage utility; buildCoverageMap(), getModelCoverageStats(), bucketFor(), badgeClassesFor(); derives per-column test counts
 │   │           ├── components/
-│   │           │   └── CommandPalette.tsx # VS Code-style palette (z-[60]); nav + project actions + model search
+│   │           │   └── CommandPalette.tsx # VS Code-style palette (z-[60]); nav + project actions + model search + send typed text to Wicky
 │   │           ├── index.tsx            # Project home: tiles + tabbed README/dbt_project.yml/profiles.yml viewer
 │   │           ├── Models.tsx           # React Flow DAG with real-time run overlays; ?model= = selected node (in back/forward history); SidePane; DagFilterBar
 │   │           │                        #   DagFilterBar: text selector (+model, tag:x), Type/Materialization/Tag/Status dropdowns; optional Coverage overlay
@@ -226,6 +226,11 @@ app_settings
   key           TEXT PK          -- e.g. "dbt_projects_path", "global_requirements_path"
   value         TEXT
 
+global_env_vars                  -- defaults for every project + global setup's pip; overridden by the active profile, then project_env_vars
+  id            INTEGER PK
+  key           TEXT(255) UNIQUE
+  value         TEXT
+
 global_profiles
   id            INTEGER PK
   name          TEXT(255) UNIQUE -- display name
@@ -337,7 +342,7 @@ GET    /api/health
 
 GET    /api/settings
 PUT    /api/settings
-POST   /api/setup/complete                               first-run wizard: validate + save projects path, python, requirements, theme; mark setup_completed
+POST   /api/setup/complete                               first-run wizard: validate + save projects path, python, requirements, theme, global env vars (optional; replaces the set); mark setup_completed
 GET    /api/settings/python-interpreters                 list Python 3.11+ installs for the WICKD_PYTHON_PATH dropdown
 
 GET    /api/projects
@@ -420,8 +425,9 @@ GET    /api/projects/{id}/init/steps
 POST   /api/projects/{id}/init/steps
 DELETE /api/projects/{id}/init/steps/{name}
 POST   /api/projects/{id}/init/reorder
+POST   /api/projects/{id}/init/test-script               test-run editor script content with the project env (bash -euo pipefail, 5 min timeout); returns log + captured/missing vars, persists nothing
 
-POST   /api/init/global-setup                            run global pip install (global_requirements_path, else latest dbt-core)
+POST   /api/init/global-setup                            run global pip install (global_requirements_path, else latest dbt-core) with global env vars set
 POST   /api/init/global-setup/cancel                     cancel a running global setup
 GET    /api/init/global-setup/events                     SSE stream for global setup output
 
@@ -447,6 +453,10 @@ DELETE /api/projects/{id}/profiles/{profile_id}/vars/{key}
 GET    /api/projects/{id}/dbt-targets                    list outputs from profiles.yml
 GET    /api/projects/{id}/dbt-target                     current target (from project_env_vars)
 PUT    /api/projects/{id}/dbt-target                     set active target
+
+GET    /api/global-env                                    list global (default) env vars, sorted by key
+PUT    /api/global-env/{key}                              upsert one (422 on an invalid name)
+DELETE /api/global-env/{key}                              remove one (204, no-op if missing)
 
 GET    /api/global-profiles
 POST   /api/global-profiles
@@ -861,6 +871,10 @@ Two separate palettes, since the homepage sits outside `ProjectLayout` and has n
 - Check health → navigates to `/health?tab=health-check` and runs `dbt debug`
 - Check source freshness → navigates to `/health?tab=source-freshness` and triggers freshness scan
 - Check schema drift → navigates to `/health?tab=schema-drift` and triggers drift scan
+- Ask Wicky… → opens the Wicky pane and focuses its input
+
+**Wicky** (appear whenever text is typed, listed last so Enter still runs a matching command):
+- Ask Wicky: [text] / Query data: [text] → `openWicky()` (`lib/wickyEvents.ts`, `wickd:open-wicky` window event) opens the Wicky pane, switches it to Ask or Query data and sends the text with the selected node as context. The request waits until Wicky is ready; if a reply is still streaming, the text is left in the input instead
 
 **Model commands** (appear when searching):
 - Show DAG, Open file, View docs, Run, Run upstream/downstream, Build, Test [model name]

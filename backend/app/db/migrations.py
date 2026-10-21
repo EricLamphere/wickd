@@ -469,6 +469,15 @@ async def run_migrations() -> None:
         )
         await session.commit()
 
+        if not await _table_exists(session, "global_env_vars"):
+            await session.execute(text(
+                "CREATE TABLE global_env_vars ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "key TEXT NOT NULL UNIQUE, "
+                "value TEXT NOT NULL DEFAULT '')"
+            ))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

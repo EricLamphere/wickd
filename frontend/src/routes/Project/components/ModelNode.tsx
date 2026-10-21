@@ -58,7 +58,7 @@ function ModelNodeComponent({ data, selected }: Props) {
           cursor-pointer select-none transition-all duration-150
           ${selected
             ? `node-selected ${selectedRing} ring-2 shadow-lg`
-            : `bg-surface-panel ${ring} ring-1 hover:brightness-105`}
+            : `bg-surface-panel ${ring} ring-1 hover:brightness-[1.15]`}
         `}
       >
         {/* Header row */}

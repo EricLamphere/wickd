@@ -9,6 +9,7 @@ import {
 } from '../../../../lib/aiApi';
 import { ActionEntry } from './ActionEntry';
 import { QueryEntry } from './QueryEntry';
+import type { WickyChatMode } from '../../lib/wickyEvents';
 
 interface AiChatProps {
   projectId: number;
@@ -26,8 +27,11 @@ interface AiChatProps {
 
 export interface ChatRequest {
   nonce: number;
+  /** Empty → nothing is sent; the input is just focused (and switched to chatMode). */
   text: string;
   mode: AskMode;
+  /** Switch to this tab first; omitted → the current one. */
+  chatMode?: ChatMode;
 }
 
 interface Pending {
@@ -40,8 +44,7 @@ interface Pending {
   stoppable: boolean;
 }
 
-/** Ask = answers from the project's code and docs; Query = Wicky writes SQL you run. */
-type ChatMode = 'ask' | 'query';
+type ChatMode = WickyChatMode;
 
 const QUERY_SUGGESTIONS = ['How many rows are there, and how many per day recently?', 'Show the most common values of each category column'];
 
@@ -70,6 +73,7 @@ export function AiChat({
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const conversation = useQuery({
     queryKey: ['ai-conversation', projectId, activeId],
@@ -131,11 +135,11 @@ export function AiChat({
     }
   };
 
-  const send = async (text: string, mode: AskMode = 'ask') => {
+  const send = async (text: string, mode: AskMode = 'ask', as: ChatMode = chatMode) => {
     const question = text.trim();
     if (!question || pending) return;
     setInput('');
-    if (chatMode === 'query' && mode === 'ask') return writeQuery(question);
+    if (as === 'query' && mode === 'ask') return writeQuery(question);
     return stream(question, (id, handlers) => aiApi.ask(
       projectId, id, { content: question, unique_id: model?.unique_id ?? null, mode }, handlers,
     ));
@@ -146,12 +150,17 @@ export function AiChat({
     void stream(null, (_id, handlers) => aiApi.answerFromResults(projectId, messageId, handlers));
   };
 
-  // Requests from Quick actions (e.g. Explain failure) — each new nonce sends once.
+  // Requests from Quick actions (e.g. Explain failure) and the command palette — each new nonce sends once.
   const sentNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!request || request.nonce === sentNonce.current) return;
     sentNonce.current = request.nonce;
-    void send(request.text, request.mode);
+    if (request.chatMode) setChatMode(request.chatMode);
+    inputRef.current?.focus();
+    if (!request.text.trim()) return;
+    // Busy answering — leave the question in the input rather than dropping it
+    if (pending) { setInput(request.text); return; }
+    void send(request.text, request.mode, request.chatMode ?? chatMode);
   }, [request]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const newChat = async () => {
@@ -253,6 +262,7 @@ export function AiChat({
         </div>
         <div className="flex items-end gap-1.5">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

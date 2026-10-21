@@ -350,3 +350,55 @@ async def test_requirements_path_that_is_a_dir_rejected(
 
     assert resp.status_code == 400
     assert resp.json()["detail"]["field"] == "global_requirements_path"
+
+
+# ---- global environment variables ----
+
+
+async def test_setup_saves_global_env_vars(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    await client.put("/api/global-env/STALE", json={"value": "old"})
+
+    resp = await client.post(
+        "/api/setup/complete",
+        json=_body(tmp_path, global_env_vars=[
+            {"key": "PIP_INDEX_URL", "value": "https://pypi.example"},
+            {"key": " AWS_REGION ", "value": "us-east-1"},
+        ]),
+    )
+
+    assert resp.status_code == 200
+    listed = (await client.get("/api/global-env")).json()
+    assert listed == [
+        {"key": "AWS_REGION", "value": "us-east-1"},
+        {"key": "PIP_INDEX_URL", "value": "https://pypi.example"},
+    ]
+
+
+async def test_setup_without_global_env_vars_leaves_them(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    await client.put("/api/global-env/KEEP", json={"value": "1"})
+
+    resp = await client.post("/api/setup/complete", json=_body(tmp_path))
+
+    assert resp.status_code == 200
+    assert (await client.get("/api/global-env")).json() == [{"key": "KEEP", "value": "1"}]
+
+
+@pytest.mark.parametrize(
+    "env_vars",
+    [
+        [{"key": "BAD KEY", "value": "x"}],
+        [{"key": "DUP", "value": "1"}, {"key": "DUP", "value": "2"}],
+    ],
+)
+async def test_setup_rejects_bad_global_env_vars(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str], env_vars: list[dict]
+) -> None:
+    resp = await client.post("/api/setup/complete", json=_body(tmp_path, global_env_vars=env_vars))
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["field"] == "global_env_vars"
+    assert python_changes == []

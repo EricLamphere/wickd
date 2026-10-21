@@ -4,6 +4,7 @@ import { NavigateFunction, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Braces,
+  Database,
   FileCode,
   FlaskConical,
   GitBranch,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Sparkles,
   SquareTerminal,
   Terminal,
   Zap,
@@ -21,10 +23,12 @@ import {
 import { api, GraphDto, ModelNode } from '../../../lib/api';
 import { normalizeCommand } from '../lib/customCommand';
 import { CustomCommandMode } from './CustomCommandMode';
+import { useSelectedNodeId } from '../lib/selectedNodeContext';
+import { openWicky } from '../lib/wickyEvents';
 
 // ---- Types ----
 
-type CommandCategory = 'navigation' | 'model' | 'project';
+type CommandCategory = 'navigation' | 'model' | 'project' | 'wicky';
 
 interface Command {
   id: string;
@@ -48,6 +52,7 @@ const CATEGORY_LABELS: Record<CommandCategory, string> = {
   navigation: 'Navigation',
   model: 'Models',
   project: 'Project',
+  wicky: 'Wicky',
 };
 
 // ---- Command builders ----
@@ -129,6 +134,15 @@ function buildProjectCommands(
       icon: <SquareTerminal size={14} />,
       keepOpen: true,
       onExecute: onCustomCommand,
+    },
+    {
+      id: 'proj-ask-wicky',
+      category: 'project',
+      title: 'Ask Wicky…',
+      subtitle: 'Open the AI assistant, or type a question here to send it',
+      icon: <Sparkles size={14} />,
+      shortcutHint: '⌘I',
+      onExecute: () => openWicky(),
     },
     {
       id: 'proj-run-all',
@@ -280,6 +294,29 @@ function buildModelCommands(
   return cmds;
 }
 
+/** Fallback rows for any typed text: send it to Wicky as a question or a data query. */
+function buildWickyQuestionCommands(question: string, contextName: string | null): Command[] {
+  const about = contextName ? `about ${contextName}` : 'about this project';
+  return [
+    {
+      id: 'wicky-ask',
+      category: 'wicky',
+      title: `Ask Wicky: ${question}`,
+      subtitle: `Answer from the project's SQL and docs, ${about}`,
+      icon: <Sparkles size={14} />,
+      onExecute: () => openWicky({ question, chatMode: 'ask' }),
+    },
+    {
+      id: 'wicky-query',
+      category: 'wicky',
+      title: `Query data: ${question}`,
+      subtitle: `Wicky writes a read-only query ${about} for you to review and run`,
+      icon: <Database size={14} />,
+      onExecute: () => openWicky({ question, chatMode: 'query' }),
+    },
+  ];
+}
+
 // ---- Filter ----
 
 function filterCommands(commands: Command[], query: string): Command[] {
@@ -287,7 +324,7 @@ function filterCommands(commands: Command[], query: string): Command[] {
   if (!q) {
     return commands.filter((c) => c.category !== 'model');
   }
-  const order: Record<CommandCategory, number> = { navigation: 0, project: 1, model: 2 };
+  const order: Record<CommandCategory, number> = { navigation: 0, project: 1, model: 2, wicky: 3 };
   const matched = commands.filter(
     (c) =>
       c.title.toLowerCase().includes(q) || (c.subtitle?.toLowerCase().includes(q) ?? false),
@@ -359,6 +396,10 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [mode, setMode] = useState<PaletteMode>({ kind: 'search' });
+  const selectedNodeId = useSelectedNodeId();
+  const contextName = selectedNodeId
+    ? graph?.nodes.find((n) => n.unique_id === selectedNodeId)?.name ?? null
+    : null;
 
   const allCommands = useMemo<Command[]>(() => {
     const nav = buildNavCommands(projectId, navigate);
@@ -371,7 +412,11 @@ export function CommandPalette({
 
   const filtered = useMemo(() => {
     const matches = filterCommands(allCommands, query);
-    if (!DBT_COMMAND_QUERY.test(query.trim())) return matches;
+    const typedText = query.trim();
+    // Anything typed can go to Wicky — listed last, so Enter still picks a matching command first
+    if (!DBT_COMMAND_QUERY.test(typedText)) {
+      return typedText ? [...matches, ...buildWickyQuestionCommands(typedText, contextName)] : matches;
+    }
     // Typing "dbt <command>" offers to run it directly.
     const typed = normalizeCommand(query);
     const runTyped: Command = {
@@ -383,7 +428,7 @@ export function CommandPalette({
       onExecute: () => setMode({ kind: 'custom', initialCommand: typed, autoSubmit: true }),
     };
     return [runTyped, ...matches];
-  }, [allCommands, query]);
+  }, [allCommands, query, contextName]);
 
   // Reset selection when query changes
   useEffect(() => {

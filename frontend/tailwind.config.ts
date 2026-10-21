@@ -90,9 +90,20 @@ export default {
           '0%': { backgroundPosition: '200% 0' },
           '100%': { backgroundPosition: '-200% 0' },
         },
+        // Dashes travel along an init-step connector (dasharray period 14 → two periods)
+        'flow-dash': {
+          to: { strokeDashoffset: '-28' },
+        },
+        // Pulsing blue halo around the running init step
+        'step-glow': {
+          '0%, 100%': { boxShadow: '0 0 0 1px rgb(59 130 246 / 0.35), 0 0 12px -2px rgb(59 130 246 / 0.3)' },
+          '50%': { boxShadow: '0 0 0 3px rgb(59 130 246 / 0.25), 0 0 28px -2px rgb(59 130 246 / 0.55)' },
+        },
       },
       animation: {
         'pro-shimmer': 'pro-shimmer 3s linear infinite',
+        'flow-dash': 'flow-dash 1.6s linear infinite',
+        'step-glow': 'step-glow 1.8s ease-in-out infinite',
       },
     },
   },

@@ -26,7 +26,7 @@ working on Pro features or updating screenshots/gallery content.
 
 ```
 backend/app/
-  api/            — FastAPI routers, one file per resource (ai_model, ai_chat, ai_proposals, ai_query, projects, models, document, runs, files, docs, init, env, sql, terminal, settings, global_profiles, git, debug, drift, freshness, column_lineage, license, impact)
+  api/            — FastAPI routers, one file per resource (ai_model, ai_chat, ai_proposals, ai_query, projects, models, document, runs, files, docs, init, init_script_test, env, sql, terminal, settings, global_env, global_profiles, git, debug, drift, freshness, column_lineage, license, impact)
   db/
     models.py     — All SQLAlchemy models (12 tables)
     engine.py     — get_session dependency
@@ -86,6 +86,7 @@ frontend/src/
         selectedNodeContext.tsx — SelectedNodeContext/SetSelectedNodeContext + useReportSelectedNode(uid) / useSelectedNodeId(); feeds the bottom pane's Node DAG tab. Also SelectedNodeIdsContext + useReportSelectedNodes(uids) for the DAG's Cmd+click multi-selection (empty unless 2+ nodes), which the Impact tab prefers over the single selection; and SelectedColumnsContext + useReportSelectedColumns(keys) for the DAG's column selection (`<uid>::<column>`), which in Selection mode starts column-level impact from those columns (picksFromColumnKeys() in columnImpact.ts)
         impact.ts — computeImpact(graph, seedIds) → seeds + downstream nodes grouped by shortest depth, per-node data/unit test counts, risk flags (untested/exposure/incremental/failing/stale) and summary; buildImpactSelector() → `a+ b+` for dbt build; unit-tested in impact.test.ts
         nodeTypeIcon.ts — typeIconFor(resource_type): glyph per node type, shared by ModelNode (DAG) and the Impact table
+        wickyEvents.ts — openWicky({ question?, chatMode? }): `wickd:open-wicky` window event WickyPane listens for (opens the pane; sends the question once the chat is ready). Used by the command palette
         bottomPaneEvents.ts — openBottomTab(tab, { impactMode? }): `wickd:open-bottom-tab` window event BottomPane listens for (used by the SidePane impact card and the Git page ImpactSection)
         columnImpact.ts — computeColumnImpact(graph, lineage, seeds) → column-level reach (Pro): projection lineage narrows columns, row dependencies (filter/join/group) mark a model fully affected, untraced models assumed fully affected, affected tests; pickableColumns(); describeAffected() labels; unit-tested
         useColumnLineageData.ts — latest column lineage snapshot for impact (['column-lineage', id], shared with the DAG) + start(); `ready` needs lineage_version >= 2; `locked` on 403
@@ -95,7 +96,7 @@ frontend/src/
         useLiveRunStatuses.ts — main DAG's live run-status overlay parsed from run_log; holds each node in `running` ≥600ms (fast adapters finish in ms); owns the `statuses_changed` refetch and drops the overlay only after it lands, so nodes don't flash their pre-run color
         customCommand.ts — runCustomCommand() (POST /command, returns user-facing error or null) + per-project recent-command history in localStorage
       components/
-        CommandPalette.tsx — VS Code-style palette; nav + project actions + model search; "Run custom dbt command…" (or typing `dbt …`) switches to CustomCommandMode.tsx
+        CommandPalette.tsx — VS Code-style palette; nav + project actions + model search; "Run custom dbt command…" (or typing `dbt …`) switches to CustomCommandMode.tsx; "Ask Wicky…" opens the Wicky pane, and any typed text is offered last as "Ask Wicky: …" / "Query data: …" (lib/wickyEvents.ts)
         CustomCommandMode.tsx — palette mode: free-form `dbt <command>` input + recent commands (lib/customCommand.ts)
       index.tsx          — Project homepage (README, dbt_project.yml, profiles.yml tabbed viewer)
       Models.tsx         — React Flow DAG page (/projects/:projectId/models); ?model=<uid> is the selected node (clicking a node pushes it, so back/forward steps through selections; pane click clears it with replace; modifier-click multi-select doesn't touch it); uses SidePane(page="dag"); optional test coverage overlay with toggle in DagFilterBar; persists coverage state per-project in sessionStorage
@@ -104,7 +105,7 @@ frontend/src/
       Git/               — Source Control page (VSCode-style SCM): ChangesList, DiffView (Monaco DiffEditor), CommitBox, BranchPicker, HistoryPanel. The changes panel is VS Code-style: BranchControls (branch chip + push/pull) in the title row, CommitBox (auto-growing message + slim Commit button) on top, then collapsible sections (PaneSection.tsx: PaneSectionHeader + usePersistedOpen in localStorage): Changes (open by default, `wickd:git-changes-open`; fills the free space so later sections sit at the bottom, split evenly with Commit History when both are open) → ImpactSection (impact of uncommitted changes, open, `wickd:git-impact-open`) → HistorySection "Commit History" (collapsed, `wickd:git-history-open`; when open it fills the rest of the panel)
       Workspace/         — SQL Workspace page: file tree + Monaco editor + Compiled SQL tab + resizable results pane; SQL/dbt autocomplete; cmd+click refs navigate to File Explorer
       Environment.tsx    — Env vars + profiles
-      InitScripts.tsx    — Init pipeline management
+      InitScripts.tsx    — Init pipeline management: steps drawn as a staggered flow (components/InitPipeline/: StepTile — blue/green/red by run status, StepConnector — animated SVG S-curve between tiles, AddStepTile — dashed "+" placeholder (create / link script), ScriptEditorModal — Monaco shell editor + captured vars + Test (POST /init/test-script, api/init_script_test.py: runs unsaved content with the project env, persists nothing; ScriptTestOutput), CapturedVarsEditor (shared with StepTile); flow.ts lane offsets + connectorState(), unit-tested)
       Health.tsx         — Health page: tabbed view of dbt Health Check + Schema Drift + Source Freshness
       components/
         Wicky/           — Wicky, the AI assistant (Pro): WickyPane (right panel in ProjectLayout on every project page; ⌘I toggles; open state/width in localStorage; follows SelectedNodeContext, project-level context when nothing is selected) → WickyContent (unlock → AiSetup model download → QuickActions (Explain failure when the node or its tests failed, Document, Add tests) + AiChat; Explain failure sends a chat request with mode explain_failure); AiChat has Ask / Query data modes — QueryEntry shows the SQL (editable), Run, status, results in a DataTable and Answer from results (auto with the bundled model); ActionEntry renders a quick action inline in chat history (live descriptions / tests from `ai_proposal_progress` via lib/partialDocs.ts / lib/partialTests.ts, then Review/Discard, then the outcome + what was written, permanently), ProposalReviewModal (Monaco diff + ChangeList of the proposal's items: click to reveal/highlight via findItemLine() in proposalItems.ts, ✓/✗/undo per item; the file is applied once every item is decided; Accept all / Reject all), useAi.ts (useAiStatus via useGlobalEvents, useAiProposals: project-wide proposals + live progress; useWickyConversation: open chat shared by AiChat and QuickActions); API in lib/aiApi.ts
@@ -135,7 +136,7 @@ frontend/src/
 
 ## Database Tables
 
-All 17 in `backend/app/db/models.py`:
+All 18 in `backend/app/db/models.py`:
 - `projects` — discovered dbt projects (includes `init_script_path: str` per-project init dir; `ignored: bool` to hide from list; `last_init_status: str` (idle/running/success/error), `last_init_started_at`, `last_init_finished_at`, `last_init_failed_step` — persisted init pipeline status shown on the homepage and Initialization page)
 - `init_steps` — ordered init pipeline steps per project (includes `script_path` for linked external scripts; `last_status: str` (idle/running/success/error), `last_started_at`, `last_finished_at`, `last_log: str` (capped at 200 lines) — persisted per-step run status)
 - `model_statuses` — per-model run status (idle/pending/running/success/error/warn/stale)
@@ -144,6 +145,7 @@ All 17 in `backend/app/db/models.py`:
 - `profile_env_vars` — key/value vars belonging to a profile
 - `project_env_vars` — project-level env vars (not profile-scoped); includes `dbt_target` for active target; `REQUIREMENTS_PATH` for per-project requirements; `WORKSPACE_PATH` for SQL workspace dir (default `wickd/workspace`)
 - `app_settings` — global app config (key/value); keys: `dbt_projects_path`, `global_requirements_path`, `log_level`, `theme`, `python_path`, `setup_completed`, `ai_model`, `ai_endpoint_url`, `ai_endpoint_model`
+- `global_env_vars` — default env vars (key unique) for every project and for global setup's pip install; precedence (low → high) is process env → global env vars → active profile → project env vars (`app/envvars.py` `layer_env()`, used by `load_project_env()`)
 - `global_profiles` — named env var sets shared across all projects
 - `global_profile_vars` — key/value vars belonging to a global profile
 - `drift_snapshots` — schema drift scan results per project; stores status (running/done/error), progress counters, and results_json (array of per-model column diffs)

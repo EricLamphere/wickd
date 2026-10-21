@@ -18,6 +18,11 @@ from app.logs.project_logger import append_project_log
 
 router = APIRouter(prefix="/api/projects", tags=["models"])
 
+# dbt rewrites target/manifest.json on every invocation (even `dbt show`), so a read can land
+# mid-write and fail to parse. Retry briefly before treating it as "no manifest".
+MANIFEST_READ_ATTEMPTS = 4
+MANIFEST_READ_RETRY_DELAY_S = 0.15
+
 
 class NewModelDto(BaseModel):
     name: str
@@ -107,6 +112,18 @@ async def _load_statuses(session: AsyncSession, project_id: int) -> dict[str, Mo
     return {row.unique_id: row for row in result.scalars().all()}
 
 
+async def _load_manifest_settled(manifest_path: Path) -> Manifest | None:
+    """load_manifest(), retrying while an existing manifest fails to parse (likely mid-write)."""
+    loop = asyncio.get_event_loop()
+    for attempt in range(MANIFEST_READ_ATTEMPTS):
+        manifest: Manifest | None = await loop.run_in_executor(None, load_manifest, manifest_path)
+        if manifest is not None or not manifest_path.exists():
+            return manifest
+        if attempt < MANIFEST_READ_ATTEMPTS - 1:
+            await asyncio.sleep(MANIFEST_READ_RETRY_DELAY_S)
+    return None
+
+
 @router.get("/{project_id}/models", response_model=GraphDto)
 async def get_models(
     project_id: int, session: AsyncSession = Depends(get_session)
@@ -115,9 +132,8 @@ async def get_models(
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
 
-    loop = asyncio.get_event_loop()
     manifest_path = Path(project.path) / "target" / "manifest.json"
-    manifest: Manifest | None = await loop.run_in_executor(None, load_manifest, manifest_path)
+    manifest = await _load_manifest_settled(manifest_path)
     if manifest is None:
         return GraphDto(nodes=[], edges=[])
 

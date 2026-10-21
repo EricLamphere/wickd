@@ -15,6 +15,7 @@ export function WelcomeStep() {
         <li>Where your dbt projects live</li>
         <li>Which Python dbt should run on</li>
         <li>Which dbt packages to install</li>
+        <li>Default environment variables (optional)</li>
         <li>A couple of preferences</li>
       </ol>
       <p className="mt-5 text-xs text-gray-500">
@@ -154,11 +155,17 @@ export function PreferencesStep({ form, update }: StepProps) {
   );
 }
 
+function describeEnvVars(form: SetupForm): string {
+  const keys = (form.envVars ?? []).map((v) => v.key.trim()).filter(Boolean);
+  return keys.length > 0 ? keys.join(', ') : 'No variables';
+}
+
 export function ReviewStep({ form }: StepProps) {
   const rows: [string, string][] = [
     ['Projects folder', form.projectsPath.trim()],
     ['Python', form.pythonPath || 'Auto-detect'],
     ['Installs', form.requirementsPath.trim() || 'Latest dbt-core'],
+    ['Environment', describeEnvVars(form)],
     ['Theme', form.theme === 'dark' ? 'Dark' : 'Light'],
   ];
   return (

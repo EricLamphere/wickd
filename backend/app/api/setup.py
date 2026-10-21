@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.global_env import GlobalEnvVarDto, replace_global_env_vars
 from app.api.settings import (
     SETUP_COMPLETED_KEY,
     SettingsDto,
@@ -22,6 +23,7 @@ from app.config import settings
 from app.db.engine import get_session
 from app.db.models import AppSetting
 from app.dbt import venv
+from app.envvars import is_valid_env_key
 from app.logging_setup import get_logger
 from app.projects.service import rescan_projects
 
@@ -44,6 +46,8 @@ class SetupDto(BaseModel):
     # Create a missing requirements file (seeded with DEFAULT_REQUIREMENTS).
     create_requirements_file: bool = False
     theme: Literal["dark", "light"] = "dark"
+    # Global env vars, replacing the current set. None → leave them as they are.
+    global_env_vars: list[GlobalEnvVarDto] | None = None
 
 
 def _field_error(field: str, code: str, message: str) -> HTTPException:
@@ -96,6 +100,27 @@ def _create_requirements_file(path: Path) -> None:
     log.info("setup_requirements_file_created", path=str(path))
 
 
+def _normalize_env_vars(env_vars: list[GlobalEnvVarDto]) -> list[GlobalEnvVarDto]:
+    """Trim keys, drop fully blank rows, and reject bad or duplicate names."""
+    rows = [
+        GlobalEnvVarDto(key=v.key.strip(), value=v.value)
+        for v in env_vars
+        if v.key.strip() or v.value
+    ]
+    seen: set[str] = set()
+    for row in rows:
+        if not is_valid_env_key(row.key):
+            name = f"'{row.key}'" if row.key else "A variable with a value but no name"
+            raise _field_error(
+                "global_env_vars", "invalid",
+                f"{name} isn't a valid variable name (letters, digits and _; can't start with a digit).",
+            )
+        if row.key in seen:
+            raise _field_error("global_env_vars", "invalid", f"{row.key} is listed more than once.")
+        seen.add(row.key)
+    return rows
+
+
 async def _delete_setting(session: AsyncSession, key: str) -> None:
     row = await session.get(AppSetting, key)
     if row is not None:
@@ -114,6 +139,7 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
     requirements, create_requirements = _resolve_requirements(
         dto.global_requirements_path, dto.create_requirements_file
     )
+    env_vars = _normalize_env_vars(dto.global_env_vars) if dto.global_env_vars is not None else None
 
     if not venv.is_own_venv():
         try:
@@ -130,6 +156,8 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
     else:
         await _upsert(session, "global_requirements_path", str(requirements))
     await _upsert(session, "theme", dto.theme)
+    if env_vars is not None:
+        await replace_global_env_vars(session, env_vars)
     await _upsert(session, SETUP_COMPLETED_KEY, "true")
     await session.commit()
     log.info("setup_completed", projects_dir=str(projects_dir), requirements=str(requirements))

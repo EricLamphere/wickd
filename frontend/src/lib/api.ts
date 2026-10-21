@@ -370,6 +370,16 @@ export interface InitStepDto {
   last_log: string;
 }
 
+export interface ScriptTestResultDto {
+  ok: boolean;
+  return_code: number;
+  timed_out: boolean;
+  duration_ms: number;
+  log: string;
+  captured: Record<string, string>;
+  missing: string[];
+}
+
 export interface SqlDto {
   unique_id: string;
   path: string;
@@ -395,6 +405,12 @@ export interface EnvVarDto {
 }
 
 export interface GlobalProfileVarDto {
+  key: string;
+  value: string;
+}
+
+/** Default env vars for every project; the active profile, then project vars, override them. */
+export interface GlobalEnvVarDto {
   key: string;
   value: string;
 }
@@ -611,10 +627,12 @@ export interface SetupDto {
   global_requirements_path: string;
   create_requirements_file?: boolean;
   theme: 'dark' | 'light';
+  /** Replaces the global env vars; omit to leave them unchanged. */
+  global_env_vars?: GlobalEnvVarDto[];
 }
 
 export interface SetupFieldError {
-  field: 'dbt_projects_path' | 'python_path' | 'global_requirements_path';
+  field: 'dbt_projects_path' | 'python_path' | 'global_requirements_path' | 'global_env_vars';
   code: 'required' | 'invalid' | 'not_found';
   message: string;
 }
@@ -785,6 +803,8 @@ export const api = {
       post<InitStepDto>(`/projects/${projectId}/init/steps/link`, { path }),
     runStep: (projectId: number, stepName: string) =>
       post<void>(`/projects/${projectId}/init/run-step`, { step_name: stepName }),
+    testScript: (projectId: number, body: { content: string; captured_vars: string[]; step_name: string | null }) =>
+      post<ScriptTestResultDto>(`/projects/${projectId}/init/test-script`, body),
     setCapturedVars: (projectId: number, name: string, captured_vars: string[]) =>
       put<InitStepDto>(`/projects/${projectId}/init/steps/${encodeURIComponent(name)}/captured-vars`, { captured_vars }),
     getEnvVars: (projectId: number) =>
@@ -840,6 +860,12 @@ export const api = {
       post<{ ok: boolean }>(`/terminal/${sessionId}/resize`, { cols, rows }),
     stop: (sessionId: string) =>
       post<{ ok: boolean }>(`/terminal/${sessionId}/stop`),
+  },
+  globalEnv: {
+    list: () => get<GlobalEnvVarDto[]>('/global-env'),
+    set: (key: string, value: string) =>
+      put<GlobalEnvVarDto>(`/global-env/${encodeURIComponent(key)}`, { value }),
+    delete: (key: string) => del<void>(`/global-env/${encodeURIComponent(key)}`),
   },
   globalProfiles: {
     list: () => get<GlobalProfileDto[]>('/global-profiles'),

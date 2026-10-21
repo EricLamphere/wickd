@@ -4,6 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Plus, Trash2, Check, X } from 'lucide-react';
 import { api, type EnvVarDto, type Project } from '../../lib/api';
 import NavRail from './components/NavRail';
+import { GlobalEnvVarsReadOnly } from './components/GlobalEnvVarsReadOnly';
+import { EnvPrecedenceNote } from '../../components/GlobalEnvVarsSection';
 
 // ---- Collapsible tile wrapper ----
 
@@ -50,6 +52,8 @@ export default function EnvironmentPage() {
         </Tile>
 
         <Tile title="Environment">
+          <EnvPrecedenceNote className="-mb-2" />
+          <GlobalEnvVarsReadOnly />
           <GlobalProfileSelector projectId={id} />
           <EnvironmentVariablesSection projectId={id} />
         </Tile>
@@ -89,7 +93,7 @@ function GlobalProfileSelector({ projectId }: { projectId: number }) {
   return (
     <div>
       <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Active Profile</h3>
-      <p className="text-xs text-gray-500 mb-3">Global profile whose variables are applied during init runs.</p>
+      <p className="text-xs text-gray-500 mb-3">Global profile whose variables are applied to dbt and init runs. Overrides global variables; project variables override it.</p>
       <select
         value={activeData?.profile_id ?? ''}
         onChange={(e) => handleChange(e.target.value)}
@@ -449,7 +453,7 @@ function EnvironmentVariablesSection({ projectId }: { projectId: number }) {
           </div>
         )}
       </div>
-      <p className="text-xs text-gray-500 mb-3">Applied to all init script runs. Profile variables override these.</p>
+      <p className="text-xs text-gray-500 mb-3">Applied to dbt and init runs for this project. These take priority over the active profile and global variables.</p>
       <div className="flex flex-col gap-1.5 mb-3">
         {envVars.length === 0 && (
           <p className="text-xs text-gray-600 italic">No environment variables.</p>

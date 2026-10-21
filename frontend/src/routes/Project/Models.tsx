@@ -215,7 +215,8 @@ export default function ModelsPage() {
   useReportSelectedColumns(selectedColumnKeys);
 
   useEffect(() => {
-    if (!graph || !selectedModel) return;
+    // An empty graph is transient (manifest missing or mid-rewrite) — keep the selection
+    if (!graph || !selectedModel || graph.nodes.length === 0) return;
     const refreshed = graph.nodes.find((n) => n.unique_id === selectedModel.unique_id);
     if (refreshed) setSelectedModel(refreshed);
     else {
@@ -457,7 +458,8 @@ export default function ModelsPage() {
         const uid = model?.unique_id ?? '';
         return {
           ...n,
-          selected: prevSelected.get(n.id) ?? false,
+          // New to React Flow (e.g. back after a transient empty graph): restore the selection
+          selected: prevSelected.get(n.id) ?? n.id === selectedModel?.unique_id,
           data: {
             ...n.data,
             dimmed: effectiveConnected !== null && !effectiveConnected.has(uid),

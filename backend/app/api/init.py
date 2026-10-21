@@ -3,6 +3,7 @@ import os
 import re
 import shlex
 import subprocess
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -10,12 +11,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.engine import get_session
 from app.db.models import GlobalProfile, InitStep, Project, ProjectEnvVar
 from app.dbt.init_scripts import BASE_STEPS, INIT_DIR_NAME, delete_script, list_scripts, save_script
 from app.dbt.interactive import manager as init_manager
 from app.dbt.venv import existing_bin, venv_dbt, venv_pip, venv_python
+from app.envvars import layer_env, load_global_env_vars
 from app.events.bus import Event, bus
 from app.events.sse import sse_response_with_output_replay
 from app.logging_setup import get_logger
@@ -566,41 +569,46 @@ async def run_single_step(
 _ACTIVE_GLOBAL_PROFILE_KEY = "active_global_profile_id"
 
 
-async def load_project_env(project_id: int) -> dict[str, str]:
-    """Build an env dict from the current process env plus project + active-global-profile vars."""
-    from sqlalchemy.orm import selectinload
+async def _active_profile_vars(session: AsyncSession, project_vars: dict[str, str]) -> dict[str, str]:
+    raw_id = project_vars.get(_ACTIVE_GLOBAL_PROFILE_KEY)
+    if raw_id is None:
+        return {}
+    try:
+        profile_id = int(raw_id)
+    except ValueError:
+        log.warning("active_profile_id_invalid", value=raw_id)
+        return {}
+    result = await session.execute(
+        select(GlobalProfile)
+        .where(GlobalProfile.id == profile_id)
+        .options(selectinload(GlobalProfile.vars))
+    )
+    profile = result.scalar_one_or_none()
+    return {v.key: v.value for v in profile.vars} if profile is not None else {}
 
+
+async def project_env(
+    session: AsyncSession, project_id: int, base: Mapping[str, str]
+) -> dict[str, str]:
+    """`base` layered with global env vars, then the active profile, then project vars
+    (see app/envvars.py for the precedence)."""
+    result = await session.execute(
+        select(ProjectEnvVar).where(ProjectEnvVar.project_id == project_id)
+    )
+    project_vars = {ev.key: ev.value for ev in result.scalars().all()}
+    return layer_env(
+        base=base,
+        global_vars=await load_global_env_vars(session),
+        profile_vars=await _active_profile_vars(session, project_vars),
+        project_vars=project_vars,
+    )
+
+
+async def load_project_env(project_id: int) -> dict[str, str]:
+    """The environment dbt and init steps run with for this project."""
     from app.db.engine import SessionLocal
-    env = os.environ.copy()
-    async with SessionLocal() as _ev_session:
-        ev_result = await _ev_session.execute(
-            select(ProjectEnvVar).where(ProjectEnvVar.project_id == project_id)
-        )
-        for ev in ev_result.scalars().all():
-            env[ev.key] = ev.value
-        # Apply active global profile vars (overrides project env vars)
-        active_id_row = await _ev_session.execute(
-            select(ProjectEnvVar).where(
-                ProjectEnvVar.project_id == project_id,
-                ProjectEnvVar.key == _ACTIVE_GLOBAL_PROFILE_KEY,
-            )
-        )
-        active_id_var = active_id_row.scalar_one_or_none()
-        if active_id_var is not None:
-            try:
-                global_profile_id = int(active_id_var.value)
-                gp_result = await _ev_session.execute(
-                    select(GlobalProfile)
-                    .where(GlobalProfile.id == global_profile_id)
-                    .options(selectinload(GlobalProfile.vars))
-                )
-                gp = gp_result.scalar_one_or_none()
-                if gp is not None:
-                    for pv in gp.vars:
-                        env[pv.key] = pv.value
-            except (ValueError, TypeError):
-                pass
-    return env
+    async with SessionLocal() as session:
+        return await project_env(session, project_id, base=os.environ)
 
 
 async def _set_project_init_status(project_id: int, **fields: object) -> None:
@@ -1313,7 +1321,8 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
             _global_output_queue.get_nowait()
         except _queue.Empty:
             break
-    pip_env = {**os.environ, "PYTHONUNBUFFERED": "1",
+    # Global env vars apply here too (e.g. PIP_INDEX_URL for a private package index).
+    pip_env = {**os.environ, **await load_global_env_vars(session), "PYTHONUNBUFFERED": "1",
                "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring"}
     _global_setup_thread = _threading.Thread(
         target=_run_pip_in_thread,

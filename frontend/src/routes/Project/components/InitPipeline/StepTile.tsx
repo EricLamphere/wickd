@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type InitStepDto } from '../../../../lib/api';
 import { StatusLogPopover } from '../StatusLogPopover';
-import { CapturedVarsEditor } from './CapturedVarsEditor';
 import { TILE_WIDTH_PCT, type StepRunState, type StepStatus } from './flow';
 
 // ---- status icon ----
@@ -96,13 +95,12 @@ interface StepTileProps {
   onRunStep: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
-  onCapturedVarsChange: (vars: string[]) => void;
   tileRef: (el: HTMLDivElement | null) => void;
   onHandlePointerDown: (e: React.PointerEvent) => void;
   isDragging: boolean;
 }
 
-export function StepTile({ step, index, offsetPct, projectId, runState, onToggle, onRunStep, onEdit, onDelete, onCapturedVarsChange, tileRef, onHandlePointerDown, isDragging }: StepTileProps) {
+export function StepTile({ step, index, offsetPct, projectId, runState, onToggle, onRunStep, onEdit, onDelete, tileRef, onHandlePointerDown, isDragging }: StepTileProps) {
   const displayName = step.name.replace(/^(base|custom):\s*/, '');
   const prefix = step.is_base ? 'base' : 'custom';
   const status: StepStatus = runState?.status ?? 'idle';
@@ -224,10 +222,21 @@ export function StepTile({ step, index, offsetPct, projectId, runState, onToggle
         </pre>
       )}
 
-      {/* Captured variables (custom steps only) */}
-      {!step.is_base && (
-        <div className="pt-0.5">
-          <CapturedVarsEditor vars={step.captured_vars} onChange={onCapturedVarsChange} />
+      {/* Captured variables (custom steps only; edited in the script editor) */}
+      {!step.is_base && step.captured_vars.length > 0 && (
+        <div
+          className="flex items-center gap-1.5 flex-wrap"
+          title="After each successful run, these exported variables are saved as project env vars. Edit the script to change them."
+        >
+          <span className="text-xs text-gray-500 shrink-0">Saves to project env:</span>
+          {step.captured_vars.map((v) => (
+            <span
+              key={v}
+              className="px-1.5 py-0.5 rounded bg-surface-elevated border border-gray-700 text-xs font-mono text-gray-300"
+            >
+              {v}
+            </span>
+          ))}
         </div>
       )}
 

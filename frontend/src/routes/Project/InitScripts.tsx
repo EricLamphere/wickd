@@ -136,14 +136,6 @@ export default function InitScriptsPage() {
     onSuccess: invalidate,
   });
 
-  const capturedVarsMutation = useMutation({
-    mutationFn: ({ name, vars }: { name: string; vars: string[] }) => {
-      const bareName = name.replace(/^custom:\s*/, '');
-      return api.init.setCapturedVars(id, bareName, vars);
-    },
-    onSuccess: invalidate,
-  });
-
   const [newStepOpen, setNewStepOpen] = useState(false);
   const [editStep, setEditStep] = useState<InitStepDto | null>(null);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
@@ -415,7 +407,6 @@ export default function InitScriptsPage() {
                     onRunStep={() => api.init.runStep(id, step.name)}
                     onEdit={!step.is_base ? () => setEditStep(step) : undefined}
                     onDelete={!step.is_base ? () => handleDelete(step) : undefined}
-                    onCapturedVarsChange={(vars) => capturedVarsMutation.mutate({ name: step.name, vars })}
                     tileRef={(el) => {
                       if (el) tileRefs.current.set(step.name, el);
                       else tileRefs.current.delete(step.name);

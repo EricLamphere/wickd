@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { api, type InitStepDto, type ScriptTestResultDto } from '../../../../lib/api';
 import { useTheme } from '../../../../lib/useTheme';
-import { CapturedVarsEditor } from './CapturedVarsEditor';
+import { CapturedVarsSection } from './CapturedVarsSection';
 import { ScriptTestOutput } from './ScriptTestOutput';
 
 // Starting point for a new script (Monaco has no placeholder text).
@@ -165,14 +165,14 @@ export function ScriptEditorModal({ projectId, initScriptPath, existing, onClose
             )}
           </div>
 
-          <div className="flex flex-col gap-1">
-            <CapturedVarsEditor vars={capturedVars} onChange={setCapturedVars} />
-            <p className="text-[11px] text-gray-600">
-              Variables the script exports that are saved as project env vars after each successful run.
-            </p>
-          </div>
-
           <ScriptTestOutput result={testResult} running={testing} error={testError} />
+
+          <CapturedVarsSection
+            vars={capturedVars}
+            onChange={setCapturedVars}
+            script={content}
+            testResult={testResult}
+          />
 
           {error && (
             <p className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded px-3 py-2">

@@ -12,10 +12,15 @@ from app.db.engine import get_session
 from app.db.models import DriftSnapshot, Project
 from app.dbt.drift import ModelDriftResult, diff_columns, is_eligible_for_drift_check
 from app.dbt.manifest import load_manifest
-from app.dbt.probe import probe_warehouse_columns
+from app.dbt.probe import ProbeResult, probe_many_warehouse_columns, probe_warehouse_columns
 from app.events.bus import Event, bus
 
 router = APIRouter(prefix="/api/projects", tags=["drift"])
+
+# Models probed per dbt invocation: each invocation pays dbt's parse + connect
+# startup, so batching is what makes the scan fast (dbt can't run in parallel
+# per project). Smaller batches only mean coarser progress and a cheaper fallback.
+PROBE_BATCH_SIZE = 25
 
 # In-memory map of project_id → running asyncio.Task (prevents concurrent runs)
 _running: dict[int, asyncio.Task] = {}
@@ -199,75 +204,22 @@ async def _run_drift_check(
     results: list[dict] = []
     checked = 0
 
-    for node in eligible:
-        model_result: ModelDriftResult | None = None
-        probe = await probe_warehouse_columns(
-            project_id, Path(project_path), node.name, env, target_val
+    for i in range(0, total, PROBE_BATCH_SIZE):
+        batch = eligible[i:i + PROBE_BATCH_SIZE]
+        # 1-based, inclusive: the panel shows "Checking 26–50 of N" while the batch runs
+        batch_range = {"batch_start": i + 1, "batch_end": i + len(batch)}
+        await _publish_progress(topic, snap_id, checked, total, "", batch_range)
+        probes = await probe_many_warehouse_columns(
+            project_id, Path(project_path), tuple(n.name for n in batch), env, target_val
         )
-        error_msg = probe.error
-        probe_columns = probe.columns
-
-        if error_msg is None:
-            drifted_cols = diff_columns(node.columns, probe_columns)
-            has_drift = any(
-                not c.in_manifest or not c.in_warehouse or c.type_mismatch
-                for c in drifted_cols
+        for node in batch:
+            probe = probes[node.name] if probes is not None else await probe_warehouse_columns(
+                project_id, Path(project_path), node.name, env, target_val
             )
-            model_result = ModelDriftResult(
-                unique_id=node.unique_id,
-                name=node.name,
-                materialized=node.materialized,
-                error=None,
-                columns=drifted_cols,
-                has_drift=has_drift,
-            )
-        else:
-            model_result = ModelDriftResult(
-                unique_id=node.unique_id,
-                name=node.name,
-                materialized=node.materialized,
-                error=error_msg,
-                columns=(),
-                has_drift=False,
-            )
-
-        results.append({
-            "unique_id": model_result.unique_id,
-            "name": model_result.name,
-            "materialized": model_result.materialized,
-            "error": model_result.error,
-            "columns": [
-                {
-                    "name": c.name,
-                    "in_manifest": c.in_manifest,
-                    "in_warehouse": c.in_warehouse,
-                    "manifest_type": c.manifest_type,
-                    "warehouse_type": c.warehouse_type,
-                    "type_mismatch": c.type_mismatch,
-                }
-                for c in model_result.columns
-            ],
-            "has_drift": model_result.has_drift,
-        })
-        checked += 1
-
-        async with SessionLocal() as session:
-            snap = await session.get(DriftSnapshot, snap_id)
-            if snap is not None:
-                snap.checked_models = checked
-                snap.results_json = json.dumps(results)
-                await session.commit()
-
-        await bus.publish(Event(
-            topic=topic,
-            type="drift_progress",
-            data={
-                "snapshot_id": snap_id,
-                "checked": checked,
-                "total": total,
-                "current": node.name,
-            },
-        ))
+            results.append(_result_to_dict(_drift_result(node, probe)))
+            checked += 1
+            await _save_progress(snap_id, checked, results)
+            await _publish_progress(topic, snap_id, checked, total, node.name, batch_range)
 
     results.sort(key=lambda r: r.get("name", ""))
     drifted_count = sum(1 for r in results if r.get("has_drift"))
@@ -286,3 +238,74 @@ async def _run_drift_check(
         type="drift_finished",
         data={"snapshot_id": snap_id, "ok": True, "drifted_count": drifted_count},
     ))
+
+
+def _drift_result(node, probe: ProbeResult) -> ModelDriftResult:
+    if probe.error is not None:
+        return ModelDriftResult(
+            unique_id=node.unique_id,
+            name=node.name,
+            materialized=node.materialized,
+            error=probe.error,
+            columns=(),
+            has_drift=False,
+        )
+    drifted_cols = diff_columns(node.columns, probe.columns, probe.types)
+    return ModelDriftResult(
+        unique_id=node.unique_id,
+        name=node.name,
+        materialized=node.materialized,
+        error=None,
+        columns=drifted_cols,
+        has_drift=any(
+            not c.in_manifest or not c.in_warehouse or c.type_mismatch for c in drifted_cols
+        ),
+    )
+
+
+def _result_to_dict(result: ModelDriftResult) -> dict:
+    return {
+        "unique_id": result.unique_id,
+        "name": result.name,
+        "materialized": result.materialized,
+        "error": result.error,
+        "columns": [
+            {
+                "name": c.name,
+                "in_manifest": c.in_manifest,
+                "in_warehouse": c.in_warehouse,
+                "manifest_type": c.manifest_type,
+                "warehouse_type": c.warehouse_type,
+                "type_mismatch": c.type_mismatch,
+            }
+            for c in result.columns
+        ],
+        "has_drift": result.has_drift,
+    }
+
+
+async def _publish_progress(
+    topic: str, snap_id: int, checked: int, total: int, current: str, batch_range: dict[str, int]
+) -> None:
+    await bus.publish(Event(
+        topic=topic,
+        type="drift_progress",
+        data={
+            "snapshot_id": snap_id,
+            "checked": checked,
+            "total": total,
+            "current": current,
+            **batch_range,
+        },
+    ))
+
+
+async def _save_progress(snap_id: int, checked: int, results: list[dict]) -> None:
+    from app.db.engine import SessionLocal
+
+    async with SessionLocal() as session:
+        snap = await session.get(DriftSnapshot, snap_id)
+        if snap is not None:
+            snap.checked_models = checked
+            snap.results_json = json.dumps(results)
+            await session.commit()

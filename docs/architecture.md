@@ -48,7 +48,7 @@ wickd/
 │   │   │   ├── setup.py             # /api/setup — first-run wizard save + seed_setup_completed() for pre-wizard installs
 │   │   │   ├── events.py            # /api/projects/{id}/events — SSE endpoint
 │   │   │   ├── debug.py             # /api/projects/{id}/debug — runs dbt debug, parses output into structured checks
-│   │   │   ├── drift.py             # /api/projects/{id}/drift — schema drift check (dbt show per model vs manifest columns)
+│   │   │   ├── drift.py             # /api/projects/{id}/drift — schema drift check (batched dbt show vs manifest columns)
 │   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document — docs generator (stub `- name:` entries in schema YAML)
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
@@ -67,7 +67,7 @@ wickd/
 │   │   │   ├── init_scripts.py      # Read/write init/*.sh custom scripts
 │   │   │   ├── debug_parser.py      # Parse dbt debug stdout → structured DebugResult with per-check status
 │   │   │   ├── drift.py             # diff_columns / is_eligible_for_drift_check — column drift helpers
-│   │   │   ├── probe.py             # probe_warehouse_columns() — actual column names via dbt show --inline (drift + docs generator)
+│   │   │   ├── probe.py             # probe_warehouse_columns() — actual column names via dbt show --inline (drift + docs generator); probe_many_warehouse_columns() — many nodes in one dbt show via adapter.get_columns_in_relation (drift)
 │   │   │   ├── schema_yaml.py       # document_node() — splices `- name:` entries into the node's schema YAML without re-serialising it
 │   │   │   ├── column_lineage.py    # SQL-first column lineage (sqlglot); LineageJob prep + trace_job (poolable worker fn)
 │   │   │   ├── profile.py           # Parse dbt show --output json output into column profile stats
@@ -823,11 +823,11 @@ Session state (`sessionStorage`) persists open file path, expanded tree nodes, a
 1. Creates a `DriftSnapshot` DB row with `status=running`
 2. Launches `_run_drift_check()` as a background asyncio task (one per project; concurrent requests return 409)
 3. Reads manifest via `load_manifest()` and filters to eligible models (`is_eligible_for_drift_check` — materialized views and tables only)
-4. For each model:
-   - Runs `dbt show --select <uid> --limit 0 --output json` via `runner.run()` (silent — no bus events)
-   - `parse_show_json()` returns the warehouse column schema
-   - `diff_columns()` compares manifest-declared columns against warehouse columns
-   - Publishes `drift_progress` with `checked / total` counts
+4. In batches of `PROBE_BATCH_SIZE` (25) models:
+   - `probe_many_warehouse_columns()` runs one `dbt show --inline` via `runner.run()` (silent — no bus events) whose Jinja calls `adapter.get_columns_in_relation(ref(...))` for every model in the batch and prints the columns as one JSON line. Metadata only, no table scans; one dbt startup per batch instead of per model (dbt can't run in parallel per project, so batching is the speed-up)
+   - If the batch fails as a whole (one bad relation fails the compile), each of its models falls back to `probe_warehouse_columns()` (`select * … --limit 1`) so per-model errors are kept
+   - `diff_columns()` compares manifest-declared columns against warehouse columns and attaches the warehouse data type (`warehouse_type`; empty for single-model fallbacks). Types are shown in `DriftPanel` but not compared yet — `type_mismatch` is always false until declared types are normalised per adapter
+   - Publishes `drift_progress` when each batch starts and per model, with `checked / total` and the batch's `batch_start`/`batch_end`; `DriftPanel` shows "Checking 26–50 of N…" (`lib/driftProgress.ts`)
 5. Writes all results to `drift_snapshots.results_json` and sets `status=done`; publishes `drift_finished`
 6. `GET /api/projects/{id}/drift` returns the latest snapshot; `GET /api/projects/{id}/drift/{id}` returns a specific one
 

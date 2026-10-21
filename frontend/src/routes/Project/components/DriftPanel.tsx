@@ -5,6 +5,7 @@ import { api, type DriftSnapshot, type ModelDriftResult, type ColumnDrift } from
 import { useProjectEvents } from '../../../lib/sse';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE, useOpenInFiles } from '../lib/openInFiles';
 import { describeDocumentResult, documentErrorMessage } from '../lib/documentModel';
+import { driftProgressLabel, type DriftProgress } from '../lib/driftProgress';
 
 interface DriftPanelProps {
   projectId: number;
@@ -47,6 +48,13 @@ function columnDriftColor(col: ColumnDrift): string {
   if (col.in_manifest && !col.in_warehouse) return 'text-red-400';
   if (!col.in_manifest && col.in_warehouse) return 'text-blue-400';
   return 'text-emerald-400';
+}
+
+/** The type to show beside a column: the warehouse's when it has the column,
+ *  else the type declared in YAML (if any). Informational only — not compared. */
+function columnType(col: ColumnDrift): { type: string; title: string } {
+  if (col.in_warehouse) return { type: col.warehouse_type, title: 'Type in the warehouse' };
+  return { type: col.manifest_type, title: 'Type declared in schema YAML' };
 }
 
 function matchesFilter(result: ModelDriftResult, filter: FilterKey): boolean {
@@ -157,6 +165,14 @@ function ModelDriftRow({ projectId, result, fileNav }: ModelDriftRowProps) {
               {driftCols.map((col) => (
                 <div key={col.name} className="flex items-center gap-2 py-0.5">
                   <span className="text-[10px] font-mono text-gray-400 flex-1 truncate">{col.name}</span>
+                  {columnType(col).type && (
+                    <span
+                      title={columnType(col).title}
+                      className="max-w-[40%] shrink-0 truncate text-[10px] font-mono text-gray-600"
+                    >
+                      {columnType(col).type}
+                    </span>
+                  )}
                   {documented.has(col.name) ? (
                     <span className="text-[10px] shrink-0 text-emerald-400">documented</span>
                   ) : (
@@ -194,7 +210,7 @@ export default function DriftPanel({ projectId }: DriftPanelProps) {
   const qc = useQueryClient();
   const fileNav = useOpenInFiles(projectId);
   const [filter, setFilter] = useState<FilterKey>('all');
-  const [optimisticProgress, setOptimisticProgress] = useState<{ checked: number; total: number; current: string } | null>(null);
+  const [optimisticProgress, setOptimisticProgress] = useState<DriftProgress | null>(null);
 
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ['drift-latest', projectId],
@@ -204,8 +220,10 @@ export default function DriftPanel({ projectId }: DriftPanelProps) {
 
   const mutation = useMutation({
     mutationFn: () => api.drift.start(projectId),
+    // Clear before the request: the scan's first drift_progress event can arrive
+    // over SSE before the POST resolves, and clearing in onSuccess would drop it
+    onMutate: () => setOptimisticProgress(null),
     onSuccess: () => {
-      setOptimisticProgress(null);
       qc.invalidateQueries({ queryKey: ['drift-latest', projectId] });
     },
   });
@@ -214,7 +232,7 @@ export default function DriftPanel({ projectId }: DriftPanelProps) {
 
   useProjectEvents(projectId, useCallback((event) => {
     if (event.type === 'drift_progress') {
-      const d = event.data as { checked: number; total: number; current: string };
+      const d = event.data as DriftProgress;
       setOptimisticProgress(d);
       qc.setQueryData<DriftSnapshot | null>(['drift-latest', projectId], (old) => {
         if (!old) return old;
@@ -256,7 +274,7 @@ export default function DriftPanel({ projectId }: DriftPanelProps) {
               <span className="text-xs text-brand-400 flex items-center gap-1.5">
                 <Spinner />
                 {progress
-                  ? `Checking ${progress.checked} / ${progress.total}${progress.current ? ` — ${progress.current}` : ''}…`
+                  ? driftProgressLabel(progress)
                   : 'Starting…'}
               </span>
             )}

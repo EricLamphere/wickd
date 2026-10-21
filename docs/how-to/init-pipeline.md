@@ -51,7 +51,7 @@ Click the toggle on any step to enable or disable it without deleting it. Disabl
 
 ## Capturing env vars from a script
 
-A custom step can capture variables its script exports and save them as project env vars. List the names to capture under **Captured vars**, either on the step's tile or in the script editor (**+ add**; names are upper-cased). After each successful run:
+A custom step can capture variables its script exports and save them as project env vars. Set this up in the script editor (new script, or **Edit** on the step) under **Save exported variables to the project**: type a name and click **Add** (names are upper-cased), or click one of the script's own exports listed under **Exported by this script**. After a **Test**, each row shows whether the script exported it. The step's tile lists what it saves under **Saves to project env**. After each successful run:
 
 - Only the listed variables are captured, and only if the script `export`s them (`export MY_VAR=value`)
 - Captured vars persist across server restarts (stored in the database)

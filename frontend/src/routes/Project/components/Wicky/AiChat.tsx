@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { Database, Loader2, MessageCircle, Plus, Send, Square, Trash2 } from 'lucide-react';
@@ -80,7 +80,10 @@ export function AiChat({
     queryFn: () => aiApi.conversation(projectId, activeId!),
     enabled: activeId !== null,
   });
-  const messages = activeId === null ? [] : conversation.data?.messages ?? [];
+  const messages = useMemo(
+    () => (activeId === null ? [] : conversation.data?.messages ?? []),
+    [activeId, conversation.data],
+  );
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });

@@ -1,6 +1,6 @@
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -44,7 +44,7 @@ async def get_health_summary(
 
     from app.api.init import load_project_env
     current_target = (await load_project_env(project_id)).get("DBT_TARGET")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     drift = await _latest(session, DriftSnapshot, project_id)
     drift_input = _drift_input(drift)

@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -239,7 +239,7 @@ async def get_docs_status(project_id: int) -> DocsStatusDto:
     if not catalog.exists():
         return DocsStatusDto(generated_at=None)
     mtime = catalog.stat().st_mtime
-    generated_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+    generated_at = datetime.fromtimestamp(mtime, tz=UTC).isoformat()
     return DocsStatusDto(generated_at=generated_at)
 
 
@@ -260,7 +260,7 @@ async def _generate_docs(
 ) -> tuple[bool, list[str]]:
     from app.api.init import load_project_env
     from app.dbt.venv import venv_dbt
-    from app.logs.project_logger import append_project_log  # noqa: PLC0415
+    from app.logs.project_logger import append_project_log
 
     topic = f"project:{project_id}"
     if env is None:
@@ -282,7 +282,7 @@ async def _generate_docs(
                 stderr=asyncio.subprocess.STDOUT,
                 env=env,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — error is logged/reported below
             append_project_log(project_path, f"error: {exc}", project_id)
             return False, []
         lines: list[str] = []
@@ -328,7 +328,7 @@ async def _generate_docs(
             _patch_index_html(content, project_id), encoding="utf-8"
         )
 
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = datetime.now(UTC).isoformat()
     await bus.publish(
         Event(topic=topic, type="docs_generated", data={"ok": True, "generated_at": generated_at})
     )

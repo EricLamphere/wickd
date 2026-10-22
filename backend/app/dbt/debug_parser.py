@@ -1,6 +1,5 @@
 import re
-from dataclasses import dataclass, field
-
+from dataclasses import dataclass
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 

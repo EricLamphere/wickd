@@ -6,7 +6,8 @@ import shutil
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.dbt.interactive import _pty_read_executor, manager as init_manager
+from app.dbt.interactive import _pty_read_executor
+from app.dbt.interactive import manager as init_manager
 from app.dbt.venv import venv_activate_script
 from app.events.sse import sse_response_with_replay
 from app.logging_setup import get_logger
@@ -69,7 +70,7 @@ async def start_terminal(dto: TerminalStartDto) -> TerminalSessionDto:
         )
         session.process = proc
         session.reader_task = asyncio.create_task(
-            init_manager._reader(session)  # noqa: SLF001
+            init_manager._reader(session)
         )
         log.info("terminal_started", session_id=session.session_id, shell=shell, cwd=str(cwd))
         # Activate the dbt venv so dbt and adapters are on PATH. Resolved via
@@ -105,7 +106,7 @@ async def terminal_resize(session_id: str, dto: TerminalResizeDto) -> dict[str, 
             await loop.run_in_executor(
                 _pty_read_executor, session.process.setwinsize, dto.rows, dto.cols
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — error is logged/reported below
             log.warning("terminal_resize_failed", error=str(exc))
     return {"ok": True}
 

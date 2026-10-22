@@ -19,7 +19,7 @@ try:
     import ptyprocess  # type: ignore
 
     HAVE_PTY = True
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     HAVE_PTY = False
 
 
@@ -95,7 +95,8 @@ class InteractiveInitManager:
             session.finished = True
             try:
                 session.return_code = session.process.wait()
-            except Exception:
+            except Exception as exc:  # noqa: BLE001 — exit code unknown; reported as -1
+                log.warning("pty_wait_failed", session_id=session.session_id, error=str(exc))
                 session.return_code = -1
             await bus.publish(
                 Event(
@@ -132,8 +133,8 @@ class InteractiveInitManager:
         if session.process is not None:
             try:
                 session.process.terminate(force=True)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 — already exited; stopping must not fail
+                log.debug("pty_terminate_failed", session_id=session_id, error=str(exc))
         if session.reader_task:
             session.reader_task.cancel()
         async with self._lock:

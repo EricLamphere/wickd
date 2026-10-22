@@ -50,7 +50,7 @@ FORBIDDEN = tuple(
 )
 
 MAX_SQL_CHARS = 20_000
-_JINJA_EXPR = re.compile(r"\{\{(.*?)\}\}", re.S)
+_JINJA_EXPR = re.compile(r"\{\{(.*?)\}\}", re.DOTALL)
 _RELATION = re.compile(
     r"\s*(ref|source)\(\s*('[^'{}]+'|\"[^\"{}]+\")(\s*,\s*('[^'{}]+'|\"[^\"{}]+\"))?\s*\)\s*"
 )

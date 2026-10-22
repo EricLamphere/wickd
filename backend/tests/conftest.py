@@ -5,8 +5,8 @@ and patch the FastAPI dependency so every test gets a clean slate.
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db.models import Base
 from app.db.engine import get_session
+from app.db.models import Base
 from app.main import app
 
 

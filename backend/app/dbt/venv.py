@@ -95,6 +95,7 @@ def _python_version_info(executable: str) -> tuple[int, ...] | None:
             capture_output=True,
             text=True,
             timeout=5,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -304,6 +305,7 @@ def _create_venv(python: str, venv_dir: Path) -> None:
         [python, "-m", "venv", str(venv_dir)],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         shutil.rmtree(venv_dir, ignore_errors=True)

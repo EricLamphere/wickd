@@ -2,24 +2,29 @@ import asyncio
 import json
 import shlex
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from sqlalchemy import select as sa_select
-
+from app.api.env import _read_profiles_yml
+from app.api.init import load_project_env
 from app.db.engine import SessionLocal, get_session
-from app.db.models import GlobalProfile, InvocationModelResult, ModelStatus, Project, ProjectEnvVar, RunInvocation
+from app.db.models import (
+    GlobalProfile,
+    InvocationModelResult,
+    ModelStatus,
+    Project,
+    ProjectEnvVar,
+    RunInvocation,
+)
+from app.dbt.custom_command import CustomCommandError, ParsedCommand, parse_custom_command
 from app.dbt.manifest import load_manifest
 from app.dbt.run_results import load_run_results
-from app.api.init import load_project_env
-from app.api.env import _read_profiles_yml
-from app.dbt.custom_command import CustomCommandError, ParsedCommand, parse_custom_command
 from app.dbt.runner import RunRequest, runner
 from app.dbt.select import SelectMode, build_selector
 from app.events.bus import Event, bus
@@ -155,7 +160,7 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
             select(ModelStatus).where(ModelStatus.project_id == project.id)
         )
         by_uid = {row.unique_id: row for row in existing.scalars().all()}
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for r in results:
             row = by_uid.get(r.unique_id)
             kind = "test" if r.unique_id.startswith("test.") else "model"
@@ -284,7 +289,7 @@ async def _create_invocation(project: Project, spec: _InvocationSpec) -> tuple[i
             profile=spec.profile_name,
             target=spec.target,
             status="running",
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             custom_args=json.dumps(list(spec.custom_args)) if spec.custom_args is not None else None,
         )
         session.add(inv)
@@ -316,7 +321,7 @@ async def _finalize_invocation(project: Project, invocation_id: int, status: str
             inv_row = await session.get(RunInvocation, invocation_id)
             if inv_row is not None:
                 inv_row.status = status
-                inv_row.finished_at = datetime.now(timezone.utc)
+                inv_row.finished_at = datetime.now(UTC)
                 await session.commit()
     except Exception:
         log.exception("invocation_status_update_failed", project_id=project.id, invocation_id=invocation_id)

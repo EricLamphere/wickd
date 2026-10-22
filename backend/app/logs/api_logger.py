@@ -4,7 +4,7 @@ and publish them as `api_log` SSE events on the relevant project bus topic.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.logging_setup import get_logger
@@ -36,7 +36,7 @@ def append_api_log(line: str, project_id: int | None = None) -> None:
     if _api_log_path is None:
         return
     try:
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
         formatted = f"{ts}  {line}"
         with _api_log_path.open("a", encoding="utf-8") as f:
             f.write(formatted + "\n")

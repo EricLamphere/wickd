@@ -29,8 +29,8 @@ task start
 | `task start:pro` | Same, with Pro features loaded from a sibling `../wickd-pro` checkout (maintainers; `PRO_DIR=<path>` to override). Licensing uses `backend/.env`'s Polar settings |
 | `task test` | Backend tests + frontend type-check and build |
 | `task test:backend` | `pytest --cov=app` only |
-| `task test:frontend` | `tsc` + `vite build` only |
-| `task lint` | `ruff` on the backend |
+| `task test:frontend` | Vitest unit tests, then `tsc` + `vite build` |
+| `task lint` | `ruff` on the backend and ESLint on the frontend (`task lint:backend` / `task lint:frontend` for one side) |
 | `task db:reset` | Delete the local SQLite database |
 | `task reset` | Full reset: wipe the DB, delete the venv, reinstall |
 | `task package:app` | Build the desktop app (free features) and install it to `/Applications` |
@@ -119,4 +119,5 @@ Releases are Developer ID signed and notarized by Apple.
 - Branch off `main` and open a pull request.
 - Use conventional commit messages: `feat: …`, `fix: …`, `refactor: …`, `docs: …`, `test: …`, `chore: …`.
 - Add or update tests for behavior changes, and make sure `task test` and `task lint` pass.
+- CI ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)) runs the same checks on every pull request and every push to `main`: backend tests on Python 3.11 and 3.12, ruff, and the frontend's ESLint, unit tests and build. Pro features are not installed in CI, so tests must pass without `wickd-pro`.
 - Update the docs your change affects: `docs/architecture.md` for routes, tables, and flows, the relevant `docs/how-to/` guide for user-facing changes, and the README's feature list for new features.

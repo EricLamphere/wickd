@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -50,7 +50,7 @@ async def test_summary_when_nothing_has_run(client, session):
 
 async def test_summary_reports_drift_and_rebuilt_models(client, session):
     pid = await _project(session)
-    finished = datetime.now(timezone.utc) - timedelta(minutes=10)
+    finished = datetime.now(UTC) - timedelta(minutes=10)
     session.add(DriftSnapshot(
         project_id=pid, status="done", target="dev", total_models=2, checked_models=2,
         finished_at=finished,
@@ -74,7 +74,7 @@ async def test_summary_connection_running_and_last_result(client, session):
     pid = await _project(session)
     session.add(AppSetting(key=f"health_check:{pid}", value=json.dumps({
         "overall_ok": True, "target_name": "dev", "requested_target": "dev",
-        "finished_at": datetime.now(timezone.utc).isoformat(), "checks": [],
+        "finished_at": datetime.now(UTC).isoformat(), "checks": [],
     })))
     await session.commit()
 

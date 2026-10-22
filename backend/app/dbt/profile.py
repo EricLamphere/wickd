@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 _NUMERIC_TYPES = {
     "int", "integer", "int2", "int4", "int8", "int16", "int32", "int64",
     "bigint", "smallint", "tinyint", "byteint",

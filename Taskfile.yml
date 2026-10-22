@@ -201,10 +201,22 @@ tasks:
   # ---- Lint ----
 
   lint:
+    desc: Lint the backend (ruff) and the frontend (ESLint)
+    cmds:
+      - task: lint:backend
+      - task: lint:frontend
+
+  lint:backend:
     desc: Run ruff on the backend
     dir: "{{.BACKEND_DIR}}"
     cmds:
       - .venv/bin/ruff check app tests
+
+  lint:frontend:
+    desc: Run ESLint on the frontend
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - npm run lint
 
   # ---- Data ----
 

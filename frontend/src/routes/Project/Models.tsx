@@ -259,7 +259,7 @@ export default function ModelsPage() {
       setColumnLineageProgress(null);
       qc.invalidateQueries({ queryKey: ['column-lineage', id] });
     }
-  }, [id, qc, selectedModelKey, columnSelsKey, expandedNodesKey]));
+  }, [id, qc, columnSelsKey, expandedNodesKey]));
 
   const filteredGraph = useMemo(() => {
     if (!graph) return null;

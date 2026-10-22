@@ -28,7 +28,7 @@ dev = [
     "pytest>=8.3.3",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=5.0.0",
-    "ruff>=0.7.0",
+    "ruff==0.17.1",  # pinned: ruff's default rules change between releases; bump deliberately
 ]
 packaging = [
     "pyinstaller>=6.11.0",
@@ -44,3 +44,11 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI declares dependencies and params as call defaults; they're evaluated per request.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests build git fixtures with blocking subprocess calls; nothing else shares their event loop.
+"tests/**" = ["ASYNC221"]

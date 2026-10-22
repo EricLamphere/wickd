@@ -8,10 +8,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.init import load_project_env
 from app.db.engine import get_session
 from app.db.models import Project, ProjectEnvVar
 from app.dbt.venv import venv_dbt
-from app.api.init import load_project_env
 from app.logs.project_logger import append_project_log
 
 router = APIRouter(prefix="/api/projects", tags=["workspace"])
@@ -152,7 +152,7 @@ async def compile_workspace_sql(
         stdout_bytes, stderr_bytes = await proc.communicate()
     except FileNotFoundError:
         raise HTTPException(status_code=503, detail="dbt executable not found")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         append_project_log(project.path, f"ERROR: dbt compile failed: {exc}", project_id)
         raise HTTPException(status_code=500, detail=f"dbt compile failed: {exc}")
 
@@ -241,7 +241,7 @@ async def run_workspace_sql(
         stdout_bytes, stderr_bytes = await proc.communicate()
     except FileNotFoundError:
         raise HTTPException(status_code=503, detail="dbt executable not found")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         append_project_log(project.path, f"ERROR: dbt show failed: {exc}", project_id)
         raise HTTPException(status_code=500, detail=f"dbt show failed: {exc}")
 
@@ -250,7 +250,7 @@ async def run_workspace_sql(
 
     if proc.returncode != 0:
         detail = stderr[-1000:] or stdout[-1000:]
-        append_project_log(project.path, f"<<< dbt show --inline FAILED", project_id)
+        append_project_log(project.path, "<<< dbt show --inline FAILED", project_id)
         for line in detail.splitlines():
             if line.strip():
                 append_project_log(project.path, line, project_id)

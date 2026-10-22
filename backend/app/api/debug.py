@@ -1,9 +1,7 @@
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
@@ -59,7 +57,7 @@ async def run_debug(
     target_val = env.get("DBT_TARGET")
     target_args: tuple[str, ...] = ("--target", target_val) if target_val else ()
 
-    started_at = datetime.now(timezone.utc).isoformat()
+    started_at = datetime.now(UTC).isoformat()
     await bus.publish(
         Event(topic=f"project:{project_id}", type="health_check_started", data={})
     )
@@ -82,7 +80,7 @@ async def run_debug(
 
     raw_log = "\n".join(output_lines)
     result = parse_debug_output(raw_log)
-    finished_at = datetime.now(timezone.utc).isoformat()
+    finished_at = datetime.now(UTC).isoformat()
 
     dto = DebugResultDto(
         overall_ok=result.overall_ok,
@@ -139,5 +137,5 @@ async def get_last_debug(
 
     try:
         return DebugResultDto.model_validate_json(row.value)
-    except Exception:
+    except ValidationError:
         return None

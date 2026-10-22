@@ -31,9 +31,10 @@ export function SetupGate({ children }: { children: ReactNode }) {
   const [bootStart] = useState(() => Date.now());
   const [waitedSecs, setWaitedSecs] = useState(0);
 
+  const setupCompleted = settings?.setup_completed;
   useEffect(() => {
-    if (settings && !settings.setup_completed) setWizardOpen(true);
-  }, [settings?.setup_completed]);
+    if (setupCompleted === false) setWizardOpen(true);
+  }, [setupCompleted]);
 
   useEffect(() => {
     const handler = () => setWizardOpen(true);

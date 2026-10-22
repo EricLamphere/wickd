@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -47,7 +47,7 @@ class FreshnessSnapshotDto(BaseModel):
 
 def _to_utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()
 
 
@@ -71,7 +71,7 @@ def _result_to_dto(r: SourceFreshnessResult) -> SourceFreshnessResultDto:
 def _snapshot_to_dto(snap: FreshnessSnapshot) -> FreshnessSnapshotDto:
     try:
         raw: list[dict] = json.loads(snap.results_json)
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         raw = []
 
     results = [
@@ -200,7 +200,7 @@ async def _run_freshness(
     try:
         async for _kind, _line in runner.stream(req):
             pass  # bus already publishes run_log events; freshness output goes to project log
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         error_message = str(exc)
 
     sources_path = Path(project_path) / "target" / "sources.json"
@@ -232,7 +232,7 @@ async def _run_freshness(
         snap = await session.get(FreshnessSnapshot, snap_id)
         if snap is not None:
             snap.status = final_status
-            snap.finished_at = datetime.now(timezone.utc)
+            snap.finished_at = datetime.now(UTC)
             snap.results_json = json.dumps(results_raw)
             snap.error_message = error_message
             await session.commit()

@@ -65,6 +65,8 @@ export default function WorkspacePage() {
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
+  const idRef = useRef(id);
+  useEffect(() => { idRef.current = id; }, [id]);
   const theme = useTheme();
   const monacoTheme = theme === 'light' ? 'vs-light' : 'vs-dark';
 
@@ -451,7 +453,7 @@ export default function WorkspacePage() {
   }, [id, editorContent, running, resultsOpen]);
 
   useEffect(() => { handleRunRef.current = handleRun; }, [handleRun]);
-  useEffect(() => { handleSaveRef.current = handleSave; }, [handleSave]);
+  useEffect(() => { handleSaveRef.current = handleSave; }); // handleSave is new every render
 
   // Cleanup completion provider on unmount
   useEffect(() => () => { completionDisposableRef.current?.dispose(); }, []);
@@ -530,10 +532,9 @@ export default function WorkspacePage() {
         }
 
         const suggestions: MonacoEditor.languages.CompletionItem[] = [];
-        const g = graph; // narrowed non-optional reference for use inside nested functions
 
         // Helper: build suggestion detail + documentation for a node
-        function nodeDetail(node: (typeof g.nodes)[number]): { detail: string; documentation?: { value: string } } {
+        function nodeDetail(node: GraphDto['nodes'][number]): { detail: string; documentation?: { value: string } } {
           const parts: string[] = [];
           if (node.materialized) parts.push(node.materialized);
           if (node.schema_) parts.push(node.schema_);
@@ -717,7 +718,7 @@ export default function WorkspacePage() {
       return spans;
     }
 
-    let decorations = editor.createDecorationsCollection([]);
+    const decorations = editor.createDecorationsCollection([]);
 
     function applyDecorations() {
       const mdl = editor.getModel();
@@ -759,7 +760,7 @@ export default function WorkspacePage() {
       const hit = spans.find((s) => clickOffset >= s.startOffset && clickOffset <= s.endOffset);
       if (hit) {
         e.event.preventDefault();
-        navigateRef.current(`/projects/${id}/files?model=${encodeURIComponent(hit.uid)}`);
+        navigateRef.current(`/projects/${idRef.current}/files?model=${encodeURIComponent(hit.uid)}`);
       }
     });
 

@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.dbt.venv import venv_dbt
@@ -117,7 +117,7 @@ class DbtRunner:
         async with lock:
             args = self.build_args(req)
             topic = f"project:{req.project_id}"
-            started_at = datetime.now(timezone.utc).isoformat()
+            started_at = datetime.now(UTC).isoformat()
             await bus.publish(
                 Event(
                     topic=topic,
@@ -172,7 +172,7 @@ class DbtRunner:
                 self._procs.pop(req.project_id, None)
             return_code = await proc.wait()
             self._return_codes[pid] = return_code
-            finished_at = datetime.now(timezone.utc).isoformat()
+            finished_at = datetime.now(UTC).isoformat()
             await bus.publish(
                 Event(
                     topic=topic,

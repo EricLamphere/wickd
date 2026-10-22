@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -75,14 +75,14 @@ class RecheckDriftDto(BaseModel):
 
 def _to_utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()
 
 
 def _snapshot_to_dto(snap: DriftSnapshot) -> DriftSnapshotDto:
     try:
         raw_results: list[dict] = json.loads(snap.results_json)
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         raw_results = []
 
     results = [
@@ -306,7 +306,7 @@ async def _run_drift_check(
         snap = await session.get(DriftSnapshot, snap_id)
         if snap is not None:
             snap.status = "done"
-            snap.finished_at = datetime.now(timezone.utc)
+            snap.finished_at = datetime.now(UTC)
             snap.checked_models = checked
             snap.results_json = json.dumps(results)
             await session.commit()

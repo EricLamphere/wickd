@@ -6,7 +6,6 @@ import pytest
 
 from app.git.repo import find_repo_root, parse_porcelain_v2
 
-
 # ---------------------------------------------------------------------------
 # find_repo_root
 # ---------------------------------------------------------------------------
@@ -68,7 +67,7 @@ def test_parse_branch_with_upstream() -> None:
         "# branch.upstream origin/main\0"
         "# branch.ab +2 -1\0"
     )
-    branch, changes = parse_porcelain_v2(output)
+    branch, _changes = parse_porcelain_v2(output)
     assert branch.upstream == "origin/main"
     assert branch.ahead == 2
     assert branch.behind == 1
@@ -207,7 +206,7 @@ def test_find_repo_root_real_git(git_repo: Path) -> None:
 def test_parse_porcelain_v2_clean_repo(git_repo: Path) -> None:
     result = subprocess.run(
         ["git", "status", "--porcelain=v2", "--branch", "-z"],
-        cwd=git_repo, capture_output=True, text=True
+        cwd=git_repo, capture_output=True, text=True, check=True
     )
     branch, changes = parse_porcelain_v2(result.stdout)
     assert branch.name == "main"
@@ -220,9 +219,9 @@ def test_parse_porcelain_v2_with_changes(git_repo: Path) -> None:
     (git_repo / "models" / "new.sql").write_text("select 3")
     result = subprocess.run(
         ["git", "status", "--porcelain=v2", "--branch", "-z"],
-        cwd=git_repo, capture_output=True, text=True
+        cwd=git_repo, capture_output=True, text=True, check=True
     )
-    branch, changes = parse_porcelain_v2(result.stdout)
+    _branch, changes = parse_porcelain_v2(result.stdout)
     paths = {c.path for c in changes}
     assert "models/base.sql" in paths
     assert "models/new.sql" in paths
@@ -233,7 +232,7 @@ def test_parse_porcelain_v2_staged(git_repo: Path) -> None:
     subprocess.run(["git", "add", "models/base.sql"], cwd=git_repo, check=True, capture_output=True)
     result = subprocess.run(
         ["git", "status", "--porcelain=v2", "--branch", "-z"],
-        cwd=git_repo, capture_output=True, text=True
+        cwd=git_repo, capture_output=True, text=True, check=True
     )
     _, changes = parse_porcelain_v2(result.stdout)
     staged = [c for c in changes if c.staged]

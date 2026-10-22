@@ -478,9 +478,8 @@ export function ViewPane({
                   }
 
                   const suggestions: MonacoEditor.languages.CompletionItem[] = [];
-                  const g = graph;
 
-                  function nodeDetail(node: (typeof g.nodes)[number]): { detail: string; documentation?: { value: string } } {
+                  function nodeDetail(node: GraphDto['nodes'][number]): { detail: string; documentation?: { value: string } } {
                     const parts: string[] = [];
                     if (node.materialized) parts.push(node.materialized);
                     if (node.schema_) parts.push(node.schema_);
@@ -660,7 +659,7 @@ export function ViewPane({
               }
 
               // Decoration collection for cmd-hover underlines
-              let decorations = editor.createDecorationsCollection([]);
+              const decorations = editor.createDecorationsCollection([]);
 
               function applyDecorations() {
                 const mdl = editor.getModel();

@@ -1,5 +1,11 @@
 # wickd — the desktop app for dbt
 
+[![Tests](https://github.com/EricLamphere/wickd/actions/workflows/tests.yml/badge.svg)](https://github.com/EricLamphere/wickd/actions/workflows/tests.yml)
+[![Downloads](https://img.shields.io/github/downloads/EricLamphere/wickd/total)](https://github.com/EricLamphere/wickd/releases)
+[![License: MIT](https://img.shields.io/github/license/EricLamphere/wickd)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/EricLamphere/wickd)](https://github.com/EricLamphere/wickd/releases/latest)
+![Platform](https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-lightgrey?logo=apple)
+
 A local-first desktop app for [dbt-core](https://github.com/dbt-labs/dbt-core): an interactive dependency graph, live run/build/test with streaming logs, an in-app SQL editor, and Git, all running against your own dbt projects. No cloud account, and no data leaves your machine.
 
 ![wickd DAG with column-level impact analysis and Wicky, the local AI assistant](img/main_pro.png)
@@ -70,6 +76,6 @@ Built with <img src="img/claude-code.png" width="30" height="30" align="center">
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 dbt and dbt Core are trademarks of dbt Labs, Inc. wickd is an independent project and is not affiliated with or endorsed by dbt Labs.

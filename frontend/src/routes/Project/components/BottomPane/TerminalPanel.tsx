@@ -148,7 +148,7 @@ export function SingleTerminal({ instanceId: _instanceId, projectPath }: SingleT
       fitRef.current = null;
       sessionIdRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [projectPath]);
 
   // The ResizeObserver on the container handles re-fitting when the terminal becomes
@@ -161,6 +161,7 @@ export function SingleTerminal({ instanceId: _instanceId, projectPath }: SingleT
     const term = termRef.current;
     if (!term || !sessionId) return;
     const d = term.onData((data) => {
+      // eslint-disable-next-line no-control-regex -- matching the ESC byte is the point
       if (/^\x1b\[[IO]$/.test(data)) return;
       api.terminal.input(sessionId, data).catch(() => {});
     });

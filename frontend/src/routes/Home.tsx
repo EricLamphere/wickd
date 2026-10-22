@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, FolderOpen, Pin, Plus, RefreshCw, Settings2, Database } from 'lucide-react';
@@ -477,8 +477,9 @@ export default function Home() {
   }, null);
 
   // Model counts for sort-by-models
-  const modelCounts = new Map<number, number>(
-    (summaries ?? []).map((sm) => [sm.project_id, sm.counts?.models ?? 0]),
+  const modelCounts = useMemo(
+    () => new Map<number, number>((summaries ?? []).map((sm) => [sm.project_id, sm.counts?.models ?? 0])),
+    [summaries],
   );
 
   useEffect(() => {
@@ -506,26 +507,29 @@ export default function Home() {
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
-  const activeProjects = projects.filter((p) => !p.ignored);
-  const ignoredProjects = projects.filter((p) => p.ignored);
-
-  const activeFiltered = activeProjects.filter((p) => {
-    const matchName = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchPlatform = !platformFilter || p.platform === platformFilter;
-    return matchName && matchPlatform;
-  });
-
-  const pinnedProjects = [...activeFiltered.filter((p) => p.pinned)].sort(
-    (a, b) => (a.pin_order ?? 999) - (b.pin_order ?? 999),
-  );
-  const unpinnedProjects = sortProjects(
-    activeFiltered.filter((p) => !p.pinned),
-    sort,
-    modelCounts,
-  );
-
-  // Flat ordered list for keyboard navigation (pinned first)
-  const allVisible = [...pinnedProjects, ...unpinnedProjects];
+  // Memoized so the keyboard handlers below that depend on allVisible aren't
+  // re-registered on every render.
+  const { activeProjects, ignoredProjects, activeFiltered, pinnedProjects, unpinnedProjects, allVisible } = useMemo(() => {
+    const active = projects.filter((p) => !p.ignored);
+    const filtered = active.filter((p) => {
+      const matchName = p.name.toLowerCase().includes(search.toLowerCase());
+      const matchPlatform = !platformFilter || p.platform === platformFilter;
+      return matchName && matchPlatform;
+    });
+    const pinned = [...filtered.filter((p) => p.pinned)].sort(
+      (a, b) => (a.pin_order ?? 999) - (b.pin_order ?? 999),
+    );
+    const unpinned = sortProjects(filtered.filter((p) => !p.pinned), sort, modelCounts);
+    return {
+      activeProjects: active,
+      ignoredProjects: projects.filter((p) => p.ignored),
+      activeFiltered: filtered,
+      pinnedProjects: pinned,
+      unpinnedProjects: unpinned,
+      // Flat ordered list for keyboard navigation (pinned first)
+      allVisible: [...pinned, ...unpinned],
+    };
+  }, [projects, search, platformFilter, sort, modelCounts]);
 
   const platforms = Array.from(new Set(activeProjects.map((p) => p.platform))).sort();
 
@@ -637,7 +641,7 @@ export default function Home() {
     return (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return; // ⌘← / ⌘→ are back/forward (navHistoryContext)
       const len = allVisible.length;
-      let next = idx;
+      let next: number;
       if (e.key === 'ArrowRight')      { e.preventDefault(); next = Math.min(idx + 1, len - 1); }
       else if (e.key === 'ArrowLeft')  { e.preventDefault(); next = Math.max(idx - 1, 0); }
       else if (e.key === 'ArrowDown')  { e.preventDefault(); next = Math.min(idx + COLS, len - 1); }

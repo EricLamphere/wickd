@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.health.summary import (
     summarize_connection,
@@ -6,7 +6,7 @@ from app.health.summary import (
     summarize_freshness,
 )
 
-NOW = datetime(2026, 10, 21, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
 RECENT = NOW - timedelta(minutes=5)
 OLD = NOW - timedelta(days=2)
 

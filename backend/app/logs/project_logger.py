@@ -4,7 +4,7 @@ them as `project_log` SSE events on the project bus topic.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.logging_setup import get_logger
@@ -34,7 +34,7 @@ def append_project_log(project_path: str, line: str, project_id: int | None = No
     try:
         log_dir = _ensure_log_dir(project_path)
         log_file = log_dir / "project_logs.log"
-        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
         formatted = f"{ts}  {line}"
         with log_file.open("a", encoding="utf-8") as f:
             f.write(formatted + "\n")

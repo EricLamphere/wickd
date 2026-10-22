@@ -52,7 +52,7 @@ async def probe_warehouse_columns(
             _, stdout_bytes, stderr_bytes = await runner.run(req)
     except TimeoutError:
         return ProbeResult(columns=(), error=f"probe timed out after {PROBE_TIMEOUT_SECONDS}s")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         return ProbeResult(columns=(), error=str(exc))
 
     cols, _ = parse_show_json(stdout_bytes.decode(errors="replace"))
@@ -150,7 +150,7 @@ async def probe_many_warehouse_columns(
     try:
         async with asyncio.timeout(batch_timeout_seconds(len(node_names))):
             rc, stdout_bytes, stderr_bytes = await runner.run(req)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         log.warning("batch_probe_failed", project=project_id, count=len(node_names), error=repr(exc))
         return None
     if rc != 0:

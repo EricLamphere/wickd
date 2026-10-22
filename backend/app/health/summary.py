@@ -4,7 +4,7 @@ freshness), for the overview cards, tab badges and the nav-rail dot.
 Pure: callers load the stored results; nothing here touches the DB or dbt.
 """
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 # Connection and freshness results describe a moment in time; past this they're flagged
@@ -148,7 +148,7 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 
 def _aware(dt: datetime) -> datetime:
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
 def _iso(dt: datetime | None) -> str | None:

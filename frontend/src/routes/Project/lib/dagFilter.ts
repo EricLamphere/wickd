@@ -162,7 +162,7 @@ function parseToken(raw: string): ParsedToken {
 function seedsForToken(token: ParsedToken, nodes: ModelNode[]): Set<string> {
   const seeds = new Set<string>();
   for (const node of nodes) {
-    let match = false;
+    let match: boolean;
     if (token.kind === 'tag') {
       match = node.tags.some((t) => t.toLowerCase().includes(token.value));
     } else if (token.kind === 'source') {

@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from app.events.bus import Event, bus
@@ -62,7 +62,7 @@ class GitRunner:
         lock = self._lock_for(req.project_id)
         async with lock:
             topic = f"project:{req.project_id}"
-            started_at = datetime.now(timezone.utc).isoformat()
+            started_at = datetime.now(UTC).isoformat()
             cmd_str = "git " + " ".join(req.args)
             await bus.publish(Event(
                 topic=topic,
@@ -98,7 +98,7 @@ class GitRunner:
                 yield ("stdout", line)
 
             return_code = await proc.wait()
-            finished_at = datetime.now(timezone.utc).isoformat()
+            finished_at = datetime.now(UTC).isoformat()
             await bus.publish(Event(
                 topic=topic,
                 type="git_finished",

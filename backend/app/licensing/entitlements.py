@@ -14,7 +14,7 @@ protects against not being able to REACH Polar at all.
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -82,10 +82,10 @@ async def check_entitlement(session: AsyncSession, *, force: bool = False) -> En
     if not state.license_key:
         return Entitlement(entitled=False, reason="not_licensed")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     checked_at = state.checked_at
     if checked_at is not None and checked_at.tzinfo is None:
-        checked_at = checked_at.replace(tzinfo=timezone.utc)
+        checked_at = checked_at.replace(tzinfo=UTC)
 
     due_for_check = force or checked_at is None or (now - checked_at) > RECHECK_INTERVAL
     if not due_for_check:
@@ -185,7 +185,7 @@ def _grace_period_result(state: LicenseState, now: datetime) -> Entitlement:
     result that's gone stale."""
     checked_at = state.checked_at
     if checked_at is not None and checked_at.tzinfo is None:
-        checked_at = checked_at.replace(tzinfo=timezone.utc)
+        checked_at = checked_at.replace(tzinfo=UTC)
 
     if state.entitled and checked_at is not None and (now - checked_at) <= GRACE_PERIOD:
         return Entitlement(entitled=True, reason="grace_period")

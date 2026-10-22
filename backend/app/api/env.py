@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.engine import get_session
 from app.db.models import GlobalProfile, Project, ProjectEnvVar
 from app.logging_setup import get_logger

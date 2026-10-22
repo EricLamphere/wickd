@@ -125,7 +125,7 @@ class WatcherManager:
         """Re-read the project list now (e.g. right after a rescan) instead of waiting for the next tick."""
         try:
             await self._sync_watchers()
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — error is logged/reported below
             log.warning("watcher_sync_error", error=str(exc))
 
     async def start(self) -> None:
@@ -152,11 +152,11 @@ class WatcherManager:
         while not self._stop.is_set():
             try:
                 await self._sync_watchers()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                 log.warning("watcher_sync_error", error=str(exc))
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=_RESYNC_SECONDS)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     async def _sync_watchers(self) -> None:
@@ -206,7 +206,7 @@ class WatcherManager:
                 raise_interrupt=False,
             ):
                 loop.call_soon_threadsafe(queue.put_nowait, (plan, changes))
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — error is logged/reported below
             log.warning("watcher_error", error=str(exc))
 
     async def _dispatch_loop(self) -> None:
@@ -223,7 +223,7 @@ class WatcherManager:
                     await self._handle_changes(
                         project_id, wp.path, wp.git_dir, f"project:{project_id}", project_changes
                     )
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("watcher_dispatch_error", project_id=project_id, error=str(exc))
 
     async def _handle_changes(

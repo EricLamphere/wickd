@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from concurrent.futures import ProcessPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -68,7 +68,7 @@ class ColumnLineageSnapshotDto(BaseModel):
 
 def _to_utc_iso(dt: datetime) -> str:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat()
 
 
@@ -108,7 +108,7 @@ async def _require_pro(session: AsyncSession) -> None:
 def _snapshot_to_dto(snap: ColumnLineageSnapshot) -> ColumnLineageSnapshotDto:
     try:
         raw: dict = json.loads(snap.results_json)
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         raw = {}
 
     results = {
@@ -120,7 +120,7 @@ def _snapshot_to_dto(snap: ColumnLineageSnapshot) -> ColumnLineageSnapshotDto:
     }
     try:
         raw_rows: dict = json.loads(snap.row_dependencies_json or "{}")
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         raw_rows = {}
     row_dependencies = {uid: [ColumnLineageEntryDto(**ref) for ref in refs] for uid, refs in raw_rows.items()}
     return ColumnLineageSnapshotDto(
@@ -276,7 +276,7 @@ async def _compile_then_run_column_lineage(
             snap = await session.get(ColumnLineageSnapshot, snap_id)
             if snap is not None:
                 snap.status = "error"
-                snap.finished_at = datetime.now(timezone.utc)
+                snap.finished_at = datetime.now(UTC)
                 snap.error_message = message
                 await session.commit()
         await bus.publish(Event(
@@ -365,7 +365,7 @@ async def _run_column_lineage(
                         }
                     if row_refs:
                         row_results[uid] = [{"node": ref.node, "column": ref.column} for ref in row_refs]
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("column_lineage_job_failed", uid=job.uid, error=str(exc))
 
                 checked += 1
@@ -388,7 +388,7 @@ async def _run_column_lineage(
                         "current": job.name,
                     },
                 ))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         error_message = str(exc)
 
     final_status = "error" if error_message else "done"
@@ -397,7 +397,7 @@ async def _run_column_lineage(
         snap = await session.get(ColumnLineageSnapshot, snap_id)
         if snap is not None:
             snap.status = final_status
-            snap.finished_at = datetime.now(timezone.utc)
+            snap.finished_at = datetime.now(UTC)
             snap.checked_models = checked
             snap.results_json = json.dumps(results)
             snap.row_dependencies_json = json.dumps(row_results)

@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.ai.runtime import llama_server
 from app.api import ai_chat as ai_chat_api
 from app.api import ai_model as ai_model_api
 from app.api import ai_proposals as ai_proposals_api
@@ -16,10 +17,11 @@ from app.api import debug as debug_api
 from app.api import docs as docs_api
 from app.api import document as document_api
 from app.api import drift as drift_api
-from app.api import freshness as freshness_api
 from app.api import env as env_api
 from app.api import events as events_api
 from app.api import files as files_api
+from app.api import freshness as freshness_api
+from app.api import git as git_api
 from app.api import global_env as global_env_api
 from app.api import global_profiles as global_profiles_api
 from app.api import health as health_api
@@ -35,16 +37,14 @@ from app.api import runs as runs_api
 from app.api import settings as settings_api
 from app.api import setup as setup_api
 from app.api import sql as sql_api
-from app.api import git as git_api
 from app.api import terminal as terminal_api
 from app.api import workspace as workspace_api
-from app.ai.runtime import llama_server
 from app.config import settings
 from app.db.engine import SessionLocal
 from app.db.migrations import init_db
 from app.dbt.python_env import load_python_setting
-from app.logs.api_logger import append_api_log, configure_api_log
 from app.logging_setup import configure_logging, get_logger
+from app.logs.api_logger import append_api_log, configure_api_log
 from app.projects.service import begin_startup_scan, rescan_projects
 from app.watcher.service import watcher_manager
 
@@ -58,7 +58,7 @@ async def _startup_scan() -> None:
     try:
         async with SessionLocal() as session:
             await rescan_projects(session)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         log.warning("startup_scan_failed", error=str(exc))
     await watcher_manager.resync()
 

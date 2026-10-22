@@ -6,10 +6,10 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AppSetting, Project
-from app.projects.discovery import DiscoveredProject, discover_projects
 from app.config import settings
+from app.db.models import AppSetting, Project
 from app.logging_setup import get_logger
+from app.projects.discovery import DiscoveredProject, discover_projects
 
 log = get_logger(__name__)
 

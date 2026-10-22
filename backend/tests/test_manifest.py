@@ -1,9 +1,7 @@
 import json
 from pathlib import Path
 
-import pytest
-
-from app.dbt.manifest import Manifest, load_manifest
+from app.dbt.manifest import load_manifest
 
 
 def _write_manifest(tmp_path: Path, data: dict) -> Path:

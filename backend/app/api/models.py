@@ -293,8 +293,8 @@ async def get_compiled(
     # Not in manifest, or force-recompile requested — run dbt compile for just this node
     # unique_id format is "model.project_name.model_name"; --select expects just the name
     model_name = unique_id.split(".")[-1]
-    from app.dbt.venv import venv_dbt
     from app.api.init import load_project_env
+    from app.dbt.venv import venv_dbt
     env = await load_project_env(project_id)
     append_project_log(project.path, f">>> dbt compile --select {model_name}", project_id)
     try:
@@ -306,7 +306,7 @@ async def get_compiled(
             env=env,
         )
         stdout_bytes, _ = await proc.communicate()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         append_project_log(project.path, f"ERROR: dbt compile failed: {exc}", project_id)
         raise HTTPException(status_code=422, detail=f"dbt compile failed: {exc}")
 
@@ -409,8 +409,8 @@ async def profile_model(
     unique_id: str,
     session: AsyncSession = Depends(get_session),
 ) -> ProfileResponseDto:
-    from app.dbt.profile import ProfileColumnSpec, build_profile_sql, numeric_or_temporal
     from app.api.init import load_project_env
+    from app.dbt.profile import ProfileColumnSpec, build_profile_sql, numeric_or_temporal
 
     project = await session.get(Project, project_id)
     if project is None:
@@ -607,8 +607,8 @@ async def patch_model_description(
 
 
 async def _compile_model(project_id: int, project_path: str, model_name: str) -> None:
-    from app.events.bus import Event, bus
     from app.api.init import load_project_env
+    from app.events.bus import Event, bus
 
     topic = f"project:{project_id}"
     env = await load_project_env(project_id)
@@ -629,8 +629,8 @@ async def _compile_model(project_id: int, project_path: str, model_name: str) ->
         async for _kind, _line in runner.stream(req):
             pass
         ok = True
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 — reported in the project log + compile_finished ok=False
+        append_project_log(project_path, f"error: {exc}", project_id)
     append_project_log(project_path, f"<<< dbt compile --select {model_name} {'OK' if ok else 'FAILED'}", project_id)
     await asyncio.sleep(0)  # let pending project_log tasks publish before compile_finished
     await bus.publish(Event(topic=topic, type="compile_finished", data={"ok": ok}))
@@ -643,9 +643,9 @@ async def _compile_project(project_id: int, project_path: str) -> bool:
     (and graph_changed on success) to the event bus. Returns whether it succeeded —
     callers that need to await a real compile (e.g. column lineage auto-compiling a
     stale manifest) can act on this; fire-and-forget callers just ignore it."""
-    from app.events.bus import Event, bus
     from app.api.init import load_project_env
     from app.dbt.venv import venv_dbt
+    from app.events.bus import Event, bus
 
     topic = f"project:{project_id}"
     env = await load_project_env(project_id)
@@ -669,8 +669,8 @@ async def _compile_project(project_id: int, project_path: str) -> bool:
             append_project_log(project_path, raw.decode(errors="replace").rstrip("\n"), project_id)
         rc = await proc.wait()
         ok = rc == 0
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001 — reported in the project log + compile_finished ok=False
+        append_project_log(project_path, f"error: {exc}", project_id)
     append_project_log(project_path, f"<<< dbt compile {'OK' if ok else 'FAILED'}", project_id)
     await asyncio.sleep(0)  # let pending project_log tasks publish before compile_finished
     await bus.publish(Event(topic=topic, type="compile_finished", data={"ok": ok}))

@@ -303,7 +303,7 @@ export function SidePane({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, []);
+  }, [page]);
 
   const toggleOpen = () => {
     setOpen((v) => {

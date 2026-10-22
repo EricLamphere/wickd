@@ -755,7 +755,7 @@ async def _run_init_steps_locked(project_id: int, project_path: str, steps: list
                 return_code = 0
                 log_lines = []
                 ok = True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — error is logged/reported below
             ok = False
             return_code = -1
             log_lines = [f"error: {exc}"]
@@ -1148,9 +1148,13 @@ async def append_requirement(dto: AppendRequirementDto) -> dict[str, bool]:
     req_path = Path(path_str)
     if not req_path.exists():
         raise HTTPException(status_code=404, detail=f"Requirements file not found: {path_str}")
-    with req_path.open("a") as f:
-        f.write(f"\n{dto.line.strip()}\n")
+    await asyncio.to_thread(_append_line, req_path, dto.line.strip())
     return {"ok": True}
+
+
+def _append_line(path: Path, line: str) -> None:
+    with path.open("a") as f:
+        f.write(f"\n{line}\n")
 
 
 import queue as _queue
@@ -1225,7 +1229,7 @@ def _run_pip_in_thread(pip: Path, install_args: list[str], pip_env: dict) -> Non
             " --progress-bar off --no-input -v --keyring-provider disabled"
             f" >> {shlex.quote(log_path)} 2>&1"
         )
-        _dbg(f"thread: spawning bash -c pip install")
+        _dbg("thread: spawning bash -c pip install")
         proc = subprocess.Popen(
             ["bash", "-c", cmd],
             stdin=subprocess.DEVNULL,
@@ -1245,7 +1249,7 @@ def _run_pip_in_thread(pip: Path, install_args: list[str], pip_env: dict) -> Non
         def _wait_for_proc() -> None:
             try:
                 proc.wait()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 — error is logged/reported below
                 _dbg(f"thread: proc.wait() exception: {e!r}")
             finally:
                 done_event.set()
@@ -1283,7 +1287,7 @@ def _run_pip_in_thread(pip: Path, install_args: list[str], pip_env: dict) -> Non
             _os.unlink(log_path)
         except OSError:
             pass
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         _dbg(f"thread: EXCEPTION {exc!r}")
         _global_output_queue.put(f"pip error: {exc}\r\n")
     finally:
@@ -1298,7 +1302,7 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
     """Install the global requirements.txt into the dbt venv — or, when none is
     configured, the latest dbt-core."""
     global _global_setup_thread, _global_setup_return_code, _global_setup_replay
-    _dbg(f"main: run_global_setup")
+    _dbg("main: run_global_setup")
     path_str = await _get_global_requirements_path(session)
     req_path = Path(path_str).expanduser() if path_str and path_str.strip() else None
     if req_path is not None and not req_path.is_file():
@@ -1341,7 +1345,6 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
 async def _drain_and_publish() -> None:
     """Drain pip output from the thread queue and publish SSE events. No blocking awaits."""
     topic = "global-setup"
-    loop = asyncio.get_running_loop()
     try:
         while True:
             # Non-blocking check first; if empty, yield to event loop then retry.
@@ -1355,14 +1358,13 @@ async def _drain_and_publish() -> None:
             await bus.publish(Event(topic=topic, type="global_setup_output", data={"data": item}))
         rc = _global_setup_return_code if _global_setup_return_code is not None else -1
         await bus.publish(Event(topic=topic, type="global_setup_finished", data={"return_code": rc}))
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — error is logged/reported below
         log.error("drain_and_publish_error", error=str(exc))
 
 
 @global_router.post("/global-setup/cancel")
 async def cancel_global_setup() -> dict[str, bool]:
     """Cancel a running global pip install."""
-    global _global_setup_proc
     if _global_setup_proc is not None:
         try:
             _global_setup_proc.kill()

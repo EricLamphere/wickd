@@ -87,7 +87,7 @@ export function useGlobalSetupRun(): GlobalSetupRun {
     return () => {
       es.close();
     };
-  }, []);
+  }, [qc]);
 
   useEffect(() => {
     if (state !== 'running') return;
@@ -108,7 +108,7 @@ export function useGlobalSetupRun(): GlobalSetupRun {
       }
     }, 3000);
     return () => clearInterval(id);
-  }, [state]);
+  }, [state, qc]);
 
   const cancel = async () => {
     esRef.current?.close();

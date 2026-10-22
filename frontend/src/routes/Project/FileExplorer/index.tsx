@@ -593,11 +593,11 @@ export default function FileExplorerPage() {
         page="files"
         onNavigateToDag={() => {
           const nav = selectedTestNode ?? selectedModel;
-          nav && navigate(`/projects/${id}/models?model=${encodeURIComponent(nav.unique_id)}`);
+          if (nav) navigate(`/projects/${id}/models?model=${encodeURIComponent(nav.unique_id)}`);
         }}
         onViewDocs={() => {
           const nav = selectedTestNode ?? selectedModel;
-          nav && navigate(`/projects/${id}/docs?node=${encodeURIComponent(nav.unique_id)}`);
+          if (nav) navigate(`/projects/${id}/docs?node=${encodeURIComponent(nav.unique_id)}`);
         }}
         onDelete={handleDeleteModel}
         onNavigateToFile={openFileNode}

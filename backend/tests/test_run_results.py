@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from app.dbt.run_results import load_run_results
 
 

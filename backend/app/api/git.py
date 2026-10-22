@@ -232,7 +232,7 @@ async def get_git_diff(
         args.append("--cached")
     args += ["--", path]
 
-    rc, diff_text = await _git(project_id, repo, *args)
+    _rc, diff_text = await _git(project_id, repo, *args)
     # rc=1 from `git diff` means differences exist — that's fine
     return DiffDto(path=path, staged=staged, diff=diff_text)
 
@@ -274,7 +274,7 @@ async def get_file_working(
 
     try:
         content = file_path.read_text(encoding="utf-8", errors="replace")
-    except Exception:
+    except OSError:
         content = ""
     return FileAtHeadDto(path=path, content=content)
 
@@ -386,7 +386,7 @@ async def get_branches(
     if rc != 0:
         raise HTTPException(status_code=500, detail=f"git branch failed: {out.strip()}")
 
-    rc2, out2 = await _git(
+    remote_rc, remote_out = await _git(
         project_id, repo,
         "branch", "-r", "--format=%(refname:short)|%(upstream:short)",
     )
@@ -404,7 +404,11 @@ async def get_branches(
             seen.add(name)
             branches.append(BranchDto(name=name, current=is_current, remote=False, upstream=upstream))
 
-    for line in out2.splitlines():
+    if remote_rc != 0:
+        # Output is git's error message, not branch names; list local branches only.
+        log.warning("git_remote_branches_failed", project_id=project_id, output=remote_out.strip())
+        remote_out = ""
+    for line in remote_out.splitlines():
         parts = line.split("|")
         name = parts[0].strip()
         if name and name not in seen:

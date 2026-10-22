@@ -7,6 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.config import settings
+from app.git.runner import GitRequest, git_runner
 from app.main import app
 
 
@@ -263,7 +264,7 @@ async def test_commit(
     )
     assert resp.status_code == 200
     log_out = subprocess.run(
-        ["git", "log", "--oneline"], cwd=repo, capture_output=True, text=True
+        ["git", "log", "--oneline"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout
     assert "test commit" in log_out
 
@@ -298,6 +299,27 @@ async def test_list_branches(
     assert "feature/x" in names
 
 
+async def test_list_branches_ignores_failed_remote_listing(
+    client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failing `git branch -r` must not turn its error output into branch names."""
+    _make_git_repo(tmp_path)
+    pid = await _rescan(client, tmp_path, monkeypatch)
+    real_run = git_runner.run
+
+    async def fake_run(req: GitRequest) -> tuple[int, str]:
+        if req.args[:2] == ("branch", "-r"):
+            return 128, "fatal: unable to read remote refs\n"
+        return await real_run(req)
+
+    monkeypatch.setattr(git_runner, "run", fake_run)
+    resp = await client.get(f"/api/projects/{pid}/git/branches")
+    assert resp.status_code == 200
+    branches = resp.json()["branches"]
+    assert [b["name"] for b in branches] == ["main"]
+    assert not any(b["remote"] for b in branches)
+
+
 async def test_current_branch_marked(
     client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -320,7 +342,7 @@ async def test_create_branch(
         json={"name": "new-branch"},
     )
     assert resp.status_code == 200
-    out = subprocess.run(["git", "branch"], cwd=repo, capture_output=True, text=True).stdout
+    out = subprocess.run(["git", "branch"], cwd=repo, capture_output=True, text=True, check=True).stdout
     assert "new-branch" in out
 
 
@@ -338,7 +360,7 @@ async def test_checkout_branch(
     resp = await client.post(f"/api/projects/{pid}/git/checkout", json={"name": "other"})
     assert resp.status_code == 200
     out = subprocess.run(
-        ["git", "branch", "--show-current"], cwd=repo, capture_output=True, text=True
+        ["git", "branch", "--show-current"], cwd=repo, capture_output=True, text=True, check=True
     ).stdout.strip()
     assert out == "other"
 

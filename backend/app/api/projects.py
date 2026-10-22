@@ -1,13 +1,13 @@
 import asyncio
 import subprocess
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
 from app.db.engine import get_session
 from app.db.models import Project, RunInvocation
@@ -196,7 +196,7 @@ async def open_in_app(dto: OpenInAppDto) -> dict[str, bool]:
     app_name = dto.app_name.strip()
     if "/" in app_name or "\\" in app_name or not app_name:
         raise HTTPException(status_code=400, detail="invalid app name")
-    subprocess.Popen(["open", "-a", app_name, str(target)])
+    subprocess.Popen(["open", "-a", app_name, str(target)])  # noqa: ASYNC220 — returns immediately; `open` exits on its own
     return {"ok": True}
 
 
@@ -224,7 +224,7 @@ async def get_project(
     row = await session.get(Project, project_id)
     if row is None:
         raise HTTPException(status_code=404, detail="project not found")
-    row.last_opened_at = datetime.now(timezone.utc)
+    row.last_opened_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(row)
     return ProjectOut.from_row(row, include_files=True)
@@ -279,7 +279,7 @@ async def patch_project_pin(
     row.pinned = dto.pinned
     if dto.pinned:
         result = await session.execute(
-            select(func.max(Project.pin_order)).where(Project.pinned == True)  # noqa: E712
+            select(func.max(Project.pin_order)).where(Project.pinned == True)
         )
         max_order = result.scalar_one_or_none()
         row.pin_order = (max_order + 1) if max_order is not None else 0

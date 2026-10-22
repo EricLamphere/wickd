@@ -38,6 +38,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Live sync with files on disk', base: true, pro: true },
   { label: 'Command palette (⌘K) — jump anywhere or run any dbt command', base: true, pro: true },
   { label: 'Search across projects — models, sources & columns', base: true, pro: true },
+  { label: 'DAG exports — interactive HTML, SVG & PNG', base: true, pro: true },
   { label: 'Model impact analysis — selection, uncommitted & branch changes', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },

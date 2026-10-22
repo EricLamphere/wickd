@@ -19,6 +19,7 @@ from app.api import document as document_api
 from app.api import drift as drift_api
 from app.api import env as env_api
 from app.api import events as events_api
+from app.api import exports as exports_api
 from app.api import files as files_api
 from app.api import freshness as freshness_api
 from app.api import git as git_api
@@ -107,6 +108,8 @@ app.include_router(health_summary_api.router)
 app.include_router(drift_api.router)
 app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)
+app.include_router(exports_api.router)
+app.include_router(exports_api.global_router)
 app.include_router(ai_model_api.router)
 app.include_router(ai_chat_api.router)
 app.include_router(ai_proposals_api.router)

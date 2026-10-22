@@ -335,6 +335,28 @@ export interface NodeTrendPoint {
   status: string;
 }
 
+export interface DagExportRequest {
+  directory: string;
+  filename: string;
+  format: 'html' | 'svg' | 'png';
+  content: string;
+  encoding: 'utf8' | 'base64';
+  overwrite?: boolean;
+}
+
+export interface ExportResult {
+  path: string;
+  bytes: number;
+}
+
+/** 400/409 from the export endpoint: which form field the problem is with. */
+export function exportFieldError(err: unknown): { field: string; message: string } | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as { field?: unknown; message?: unknown } | null;
+  if (typeof body?.field !== 'string' || typeof body?.message !== 'string') return null;
+  return { field: body.field, message: body.message };
+}
+
 export interface ColumnLineageEntry {
   node: string;
   column: string;
@@ -729,6 +751,12 @@ export const api = {
       put<void>('/projects/pin-order', { project_ids: projectIds }),
     debug: (id: number) => post<DebugResult>(`/projects/${id}/debug`),
     debugLast: (id: number) => get<DebugResult | null>(`/projects/${id}/debug/last`),
+  },
+  exports: {
+    defaultDir: () => get<{ path: string }>('/exports/default-dir'),
+    dag: (projectId: number, body: DagExportRequest) =>
+      post<ExportResult>(`/projects/${projectId}/exports/dag`, body),
+    reveal: (path: string) => post<void>('/exports/reveal', { path }),
   },
   filesystem: {
     browse: (path = '') =>

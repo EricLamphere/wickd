@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { X, FlaskConical, Lock } from 'lucide-react';
+import { X, FlaskConical, Lock, Download } from 'lucide-react';
 import type { GraphDto } from '../../../lib/api';
 import { type FilterState, emptyFilter, isFilterActive, getAvailableFilters } from '../lib/dagFilter';
 import { ProFeatureButton } from '../../../components/ProFeatureButton';
@@ -24,6 +24,7 @@ interface DagFilterBarProps {
   /** When true, column lineage is a locked Pro feature — clicking opens the upgrade modal instead. */
   columnLineageLocked?: boolean;
   onColumnLineageLockedClick?: () => void;
+  onExport: () => void;
 }
 
 export default function DagFilterBar({
@@ -44,6 +45,7 @@ export default function DagFilterBar({
   onLoadColumnLineage,
   columnLineageLocked = false,
   onColumnLineageLockedClick,
+  onExport,
 }: DagFilterBarProps) {
   const available = useMemo(
     () => (graph ? getAvailableFilters(graph) : { resourceTypes: [], materializations: [], tags: [], statuses: [] }),
@@ -154,6 +156,14 @@ export default function DagFilterBar({
                   : 'Loading column lineage…')
               : columnLineageLoaded ? 'Refresh column lineage' : 'Load column lineage'}
       </ProFeatureButton>
+      <button
+        onClick={onExport}
+        title="Export the DAG as shown, as HTML, SVG or PNG"
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-surface-elevated hover:bg-gray-700 text-gray-300 transition-colors shrink-0"
+      >
+        <Download size={12} />
+        Export
+      </button>
       <button
         onClick={onRefresh}
         disabled={compiling}

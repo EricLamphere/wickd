@@ -24,6 +24,8 @@ import NavRail from './components/NavRail';
 import { SidePane, type PreviewCache, type FailedRowsCache } from './components/SidePane';
 import DagFilterBar from './components/DagFilterBar';
 import { UpgradeModal } from './components/UpgradeModal';
+import { ExportDagModal } from './components/DagExport/ExportDagModal';
+import { buildScene } from './lib/dagExport/scene';
 import { computeLayout, NODE_HEIGHT } from './lib/layout';
 import { type FilterState, defaultFilter, applyFilter, serializeFilter, deserializeFilter } from './lib/dagFilter';
 import { ColumnLineageContext, type ColumnLineageContextValue } from './lib/columnLineageContext';
@@ -130,7 +132,12 @@ export default function ModelsPage() {
   const [columnLineageEnabled, setColumnLineageEnabled] = useState(false);
   const [columnLineageCompiling, setColumnLineageCompiling] = useState(false);
   const [columnLineageProgress, setColumnLineageProgress] = useState<{ checked: number; total: number } | null>(null);
-  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  // The Pro feature the upgrade prompt is for; null when it's closed
+  const [upgradeFeature, setUpgradeFeature] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const { data: project } = useQuery({ queryKey: ['project', id], queryFn: () => api.projects.get(id) });
+  const { data: license } = useQuery({ queryKey: ['license'], queryFn: () => api.license.get() });
+  const proLocked = license !== undefined && !license.entitled;
   const {
     data: columnLineageSnapshot,
     isFetching: columnLineageFetching,
@@ -261,11 +268,14 @@ export default function ModelsPage() {
     }
   }, [id, qc, columnSelsKey, expandedNodesKey]));
 
-  const filteredGraph = useMemo(() => {
-    if (!graph) return null;
-    const liveGraph = applyLiveStatuses(graph, liveStatuses);
-    return applyFilter(liveGraph, filter);
-  }, [graph, filter, liveStatuses]);
+  const liveGraph = useMemo(
+    () => (graph ? applyLiveStatuses(graph, liveStatuses) : null),
+    [graph, liveStatuses],
+  );
+  const filteredGraph = useMemo(
+    () => (liveGraph ? applyFilter(liveGraph, filter) : null),
+    [liveGraph, filter],
+  );
 
   // Derived from raw graph (not filtered) so coverage reflects all tests.
   // Recomputes automatically when graph_changed SSE fires and invalidates ['models', id].
@@ -545,6 +555,41 @@ export default function ModelsPage() {
     setModelParam(null, true);
   };
 
+  // What the export draws: React Flow's live positions (nodes may have been dragged), so it
+  // matches the screen. Only built while the export modal is open.
+  const exportScene = useMemo(
+    () => (exportOpen ? buildScene(nodes, layoutEdges, nodeHeights, expandedNodes) : null),
+    [exportOpen, nodes, layoutEdges, nodeHeights, expandedNodes],
+  );
+
+  const handleLoadColumnLineage = useCallback(() => {
+    setColumnLineageEnabled(true);
+    // Kick off (or piggyback on) a background scan. A 409 just means one
+    // is already running for this project — that's fine, the existing
+    // run's progress/finished events will update our query either way.
+    api.models.startColumnLineage(id).catch((err) => {
+      if (isProFeatureRequiredError(err)) {
+        setUpgradeFeature('Column-level lineage');
+        return;
+      }
+      if (err instanceof ApiError && err.status === 409) {
+        return; // already running — existing run's events will update our query
+      }
+      if (err instanceof ApiError && err.status === 503) {
+        alert('Column-level lineage is unavailable in this build (the wickd Pro package is not installed).');
+        return;
+      }
+      if (err instanceof ApiError && err.status === 422) {
+        alert('Column-level lineage requires a compiled project. Run dbt compile (or a run/build) first.');
+        return;
+      }
+      console.error('failed to start column lineage scan', err);
+      alert(`Failed to start column lineage scan: ${String(err)}`);
+    }).finally(() => {
+      qc.invalidateQueries({ queryKey: ['column-lineage', id] });
+    });
+  }, [id, qc]);
+
   const columnLineageCtx = useMemo<ColumnLineageContextValue>(() => ({
     activeColumnSels,
     relatedColumnsMap,
@@ -577,40 +622,35 @@ export default function ModelsPage() {
             columnLineageCompiling={columnLineageCompiling}
             columnLineageProgress={columnLineageProgress}
             columnLineageLocked={columnLineageLocked}
-            onColumnLineageLockedClick={() => setUpgradeModalOpen(true)}
-            onLoadColumnLineage={() => {
-              setColumnLineageEnabled(true);
-              // Kick off (or piggyback on) a background scan. A 409 just means one
-              // is already running for this project — that's fine, the existing
-              // run's progress/finished events will update our query either way.
-              api.models.startColumnLineage(id).catch((err) => {
-                if (isProFeatureRequiredError(err)) {
-                  setUpgradeModalOpen(true);
-                  return;
-                }
-                if (err instanceof ApiError && err.status === 409) {
-                  return; // already running — existing run's events will update our query
-                }
-                if (err instanceof ApiError && err.status === 503) {
-                  alert('Column-level lineage is unavailable in this build (the wickd Pro package is not installed).');
-                  return;
-                }
-                if (err instanceof ApiError && err.status === 422) {
-                  alert('Column-level lineage requires a compiled project. Run dbt compile (or a run/build) first.');
-                  return;
-                }
-                console.error('failed to start column lineage scan', err);
-                alert(`Failed to start column lineage scan: ${String(err)}`);
-              }).finally(() => {
-                qc.invalidateQueries({ queryKey: ['column-lineage', id] });
-              });
-            }}
+            onColumnLineageLockedClick={() => setUpgradeFeature('Column-level lineage')}
+            onLoadColumnLineage={handleLoadColumnLineage}
+            onExport={() => setExportOpen(true)}
           />
 
-          {upgradeModalOpen && (
+
+          {exportOpen && exportScene && liveGraph && (
+            <ExportDagModal
+              projectId={id}
+              projectName={project?.name ?? 'project'}
+              filter={filter}
+              scene={exportScene}
+              graph={liveGraph}
+              nodeHeights={nodeHeights}
+              expandedNodes={expandedNodes}
+              lineage={columnLineage?.results ?? null}
+              lineageLoading={columnLineageLoading}
+              onLoadLineage={handleLoadColumnLineage}
+              columnLineageLocked={proLocked}
+              onUpgradeColumnLineage={() => setUpgradeFeature('Column-level lineage')}
+              onClose={() => setExportOpen(false)}
+            />
+          )}
+
+          {/* After the export dialog, so it stacks on top when opened from there */}
+          {upgradeFeature && (
             <UpgradeModal
-              feature="Column-level lineage"
-              onClose={() => setUpgradeModalOpen(false)}
+              feature={upgradeFeature}
+              onClose={() => setUpgradeFeature(null)}
             />
           )}
 

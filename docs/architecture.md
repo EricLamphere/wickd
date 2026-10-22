@@ -53,6 +53,7 @@ wickd/
 │   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document — docs generator (stub `- name:` entries in schema YAML)
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
+│   │   │   ├── exports.py           # /api/projects/{id}/exports/dag + /api/exports/default-dir, /reveal — writes DAG exports to a user-chosen folder (path validation in app/exports/paths.py)
 │   │   │   └── health.py            # /api/health
 │   │   ├── db/
 │   │   │   ├── engine.py            # Async SQLAlchemy engine, SessionLocal, get_session
@@ -372,6 +373,9 @@ PUT    /api/projects/{id}/models/{unique_id}/sql
 POST   /api/projects/{id}/column-lineage/start            start async column lineage scan (202, or 200 if a fresh snapshot already exists); returns ColumnLineageSnapshot — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage                 get the latest ColumnLineageSnapshot for a project — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage/{snapshot_id}   get a specific ColumnLineageSnapshot by id — Pro feature, 403 if not entitled
+POST   /api/projects/{id}/exports/dag                    write a DAG export the frontend rendered (body `{directory, filename, format: html|svg|png, content, encoding: utf8|base64, overwrite}`) into the chosen folder; 201 `{path, bytes}`, 400 `{field, message}` for a bad folder/name, 409 if the file exists and `overwrite` is false
+GET    /api/exports/default-dir                          default export folder: ~/Downloads, else the home directory
+POST   /api/exports/reveal                               show an exported file in Finder / the platform file manager (204; 404 if missing)
 
 GET    /api/ai/status                                     AI readiness: entitled, Pro package installed, llama-server found, endpoint in use, selected model, per-model download state, `ready`
 POST   /api/ai/models/{model_id}/download                 start (or resume) downloading a catalog model (202); progress on the `global` topic — Pro, 403 if not entitled

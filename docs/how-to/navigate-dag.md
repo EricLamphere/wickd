@@ -122,6 +122,21 @@ Click **Clear** in the filter bar to reset all filters and return to the full gr
 
 The node count in the filter bar shows how many nodes are currently visible vs. the total.
 
+## Exporting the DAG
+
+Click **Export** in the filter bar to open the export dialog. The export is the DAG exactly as it's shown on screen: the same selector, type, materialization, tag and status filters, the same node positions (including any you dragged), and the same expanded column lists. The filters are summarized in the dialog and printed at the top of the exported file.
+
+Choose a format:
+
+- **Interactive HTML** — a single offline file that opens in any browser. Scroll to zoom, drag to pan, and use the search box to find a node (Enter jumps to it). Hover a node for its details, and click it to open a side panel with its metadata and columns. The page has the same filter bar as the app (selector, Type, Materialization, Tag and Status); changing a filter lays the graph out again, **Clear** removes every filter, and **Reset** goes back to the filters it was exported with. Tick what to include:
+  - **Whole project** (on by default) — every node in the project, opening with your on-screen filters, so viewers can widen them as well as narrow them. Turn it off to include only the nodes shown, if you'd rather not share the rest of the project; viewers can then only filter within those.
+  - **Model lineage** — clicking a node highlights everything upstream and downstream of it.
+  - **Column lineage** (Pro) — clicking a column (in the panel, or in an expanded node) traces where its data comes from and where it goes. This needs column lineage loaded; if it isn't, the dialog offers to load it.
+- **SVG image** — a vector image, sharp at any size.
+- **PNG image** — rendered at 2× resolution. Very large DAGs are scaled down to fit browser canvas limits (the dialog tells you when that happens); use SVG for full detail.
+
+Pick a **Dark** or **Light** theme, then a folder (defaults to `~/Downloads`; **Browse…** opens a folder picker) and a file name. If the file already exists, **Export** turns into **Replace** so nothing is overwritten by accident. When it's done, **Show in Finder** reveals the file. The dialog remembers your format, theme, options and folder for next time.
+
 ## Viewing a node's lineage in the bottom pane
 
 The **Node DAG** tab in the bottom pane shows the selected node's full upstream and downstream lineage (`+model+`), centered on that node. It follows your selection on the DAG page, and on the Files page it follows the model whose file is open (or the test you're on in a YAML file). 

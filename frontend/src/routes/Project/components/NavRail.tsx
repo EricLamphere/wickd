@@ -17,13 +17,20 @@ export default function NavRail({ projectId, current }: Props) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true');
   const [expandedWidth, setExpandedWidth] = useState(DEFAULT_WIDTH);
   const resizing = useRef(false);
+  // Mirrors `resizing` for rendering: the width transition is off while dragging,
+  // otherwise every mouse move animates and the edge lags behind the cursor
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!resizing.current || collapsed) return;
       setExpandedWidth((w) => Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, w + e.movementX)));
     };
-    const onMouseUp = () => { resizing.current = false; };
+    const onMouseUp = () => {
+      if (!resizing.current) return;
+      resizing.current = false;
+      setDragging(false);
+    };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
@@ -37,7 +44,7 @@ export default function NavRail({ projectId, current }: Props) {
   return (
     <div
       style={{ width }}
-      className="shrink-0 bg-surface-panel border-r border-gray-800 flex flex-col overflow-hidden relative transition-[width] duration-150"
+      className={`shrink-0 bg-surface-panel border-r border-gray-800 flex flex-col overflow-hidden relative ${dragging ? '' : 'transition-[width] duration-150'}`}
     >
       <ProjectNav
         projectId={projectId}
@@ -51,7 +58,11 @@ export default function NavRail({ projectId, current }: Props) {
       />
       {!collapsed && (
         <div
-          onMouseDown={() => { resizing.current = true; }}
+          onMouseDown={(e) => {
+            e.preventDefault(); // otherwise the drag starts a text selection on the page
+            resizing.current = true;
+            setDragging(true);
+          }}
           className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-brand-500/40 transition-colors z-10"
         />
       )}

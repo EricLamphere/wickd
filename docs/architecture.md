@@ -841,7 +841,7 @@ Session state (`sessionStorage`) persists open file path, expanded tree nodes, a
 - Header: issue summary, models checked vs. skipped by materialization, the target scanned; stale notice from the health summary
 - Live progress via SSE (`drift_started` resets it, `drift_progress`, `drift_finished`)
 - `drift/DriftResults.tsx`: model search, filter pills, groups Drifted / Not built / Errors, and an expandable In sync list. Rows start collapsed (one-line summary such as `2 warehouse-only · 1 manifest-only`) when more than 5 have issues
-- `drift/ModelDriftRow.tsx` actions: re-check (↻), Build model for not-built models or manifest-only columns (`dbt build --select <uid>`, then re-checks on `run_finished`), Open YAML (`yaml_path`, manifest-only columns), Document N warehouse-only columns
+- `drift/ModelDriftRow.tsx` actions: re-check (↻), Build model for not-built models or manifest-only columns (`dbt build --select <uid>`, then re-checks on `run_finished`), Open YAML (`yaml_path`, for manifest-only or warehouse-only columns), Document N warehouse-only columns
 - Interrupted snapshots (server restart mid-scan) are reset to `status=error` on startup
 
 ### 14. Model Column Profile

@@ -553,7 +553,7 @@ export default function FileExplorerPage() {
           ))}
         </div>
         <div
-          onMouseDown={() => { treeResizing.current = true; }}
+          onMouseDown={(e) => { e.preventDefault(); treeResizing.current = true; }}
           className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-brand-500/40 transition-colors"
         />
       </div>

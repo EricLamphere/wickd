@@ -55,7 +55,7 @@ export default function HealthPage() {
             <h1 className="text-base font-semibold text-gray-100">Health</h1>
           </div>
 
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex gap-1">
             {TABS.map((tab) => (
               <button
                 key={tab.id}

@@ -139,11 +139,11 @@ export default function ModelDriftRow({ projectId, snapshotId, result, defaultOp
                 {awaitingBuild ? 'Building…' : 'Build model'}
               </button>
             )}
-            {hasManifestOnly && result.yaml_path && (
+            {(hasManifestOnly || hasWarehouseOnly) && result.yaml_path && (
               <button
                 type="button"
                 onClick={() => navigate(`/projects/${projectId}/files?path=${encodeURIComponent(result.yaml_path!)}`)}
-                title={`Open ${result.yaml_path} — remove columns that no longer exist`}
+                title={`Open ${result.yaml_path} to edit this model's columns`}
                 className={ACTION_CLS}
               >
                 <FileText className="w-3 h-3" />

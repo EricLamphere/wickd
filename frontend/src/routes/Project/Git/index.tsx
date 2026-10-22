@@ -258,7 +258,7 @@ export default function GitPage() {
 
       <div
         className="w-1 shrink-0 cursor-col-resize bg-zinc-800 hover:bg-brand-500 transition-colors"
-        onMouseDown={() => { changesResizing.current = true; }}
+        onMouseDown={(e) => { e.preventDefault(); changesResizing.current = true; }}
       />
 
       {/* Diff view */}

@@ -62,6 +62,7 @@ backend/app/
     discovery.py  — Walk workspace for dbt_project.yml
     service.py    — Upsert projects to DB; _effective_workspace() for WICKD_PROJECTS_PATH; begin_startup_scan()/wait_for_startup_scan(): the startup rescan runs in the background (server answers immediately), project-list endpoints await it
     summary.py    — manifest_node_counts() for GET /projects/summaries (home page cards: one request for all projects; cached by manifest mtime/size)
+    search.py     — build_index() / manifest_index() (cached by manifest mtime/size) / search_nodes(): node + column name search across projects for GET /projects/search (home page search box and ⌘K); pure ranking, unit-tested in test_project_search.py
   git/
     runner.py     — GitRunner singleton; subprocess + serialization lock per project; stream() publishes git_started/git_log/git_finished
     repo.py       — find_repo_root() walks upward for .git/; parse_porcelain_v2() parses git status --porcelain=v2 -z; parse_name_status_z() parses git diff --name-status -z
@@ -75,9 +76,11 @@ frontend/src/
     sse.ts        — useProjectEvents(), useInitSessionEvents(), useTerminalEvents() hooks
     navHistory.ts — pure back/forward bookkeeping (last 25 locations keyed by location.key; skips duplicate URLs); unit-tested in navHistory.test.ts (Vitest)
     navHistoryContext.tsx — NavHistoryProvider (wraps the app inside BrowserRouter) + useNavHistory(); browser history is the source of truth (arrows call navigate(±n)); also binds ⌘[ / ⌘] or ⌘← / ⌘→ (not while typing) and mouse back/forward buttons
+    nodeSearch.ts — cross-project search helpers (nodeSearchUrl(): DAG by default, Files on ⌘; subtitle; unindexed-project notice), unit-tested; useNodeSearch.ts — debounced ['node-search', q] query over GET /projects/search
     useUrlTab.ts  — useUrlTab(param, allowed, fallback, rememberKey?) — in-page tab state in a URL search param so tab switches are history entries. Used by Health (?tab=, remembered per project), project home file tabs (?file=), Docs browse tabs (?browse=) and Docs node/project detail tabs (?view=). Side/bottom pane tabs deliberately stay local state
   components/
     NavArrows.tsx — header back/forward buttons (right of the wickd home link)
+    NodeSearchResults.tsx — Home page "Models & columns" results under the project grid while the search box has 2+ chars; HomeCommandPalette shows the same hits (Enter → DAG, ⌘Enter → Files)
   routes/
     Home.tsx      — Project list (respects WICKD_PROJECTS_PATH configured banner)
     Project/

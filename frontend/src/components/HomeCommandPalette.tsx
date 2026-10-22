@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { FolderOpen, Plus, RefreshCw, Settings2 } from 'lucide-react';
-import type { Project } from '../lib/api';
+import type { NodeSearchHit, Project } from '../lib/api';
+import { nodeSearchSubtitle, nodeSearchUrl } from '../lib/nodeSearch';
+import { useNodeSearch } from '../lib/useNodeSearch';
+import { typeIconFor } from '../routes/Project/lib/nodeTypeIcon';
 
 // ---- Types ----
 
-type CommandCategory = 'project' | 'action';
+type CommandCategory = 'project' | 'node' | 'action';
 
 interface Command {
   id: string;
@@ -14,10 +17,13 @@ interface Command {
   subtitle?: string;
   icon?: React.ReactNode;
   onExecute: () => void;
+  /** ⌘/Ctrl+Enter or ⌘-click; falls back to onExecute. */
+  onExecuteAlt?: () => void;
 }
 
 const CATEGORY_LABELS: Record<CommandCategory, string> = {
   project: 'Projects',
+  node: 'Models & columns',
   action: 'Actions',
 };
 
@@ -26,7 +32,7 @@ const CATEGORY_LABELS: Record<CommandCategory, string> = {
 function filterCommands(commands: Command[], query: string): Command[] {
   const q = query.trim().toLowerCase();
   if (!q) return commands;
-  const order: Record<CommandCategory, number> = { project: 0, action: 1 };
+  const order: Record<CommandCategory, number> = { project: 0, node: 1, action: 2 };
   const matched = commands.filter(
     (c) => c.title.toLowerCase().includes(q) || (c.subtitle?.toLowerCase().includes(q) ?? false)
   );
@@ -46,7 +52,7 @@ interface CommandRowProps {
   command: Command;
   isSelected: boolean;
   onMouseEnter: () => void;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent) => void;
 }
 
 function CommandRow({ command, isSelected, onMouseEnter, onClick }: CommandRowProps) {
@@ -70,11 +76,33 @@ function CommandRow({ command, isSelected, onMouseEnter, onClick }: CommandRowPr
   );
 }
 
+function nodeCommand(hit: NodeSearchHit, onOpenUrl: (url: string) => void): Command {
+  return {
+    id: `node-${hit.project_id}-${hit.unique_id}`,
+    category: 'node',
+    title: hit.name,
+    subtitle: nodeSearchSubtitle(hit),
+    icon: <span className="text-xs leading-4">{typeIconFor(hit.resource_type)}</span>,
+    onExecute: () => onOpenUrl(nodeSearchUrl(hit, 'dag')),
+    onExecuteAlt: () => onOpenUrl(nodeSearchUrl(hit, 'files')),
+  };
+}
+
+/** Local matches, with server-side node hits slotted between projects and actions. */
+function mergeNodeCommands(local: Command[], nodes: Command[]): Command[] {
+  return [
+    ...local.filter((c) => c.category === 'project'),
+    ...nodes,
+    ...local.filter((c) => c.category === 'action'),
+  ];
+}
+
 // ---- Main component ----
 
 interface HomeCommandPaletteProps {
   projects: Project[];
   onNavigateToProject: (project: Project) => void;
+  onOpenUrl: (url: string) => void;
   onNewProject: () => void;
   onRescan: () => void;
   onOpenGlobalSettings: () => void;
@@ -86,6 +114,7 @@ interface HomeCommandPaletteProps {
 export function HomeCommandPalette({
   projects,
   onNavigateToProject,
+  onOpenUrl,
   onNewProject,
   onRescan,
   onOpenGlobalSettings,
@@ -136,7 +165,11 @@ export function HomeCommandPalette({
     return [...projectCommands, ...actionCommands];
   }, [projects, onNavigateToProject, onNewProject, onRescan, onOpenGlobalSettings]);
 
-  const filtered = useMemo(() => filterCommands(allCommands, query), [allCommands, query]);
+  const { data: nodeResults } = useNodeSearch(query);
+  const filtered = useMemo(() => {
+    const nodes = (nodeResults?.hits ?? []).map((hit) => nodeCommand(hit, onOpenUrl));
+    return mergeNodeCommands(filterCommands(allCommands, query), nodes);
+  }, [allCommands, query, nodeResults, onOpenUrl]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -152,9 +185,9 @@ export function HomeCommandPalette({
   }, []);
 
   const execute = useCallback(
-    (cmd: Command) => {
+    (cmd: Command, alt = false) => {
       onClose();
-      cmd.onExecute();
+      (alt && cmd.onExecuteAlt ? cmd.onExecuteAlt : cmd.onExecute)();
     },
     [onClose]
   );
@@ -169,7 +202,7 @@ export function HomeCommandPalette({
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const cmd = filtered[selectedIndex];
-      if (cmd) execute(cmd);
+      if (cmd) execute(cmd, e.metaKey || e.ctrlKey);
     } else if (e.key === 'Escape') {
       onClose();
     }
@@ -204,7 +237,7 @@ export function HomeCommandPalette({
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Open a project or run an action…"
+            placeholder="Open a project, find a model or column, or run an action…"
             className="flex-1 bg-transparent text-sm text-gray-100 placeholder-gray-600 focus:outline-none"
           />
           <kbd className="text-[10px] text-gray-600 border border-gray-700 rounded px-1.5 py-0.5 shrink-0">
@@ -229,7 +262,7 @@ export function HomeCommandPalette({
                       command={cmd}
                       isSelected={absIdx === selectedIndex}
                       onMouseEnter={() => setSelectedIndex(absIdx)}
-                      onClick={() => execute(cmd)}
+                      onClick={(e) => execute(cmd, e.metaKey || e.ctrlKey)}
                     />
                   );
                 })}

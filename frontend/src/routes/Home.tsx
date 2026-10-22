@@ -23,6 +23,8 @@ import { api, type Project, type ProjectSummary } from '../lib/api';
 import NewProjectModal from './Project/components/NewProjectModal';
 import { GlobalSettingsModal } from '../components/GlobalSettingsModal';
 import { HomeCommandPalette } from '../components/HomeCommandPalette';
+import { NodeSearchResults } from '../components/NodeSearchResults';
+import { isNodeQuery } from '../lib/nodeSearch';
 
 // ── Platform config ───────────────────────────────────────────────────────────
 
@@ -730,7 +732,7 @@ export default function Home() {
       <div className="flex flex-wrap items-center gap-3">
         <input
           type="search"
-          placeholder="Search projects…"
+          placeholder="Search projects, models, columns…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           disabled={!isConfigured}
@@ -777,7 +779,7 @@ export default function Home() {
       )}
 
       {/* Empty state */}
-      {isConfigured && !isLoading && activeFiltered.length === 0 && ignoredProjects.length === 0 && (
+      {isConfigured && !isLoading && activeProjects.length === 0 && ignoredProjects.length === 0 && (
         <EmptyState
           isConfigured={isConfigured}
           projectsPath={appSettings?.dbt_projects_path ?? undefined}
@@ -862,6 +864,11 @@ export default function Home() {
         </div>
       )}
 
+      {/* Models / sources / columns across all projects */}
+      {isConfigured && isNodeQuery(search) && (
+        <NodeSearchResults query={search} projects={activeProjects} onOpen={navigate} />
+      )}
+
       {/* Ignored section */}
       {ignoredProjects.length > 0 && (
         <div className="flex flex-col gap-2 mt-2">
@@ -918,6 +925,7 @@ export default function Home() {
         <HomeCommandPalette
           projects={projects}
           onNavigateToProject={(p) => navigate(`/projects/${p.id}`)}
+          onOpenUrl={navigate}
           onNewProject={() => (isConfigured ? setNewProjectOpen(true) : setGlobalSettingsOpen(true))}
           onRescan={handleRescan}
           onOpenGlobalSettings={() => setGlobalSettingsOpen(true)}

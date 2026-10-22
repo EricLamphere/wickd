@@ -91,6 +91,23 @@ export interface ProjectSummary {
   latest_run: { status: string; finished_at: string | null } | null;
 }
 
+export interface NodeSearchHit {
+  project_id: number;
+  project_name: string;
+  unique_id: string;
+  name: string;
+  resource_type: string;
+  original_file_path: string | null;
+  description: string;
+  matched_column: string | null;
+}
+
+export interface NodeSearchResult {
+  hits: NodeSearchHit[];
+  truncated: boolean;
+  unindexed_project_ids: number[];
+}
+
 export interface Project {
   id: number;
   name: string;
@@ -695,6 +712,7 @@ export const api = {
     list: () => get<Project[]>('/projects'),
     get: (id: number) => get<Project>(`/projects/${id}`),
     summaries: () => get<ProjectSummary[]>('/projects/summaries'),
+    searchNodes: (q: string) => get<NodeSearchResult>(`/projects/search?q=${encodeURIComponent(q)}`),
     rescan: () => post<Project[]>('/projects/rescan'),
     listApplications: () => get<string[]>('/projects/applications'),
     openInApp: (appName: string, path: string) =>

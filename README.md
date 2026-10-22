@@ -44,6 +44,7 @@ task start
 - **Environment control** — global default env vars, named env var profiles, dbt target switching, and an init pipeline (`pip install`, `dbt deps`, your own scripts) that runs when a project opens
 - **Integrated terminal & project creation** — multi-tab terminal in the bottom pane; `dbt init` runs in an in-app terminal with adapter install and `profiles.yml` setup handled for you
 - **Command palette** — ⌘K to jump to any page, project, or model, or run a dbt command
+- **Search across projects** — find a model, source, seed, snapshot, exposure or column in any of your projects from the home page search box or ⌘K, and jump straight to it in the DAG
 - **Node DAG** — a bottom-pane tab showing the full upstream and downstream lineage of whatever node you have selected, on any page, filterable by type, materialization, and status
 - **Live sync with disk** — wickd watches your project, so a dbt run or compile from another terminal updates the DAG and run statuses, and commits or branch switches made outside the app show up in the Git panel, all without a reload
 - **Light & dark themes** — the whole app, switchable from Global Settings

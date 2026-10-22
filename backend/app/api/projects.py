@@ -4,13 +4,14 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
 from app.db.models import Project, RunInvocation
+from app.projects.search import ProjectIndex, manifest_index, search_nodes
 from app.projects.service import list_projects, rescan_projects, wait_for_startup_scan
 from app.projects.summary import manifest_node_counts
 
@@ -161,6 +162,50 @@ async def get_project_summaries(
             )
         )
     return summaries
+
+
+class NodeSearchHitOut(BaseModel):
+    project_id: int
+    project_name: str
+    unique_id: str
+    name: str
+    resource_type: str
+    original_file_path: str | None
+    description: str
+    matched_column: str | None
+
+
+class NodeSearchOut(BaseModel):
+    hits: list[NodeSearchHitOut]
+    truncated: bool
+    # Active projects with no target/manifest.json yet — not searchable until compiled.
+    unindexed_project_ids: list[int]
+
+
+@router.get("/search", response_model=NodeSearchOut)
+async def search_project_nodes(
+    q: str = Query(min_length=1, max_length=200),
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession = Depends(get_session),
+) -> NodeSearchOut:
+    """Search node names and column names across every non-ignored project, for the home page."""
+    await wait_for_startup_scan()
+    rows = [r for r in await list_projects(session) if not r.ignored]
+    indexes = await asyncio.gather(
+        *(asyncio.to_thread(manifest_index, Path(r.path)) for r in rows)
+    )
+    projects = [
+        ProjectIndex(project_id=row.id, project_name=row.name, nodes=index)
+        for row, index in zip(rows, indexes)
+        if index is not None
+    ]
+    # One past the limit tells us whether there were more matches.
+    hits = await asyncio.to_thread(search_nodes, projects, q, limit + 1)
+    return NodeSearchOut(
+        hits=[NodeSearchHitOut(**asdict(h)) for h in hits[:limit]],
+        truncated=len(hits) > limit,
+        unindexed_project_ids=[row.id for row, index in zip(rows, indexes) if index is None],
+    )
 
 
 @router.get("/applications", response_model=list[str])

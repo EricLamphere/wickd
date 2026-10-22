@@ -351,6 +351,7 @@ GET    /api/settings/python-interpreters                 list Python 3.11+ insta
 GET    /api/projects
 POST   /api/projects/rescan
 GET    /api/projects/summaries                           node-type counts + latest run for every project (home page cards, one request; manifest counts cached by mtime)
+GET    /api/projects/search?q=&limit=                    model/source/seed/snapshot/exposure names + column names across non-ignored projects (home search + ⌘K); ranked exact > prefix > substring, names before columns, root package before installed packages; per-manifest index cached by mtime; returns hits, truncated, unindexed_project_ids (no manifest yet)
 GET    /api/projects/{id}                                includes readme, dbt_project_yml, profiles_yml
 POST   /api/projects/{id}/ensure-profiles-yml            writes minimal profiles.yml if absent
 PATCH  /api/projects/{id}/settings

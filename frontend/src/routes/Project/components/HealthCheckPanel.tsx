@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api, type DebugCheck } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
+import { relativeTime } from '../lib/relativeTime';
+import RunButton from './health/RunButton';
+import Spinner from './health/Spinner';
+import StaleNotice from './health/StaleNotice';
+import { errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from './health/useHealth';
 
 interface HealthCheckPanelProps {
   projectId: number;
@@ -36,27 +41,7 @@ function CheckIcon({ status }: { status: DebugCheck['status'] }) {
   );
 }
 
-function Spinner() {
-  return (
-    <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-    </svg>
-  );
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  return `${hrs}h ago`;
-}
-
 export default function HealthCheckPanel({ projectId }: HealthCheckPanelProps) {
-  const qc = useQueryClient();
   const [liveLog, setLiveLog] = useState<string[]>([]);
   const [showRaw, setShowRaw] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -67,30 +52,23 @@ export default function HealthCheckPanel({ projectId }: HealthCheckPanelProps) {
     retry: false,
   });
 
-  const mutation = useMutation({
-    mutationFn: () => api.projects.debug(projectId),
-    onMutate: () => {
-      setLiveLog([]);
-      setShowRaw(false);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['health-check-last', projectId] });
-    },
-  });
-
-  const isRunning = mutation.isPending;
+  const { connection: run } = useHealthRuns(projectId);
+  const { data: summary } = useHealthSummary(projectId);
+  // Started here or from the overview's Run / Run all
+  const isRunning = useIsStarting('connection', projectId) || summary?.connection.status === 'running';
 
   useProjectEvents(projectId, useCallback((event) => {
+    if (event.type === 'health_check_started') {
+      setLiveLog([]);
+      setShowRaw(false);
+    }
     if (event.type === 'run_log' && isRunning) {
       const data = event.data as { line?: string };
       if (data.line !== undefined) {
         setLiveLog((prev) => [...prev, data.line!]);
       }
     }
-    if (event.type === 'health_check_finished') {
-      qc.invalidateQueries({ queryKey: ['health-check-last', projectId] });
-    }
-  }, [projectId, qc, isRunning]));
+  }, [isRunning]));
 
   useEffect(() => {
     if (isRunning && logEndRef.current) {
@@ -98,7 +76,7 @@ export default function HealthCheckPanel({ projectId }: HealthCheckPanelProps) {
     }
   }, [liveLog, isRunning]);
 
-  const result = mutation.isSuccess ? mutation.data : lastResult;
+  const result = lastResult;
   const hasResult = result != null;
 
   return (
@@ -106,10 +84,11 @@ export default function HealthCheckPanel({ projectId }: HealthCheckPanelProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
         <div className="flex flex-col gap-0.5 min-w-0">
-          <span className="text-sm font-semibold text-gray-100">Health Check</span>
+          <span className="text-sm font-semibold text-gray-100">Connection</span>
           {!isRunning && hasResult && (
             <span className={`text-xs ${result.overall_ok ? 'text-emerald-400' : 'text-red-400'}`}>
               {result.overall_ok ? 'All checks passed' : 'Check failed'} · {relativeTime(result.finished_at)}
+              {result.target_name ? ` · ${result.target_name}` : ''}
             </span>
           )}
           {!isRunning && !hasResult && !lastLoading && (
@@ -122,15 +101,17 @@ export default function HealthCheckPanel({ projectId }: HealthCheckPanelProps) {
             </span>
           )}
         </div>
-        <button
-          onClick={() => mutation.mutate()}
-          disabled={isRunning}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:border-brand-600 hover:text-brand-300 transition-colors disabled:opacity-40"
-        >
-          {isRunning ? <Spinner /> : null}
-          {isRunning ? 'Running…' : 'Run'}
-        </button>
+        <RunButton running={isRunning} onClick={() => run.mutate()} />
       </div>
+
+      {!isRunning && hasResult && summary && (
+        <StaleNotice reasons={summary.connection.stale_reasons} onRerun={() => run.mutate()} />
+      )}
+      {run.error && !isRunning && (
+        <p className="px-5 py-2 border-b border-gray-800 text-xs text-red-400">
+          Couldn't run dbt debug: {errorMessage(run.error)}
+        </p>
+      )}
 
       {/* Live log while running */}
       {isRunning && liveLog.length > 0 && (

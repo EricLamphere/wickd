@@ -184,7 +184,30 @@ function buildProjectCommands(
       category: 'project',
       title: 'Check health',
       icon: <HeartPulse size={14} />,
-      onExecute: () => navigate(`${base}/health?tab=health-check`),
+      onExecute: () => navigate(`${base}/health?tab=overview`),
+    },
+    {
+      id: 'proj-health-all',
+      category: 'project',
+      title: 'Run all health checks',
+      icon: <HeartPulse size={14} />,
+      onExecute: () => {
+        navigate(`${base}/health?tab=overview`);
+        // dbt runs are serialized per project, so these queue up in this order
+        api.projects.debug(projectId);
+        api.drift.start(projectId);
+        api.freshness.start(projectId);
+      },
+    },
+    {
+      id: 'proj-connection',
+      category: 'project',
+      title: 'Check connection (dbt debug)',
+      icon: <HeartPulse size={14} />,
+      onExecute: () => {
+        navigate(`${base}/health?tab=connection`);
+        api.projects.debug(projectId);
+      },
     },
     {
       id: 'proj-freshness',

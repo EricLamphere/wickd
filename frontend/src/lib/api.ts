@@ -181,6 +181,8 @@ export interface DebugResult {
   raw_log: string;
   started_at: string;
   finished_at: string;
+  /** DBT_TARGET the check ran with (null = profile default) */
+  requested_target?: string | null;
 }
 
 export interface ColumnDrift {
@@ -199,6 +201,10 @@ export interface ModelDriftResult {
   error: string | null;
   columns: ColumnDrift[];
   has_drift: boolean;
+  /** The relation doesn't exist in the warehouse (error is set too) — not drift */
+  not_built: boolean;
+  /** Project-relative schema YAML documenting the node, for "Open YAML" */
+  yaml_path: string | null;
 }
 
 export interface DocumentResultDto {
@@ -219,6 +225,28 @@ export interface DriftSnapshot {
   checked_models: number;
   results: ModelDriftResult[];
   error_message: string | null;
+  /** Models the scan skipped (views, ephemeral, …), by materialization */
+  skipped: Record<string, number>;
+}
+
+export type HealthCheckStatus = 'not_run' | 'running' | 'ok' | 'warn' | 'fail';
+
+export interface CheckSummary {
+  status: HealthCheckStatus;
+  headline: string;
+  /** Count shown on the tab badge */
+  issues: number;
+  finished_at: string | null;
+  target: string | null;
+  /** Why the last result may be out of date (target changed, models rebuilt, …) */
+  stale_reasons: string[];
+}
+
+export interface HealthSummary {
+  connection: CheckSummary;
+  drift: CheckSummary;
+  freshness: CheckSummary;
+  current_target: string | null;
 }
 
 export interface SourceFreshnessResult {
@@ -935,6 +963,12 @@ export const api = {
       get<DriftSnapshot | null>(`/projects/${projectId}/drift`),
     get: (projectId: number, snapshotId: number) =>
       get<DriftSnapshot>(`/projects/${projectId}/drift/${snapshotId}`),
+    /** Re-probe one model and update its row in the snapshot */
+    recheck: (projectId: number, snapshotId: number, uniqueId: string) =>
+      post<DriftSnapshot>(`/projects/${projectId}/drift/${snapshotId}/recheck`, { unique_id: uniqueId }),
+  },
+  health: {
+    summary: (projectId: number) => get<HealthSummary>(`/projects/${projectId}/health/summary`),
   },
   freshness: {
     start: (projectId: number) =>

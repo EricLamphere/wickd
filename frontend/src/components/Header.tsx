@@ -53,11 +53,14 @@ function ProjectSelectors({ projectId }: { projectId: number }) {
       await api.globalProfiles.setActiveForProject(projectId, Number(value));
     }
     qc.invalidateQueries({ queryKey: ['active-global-profile', projectId] });
+    // The profile can set DBT_TARGET, which the Health page compares results against
+    qc.invalidateQueries({ queryKey: ['health-summary', projectId] });
   };
 
   const handleTargetChange = async (target: string) => {
     await api.profiles.setDbtTarget(projectId, target);
     qc.invalidateQueries({ queryKey: ['dbt-target', projectId] });
+    qc.invalidateQueries({ queryKey: ['health-summary', projectId] });
   };
 
   if (!globalProfiles?.length && !targetsData?.targets.length) return null;

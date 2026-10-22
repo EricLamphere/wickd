@@ -1,9 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { api, type SourceFreshnessResult } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
+import { isApproachingWarn, sortByUrgency } from '../lib/freshnessUrgency';
 import { OPEN_IN_FILES_CURSOR_CLS, OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE, useOpenInFiles } from '../lib/openInFiles';
+import { relativeTime } from '../lib/relativeTime';
+import RunButton from './health/RunButton';
+import Spinner from './health/Spinner';
+import StaleNotice from './health/StaleNotice';
+import { errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from './health/useHealth';
 
 type FileNav = ReturnType<typeof useOpenInFiles>;
 
@@ -20,27 +26,6 @@ interface ColWidths {
 
 const DEFAULT_COL_WIDTHS: ColWidths = { table: 320, age: 160, warnAfter: 160, errorAfter: 160 };
 const MIN_COL_WIDTH = 48;
-
-function Spinner() {
-  return (
-    <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-    </svg>
-  );
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-}
 
 function formatAge(seconds: number | null): string {
   if (seconds === null) return '—';
@@ -191,6 +176,11 @@ function SourceTableRow({ result, widths, fileNav }: SourceTableRowProps) {
         <span className="text-gray-400">{formatThreshold(result.error_after_count, result.error_after_period)}</span>
       </span>
       <div className="flex-1" />
+      {isApproachingWarn(result) && (
+        <span className="text-[10px] status-text-warn shrink-0 px-2" title="Over 75% of the way to its warn threshold">
+          near warn
+        </span>
+      )}
       {result.error ? (
         <span className="text-[10px] status-text-error truncate max-w-48 px-2" title={result.error}>
           {result.error}
@@ -270,14 +260,9 @@ export default function FreshnessPanel({ projectId }: FreshnessPanelProps) {
     retry: false,
   });
 
-  const mutation = useMutation({
-    mutationFn: () => api.freshness.start(projectId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['freshness-latest', projectId] });
-    },
-  });
-
-  const isRunning = mutation.isPending || snapshot?.status === 'running';
+  const { freshness: run } = useHealthRuns(projectId);
+  const { data: summary } = useHealthSummary(projectId);
+  const isRunning = useIsStarting('freshness', projectId) || snapshot?.status === 'running';
 
   useProjectEvents(projectId, useCallback((event) => {
     if (event.type === 'freshness_finished') {
@@ -286,7 +271,8 @@ export default function FreshnessPanel({ projectId }: FreshnessPanelProps) {
   }, [projectId, qc]));
 
   const results = snapshot?.results ?? [];
-  const filtered = results.filter((r) => matchesFilter(r, filter));
+  // Most urgent first: failures, then whatever is closest to its error threshold
+  const filtered = sortByUrgency(results.filter((r) => matchesFilter(r, filter)));
 
   const grouped = filtered.reduce<Record<string, SourceFreshnessResult[]>>((acc, r) => {
     const key = r.source_name || '(unknown)';
@@ -294,7 +280,8 @@ export default function FreshnessPanel({ projectId }: FreshnessPanelProps) {
     acc[key].push(r);
     return acc;
   }, {});
-  const sourceNames = Object.keys(grouped).sort();
+  // Insertion order follows the urgency sort, so the most urgent source comes first
+  const sourceNames = Object.keys(grouped);
 
   const passCount = results.filter((r) => r.status === 'pass').length;
   const warnCount = results.filter((r) => r.status === 'warn').length;
@@ -322,7 +309,8 @@ export default function FreshnessPanel({ projectId }: FreshnessPanelProps) {
                   <span className="text-gray-600">No sources found</span>
                 )}
                 <span className="text-gray-600">·</span>
-                <span className="text-gray-600">{relativeTime(snapshot.started_at)}</span>
+                <span className="text-gray-600">{relativeTime(snapshot.finished_at ?? snapshot.started_at)}</span>
+                {snapshot.target && <span className="text-gray-600">· {snapshot.target}</span>}
               </span>
             )}
             {!isRunning && !snapshot && !isLoading && (
@@ -335,15 +323,17 @@ export default function FreshnessPanel({ projectId }: FreshnessPanelProps) {
               </span>
             )}
           </div>
-          <button
-            onClick={() => mutation.mutate()}
-            disabled={isRunning}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:border-brand-600 hover:text-brand-300 transition-colors disabled:opacity-40"
-          >
-            {isRunning ? <Spinner /> : null}
-            {isRunning ? 'Running…' : 'Run'}
-          </button>
+          <RunButton running={isRunning} onClick={() => run.mutate()} />
         </div>
+
+        {!isRunning && snapshot && summary && (
+          <StaleNotice reasons={summary.freshness.stale_reasons} onRerun={() => run.mutate()} />
+        )}
+        {run.error && !isRunning && (
+          <p className="px-5 py-2 border-b border-gray-800 text-xs status-text-error">
+            Couldn't start the freshness check: {errorMessage(run.error)}
+          </p>
+        )}
 
         {/* Results */}
         {!isRunning && snapshot && snapshot.status !== 'running' && results.length > 0 && (

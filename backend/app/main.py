@@ -23,6 +23,7 @@ from app.api import files as files_api
 from app.api import global_env as global_env_api
 from app.api import global_profiles as global_profiles_api
 from app.api import health as health_api
+from app.api import health_summary as health_summary_api
 from app.api import impact as impact_api
 from app.api import init as init_api
 from app.api import init_script_test as init_script_test_api
@@ -102,6 +103,7 @@ app.include_router(projects_api.router)
 app.include_router(models_api.router)
 app.include_router(document_api.router)
 app.include_router(debug_api.router)
+app.include_router(health_summary_api.router)
 app.include_router(drift_api.router)
 app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)

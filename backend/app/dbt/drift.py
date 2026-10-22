@@ -23,6 +23,8 @@ class ModelDriftResult:
     error: str | None  # non-empty when the probe failed
     columns: tuple[ColumnDrift, ...]
     has_drift: bool
+    not_built: bool = False  # relation missing from the warehouse — not drift
+    yaml_path: str | None = None  # project-relative schema YAML that documents the node
 
 
 def diff_columns(
@@ -63,3 +65,13 @@ def is_eligible_for_drift_check(node: ModelNode) -> bool:
         node.resource_type in ("model", "snapshot", "seed")
         and node.materialized in ("table", "incremental", "snapshot", "seed")
     )
+
+
+def skipped_counts(nodes) -> dict[str, int]:
+    """Models/seeds/snapshots the drift scan skips (views, ephemeral, …), by materialization."""
+    counts: dict[str, int] = {}
+    for node in nodes:
+        if node.resource_type in ("model", "snapshot", "seed") and not is_eligible_for_drift_check(node):
+            key = node.materialized or "unknown"
+            counts[key] = counts.get(key, 0) + 1
+    return counts

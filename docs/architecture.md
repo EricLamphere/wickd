@@ -48,7 +48,8 @@ wickd/
 │   │   │   ├── setup.py             # /api/setup — first-run wizard save + seed_setup_completed() for pre-wizard installs
 │   │   │   ├── events.py            # /api/projects/{id}/events — SSE endpoint
 │   │   │   ├── debug.py             # /api/projects/{id}/debug — runs dbt debug, parses output into structured checks
-│   │   │   ├── drift.py             # /api/projects/{id}/drift — schema drift check (batched dbt show vs manifest columns)
+│   │   │   ├── drift.py             # /api/projects/{id}/drift — schema drift check (batched dbt show vs manifest columns); /drift/{id}/recheck re-probes one model
+│   │   │   ├── health_summary.py    # /api/projects/{id}/health/summary — status of connection/drift/freshness for the Health overview, tab badges and nav dot (logic in app/health/summary.py)
 │   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document — docs generator (stub `- name:` entries in schema YAML)
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
@@ -117,7 +118,7 @@ wickd/
 │   │           ├── Docs.tsx             # Native docs browser (folder tree)
 │   │           ├── Environment.tsx      # Env vars + profiles
 │   │           ├── InitScripts.tsx      # Init pipeline management
-│   │           ├── Health.tsx           # Health page: two tabs — dbt Health Check + Schema Drift
+│   │           ├── Health.tsx           # Health page: Overview (default) + Connection + Schema Drift + Source Freshness tabs, each check tab with a status badge
 │   │           ├── FileExplorer/        # File browser + Monaco editor; SidePane replaces old tab bar
 │   │           ├── Git/                 # Source Control page (VSCode-style SCM)
 │   │           ├── Workspace/           # SQL Workspace — file tree + Monaco editor + results pane + autocomplete
@@ -133,7 +134,8 @@ wickd/
 │   │               ├── NavRail.tsx          # Collapsible left nav sidebar (persists collapsed state in localStorage; resizable when expanded)
 │   │               ├── ProjectNav.tsx       # Nav items (DAG/Files/Docs/Workspace/Git/Environment/Init/Health); icon-only mode when collapsed
 │   │               ├── HealthCheckPanel.tsx # dbt debug runner — shows per-check status table, version info, raw log
-│   │               ├── DriftPanel.tsx       # Schema drift UI — triggers drift scan, shows per-model column diff table
+│   │               ├── DriftPanel.tsx       # Schema drift UI — header (target, checked/skipped), stale notice, progress; results in drift/ (DriftResults: search, filters, Drifted/Not built/Errors/In sync groups; ModelDriftRow: re-check, Build model, Open YAML, Document columns)
+│   │               ├── health/              # Shared Health pieces: HealthOverview (cards + Run all), useHealth.ts (useHealthSummary, useHealthRuns — keyed mutations shared across views), healthStatus.ts (badge/nav-dot logic), StaleNotice, RunButton, Spinner
 │   │               ├── SidePane/
 │   │               │   ├── index.tsx        # Right-side collapsible panel (drag/collapse); tabs: Properties, Profile
 │   │               │   ├── PropertiesTab.tsx # Model metadata; Refs/Sources + Referenced By as cmd+clickable chips; run controls; action buttons
@@ -252,8 +254,9 @@ drift_snapshots
   target          TEXT(255) (nullable)  -- dbt target used during the scan
   total_models    INTEGER    -- number of eligible models
   checked_models  INTEGER    -- models processed so far (progress)
-  results_json    TEXT       -- JSON array of ModelDriftResult objects
+  results_json    TEXT       -- JSON array of ModelDriftResult objects (incl. not_built, yaml_path)
   error_message   TEXT (nullable)
+  skipped_json    TEXT       -- {materialization: count} of models the scan skipped (views, ephemeral, …)
   -- Interrupted snapshots (status='running') are reset to 'error' on server restart
 
 freshness_snapshots
@@ -402,6 +405,8 @@ GET    /api/projects/{id}/debug/last                     get result of the most 
 POST   /api/projects/{id}/drift                          start async schema drift scan (202); returns DriftSnapshot
 GET    /api/projects/{id}/drift                          get the latest DriftSnapshot for a project
 GET    /api/projects/{id}/drift/{snapshot_id}            get a specific DriftSnapshot by id
+POST   /api/projects/{id}/drift/{snapshot_id}/recheck    re-probe one model ({unique_id}) and update its row; 409 while a scan runs
+GET    /api/projects/{id}/health/summary                 status/headline/issue count/stale reasons for connection, drift and freshness
 
 POST   /api/projects/{id}/freshness                      start async source freshness check (202); returns FreshnessSnapshot
 GET    /api/projects/{id}/freshness                      get the latest FreshnessSnapshot for a project
@@ -539,7 +544,7 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `health_check_finished` | `debug.py` | Health page renders check results table |
 | `drift_started` | `drift.py` | Drift panel shows progress bar |
 | `drift_progress` | `drift.py` | Drift panel updates checked/total counter |
-| `drift_finished` | `drift.py` | Drift panel renders column diff results |
+| `drift_finished` | `drift.py` | Drift panel renders column diff results (also sent after a single-model recheck, with `recheck`) |
 | `freshness_started` | `freshness.py` | Freshness panel shows running state |
 | `freshness_finished` | `freshness.py` | Freshness panel invalidates query, renders results |
 | `column_lineage_started` | `column_lineage.py` | DagFilterBar shows lineage loading state |
@@ -811,9 +816,9 @@ Session state (`sessionStorage`) persists open file path, expanded tree nodes, a
    - Active profiles dir, profile name, target name
    - Per-check status rows (`ok | fail | warn | info`) for connection, profile YAML, project YAML, etc.
 5. Publishes `health_check_finished` with the full result payload
-6. Result is stored in-memory in a `_cache` dict keyed by project_id; `GET /api/projects/{id}/debug/last` returns the cached result without re-running
+6. The result (plus `requested_target`, the DBT_TARGET it ran with) is stored in `app_settings` under `health_check:{project_id}`; `GET /api/projects/{id}/debug/last` returns it without re-running. While it runs the project id is in `debug.running_debug`, so the health summary reports `running` to every view
 
-`HealthCheckPanel.tsx` (Health → "dbt Health Check" tab):
+`HealthCheckPanel.tsx` (Health → "Connection" tab):
 - Shows per-check status table (green tick / red x / amber warn / info)
 - Displays version info block and raw log accordion
 
@@ -822,18 +827,21 @@ Session state (`sessionStorage`) persists open file path, expanded tree nodes, a
 `POST /api/projects/{id}/drift` (202 Accepted) → `drift.py`:
 1. Creates a `DriftSnapshot` DB row with `status=running`
 2. Launches `_run_drift_check()` as a background asyncio task (one per project; concurrent requests return 409)
-3. Reads manifest via `load_manifest()` and filters to eligible models (`is_eligible_for_drift_check` — materialized views and tables only)
+3. Reads manifest via `load_manifest()` and filters to eligible models (`is_eligible_for_drift_check` — tables, incremental, seeds, snapshots); the rest are counted by materialization into `skipped_json` (`skipped_counts()`)
 4. In batches of `PROBE_BATCH_SIZE` (25) models:
-   - `probe_many_warehouse_columns()` runs one `dbt show --inline` via `runner.run()` (silent — no bus events) whose Jinja calls `adapter.get_columns_in_relation(ref(...))` for every model in the batch and prints the columns as one JSON line. Metadata only, no table scans; one dbt startup per batch instead of per model (dbt can't run in parallel per project, so batching is the speed-up)
+   - `probe_many_warehouse_columns()` runs one `dbt show --inline` via `runner.run()` (silent — no bus events) whose Jinja calls `load_relation(ref(...))` then `adapter.get_columns_in_relation()` for every model in the batch and prints the columns as one JSON line (`null` for a relation that doesn't exist → `not_built`, reported separately from drift and errors). Metadata only, no table scans; one dbt startup per batch instead of per model (dbt can't run in parallel per project, so batching is the speed-up)
    - If the batch fails as a whole (one bad relation fails the compile), each of its models falls back to `probe_warehouse_columns()` (`select * … --limit 1`) so per-model errors are kept
    - `diff_columns()` compares manifest-declared columns against warehouse columns and attaches the warehouse data type (`warehouse_type`; empty for single-model fallbacks). Types are shown in `DriftPanel` but not compared yet — `type_mismatch` is always false until declared types are normalised per adapter
    - Publishes `drift_progress` when each batch starts and per model, with `checked / total` and the batch's `batch_start`/`batch_end`; `DriftPanel` shows "Checking 26–50 of N…" (`lib/driftProgress.ts`)
 5. Writes all results to `drift_snapshots.results_json` and sets `status=done`; publishes `drift_finished`
 6. `GET /api/projects/{id}/drift` returns the latest snapshot; `GET /api/projects/{id}/drift/{id}` returns a specific one
+7. `POST /api/projects/{id}/drift/{id}/recheck` re-probes one model (batch of one, same fallback), replaces its row in the snapshot and publishes `drift_finished` with `recheck: <unique_id>`
 
 `DriftPanel.tsx` (Health → "Schema Drift" tab):
-- Triggers scan and polls via SSE for `drift_progress` / `drift_finished`
-- Shows per-model accordion: green (no drift) or red (has drift), with a column-level diff table inside each row
+- Header: issue summary, models checked vs. skipped by materialization, the target scanned; stale notice from the health summary
+- Live progress via SSE (`drift_started` resets it, `drift_progress`, `drift_finished`)
+- `drift/DriftResults.tsx`: model search, filter pills, groups Drifted / Not built / Errors, and an expandable In sync list. Rows start collapsed (one-line summary such as `2 warehouse-only · 1 manifest-only`) when more than 5 have issues
+- `drift/ModelDriftRow.tsx` actions: re-check (↻), Build model for not-built models or manifest-only columns (`dbt build --select <uid>`, then re-checks on `run_finished`), Open YAML (`yaml_path`, manifest-only columns), Document N warehouse-only columns
 - Interrupted snapshots (server restart mid-scan) are reset to `status=error` on startup
 
 ### 14. Model Column Profile
@@ -868,7 +876,9 @@ Two separate palettes, since the homepage sits outside `ProjectLayout` and has n
 **Project actions** (always visible):
 - Run / Build / Test all models
 - Generate docs
-- Check health → navigates to `/health?tab=health-check` and runs `dbt debug`
+- Check health → navigates to `/health?tab=overview`
+- Run all health checks → navigates to the overview and starts dbt debug, the drift scan and source freshness (queued on the per-project dbt lock)
+- Check connection (dbt debug) → navigates to `/health?tab=connection` and runs `dbt debug`
 - Check source freshness → navigates to `/health?tab=source-freshness` and triggers freshness scan
 - Check schema drift → navigates to `/health?tab=schema-drift` and triggers drift scan
 - Ask Wicky… → opens the Wicky pane and focuses its input
@@ -886,7 +896,8 @@ Behavior:
 - Re-pressing ⌘K while open closes the palette
 
 **Health page `?tab=` deep-link**:
-- `/health?tab=health-check` activates the dbt Health Check tab
+- `/health?tab=overview` activates the Overview tab (the default)
+- `/health?tab=connection` activates the Connection (dbt debug) tab
 - `/health?tab=source-freshness` activates the Source Freshness tab
 - `/health?tab=schema-drift` activates the Schema Drift tab
 - Links from the command palette use these params to pre-select the tab even if the page is already mounted
@@ -989,7 +1000,9 @@ task install PYTHON=python3.12
 
 **Schema drift stored in SQLite** — `drift_snapshots` persists the full results_json so the last drift report survives server restarts. A single in-memory `_running` dict (project_id → asyncio.Task) prevents concurrent drift scans per project. Interrupted snapshots are auto-corrected to `status=error` on startup.
 
-**dbt debug result cached in memory** — `dbt debug` is quick (~1s) but re-running it on every page load is unnecessary. The last result is stored in `_cache[project_id]` and served by `GET /debug/last` until explicitly re-triggered. The cache is process-local (no persistence across restarts).
+**dbt debug result persisted in app_settings** — `dbt debug` is quick (~1s) but re-running it on every page load is unnecessary. The last result is stored under `health_check:{project_id}` in `app_settings` and served by `GET /debug/last` until explicitly re-triggered.
+
+**Health summary** — `GET /health/summary` reduces the three checks' stored results to `{status, headline, issues, finished_at, target, stale_reasons}` each (pure logic in `app/health/summary.py`). It feeds the Health Overview cards, the tab badges and the dot on the nav rail's Health item (`useHealthSummary`, query `['health-summary', id]`, invalidated by the health/drift/freshness start/finish events and `statuses_changed`). Stale reasons: the active target differs from the one the result was produced with; for drift, scanned models that ran successfully after the scan; for connection and freshness, results older than a day.
 
 **All dbt commands use the venv binary** — `venv_dbt()` / `venv_pip()` / `venv_python()` in `dbt/venv.py` resolve binaries relative to `settings.dbt_venv_dir` (`data/dbt-venv` in dev; `<data_dir>/dbt-venv` in the packaged app, created on first use). This ensures adapter packages installed during setup (e.g. `dbt-snowflake`) are available to every dbt invocation regardless of what's on `$PATH`.
 

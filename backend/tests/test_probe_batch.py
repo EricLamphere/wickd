@@ -111,3 +111,26 @@ async def test_probe_many_with_no_names_skips_dbt(monkeypatch):
 
 def test_batch_timeout_grows_with_batch_size():
     assert probe.batch_timeout_seconds(50) > probe.batch_timeout_seconds(1)
+
+
+def test_build_sql_checks_the_relation_exists_before_reading_columns():
+    sql = build_batch_probe_sql(("orders",))
+    assert "load_relation(" in sql
+    assert sql.index("load_relation(") < sql.index("get_columns_in_relation")
+
+
+def test_parse_treats_null_as_not_built():
+    text = _marker_line({"orders": [["id", "integer"]], "fresh": None})
+    assert parse_batch_probe_output(text) == {"orders": (("id", "integer"),), "fresh": None}
+
+
+async def test_probe_many_flags_relations_that_do_not_exist(monkeypatch):
+    out = _marker_line({"orders": [["id", "integer"]], "fresh": None}).encode()
+    monkeypatch.setattr(runner, "run", AsyncMock(return_value=(0, out, b"")))
+
+    results = await probe_many_warehouse_columns(1, Path("/p"), ("orders", "fresh"), {}, None)
+
+    assert results is not None
+    assert not results["orders"].not_built
+    assert results["fresh"].not_built
+    assert results["fresh"].columns == () and results["fresh"].error == probe.NOT_BUILT_ERROR

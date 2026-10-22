@@ -1,26 +1,38 @@
 import { useParams } from 'react-router-dom';
+import type { CheckSummary } from '../../lib/api';
 import { useUrlTab } from '../../lib/useUrlTab';
 import NavRail from './components/NavRail';
 import HealthCheckPanel from './components/HealthCheckPanel';
 import DriftPanel from './components/DriftPanel';
 import FreshnessPanel from './components/FreshnessPanel';
+import HealthOverview from './components/health/HealthOverview';
+import { TONE_BADGE, TONE_DOT, tabBadge } from './components/health/healthStatus';
+import { type HealthCheckKind, useHealthSummary } from './components/health/useHealth';
 
-type HealthTab = 'health-check' | 'schema-drift' | 'source-freshness';
+type HealthTab = 'overview' | 'connection' | 'schema-drift' | 'source-freshness';
 
-const TABS: { id: HealthTab; label: string }[] = [
-  { id: 'health-check', label: 'dbt Health Check' },
-  { id: 'schema-drift', label: 'Schema Drift' },
-  { id: 'source-freshness', label: 'Source Freshness' },
+const TABS: { id: HealthTab; label: string; kind?: HealthCheckKind }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'connection', label: 'Connection', kind: 'connection' },
+  { id: 'schema-drift', label: 'Schema Drift', kind: 'drift' },
+  { id: 'source-freshness', label: 'Source Freshness', kind: 'freshness' },
 ];
 
 const TAB_IDS = TABS.map((t) => t.id);
+
+const TAB_FOR_KIND: Record<HealthCheckKind, HealthTab> = {
+  connection: 'connection',
+  drift: 'schema-drift',
+  freshness: 'source-freshness',
+};
 
 export default function HealthPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = Number(projectId);
   // ?tab= drives the active tab (so back/forward covers it); the last-used tab is
   // remembered per project for visits without one (e.g. clicking Health in the nav rail)
-  const [activeTab, handleTabChange] = useUrlTab<HealthTab>('tab', TAB_IDS, 'health-check', `health-tab:${id}`);
+  const [activeTab, handleTabChange] = useUrlTab<HealthTab>('tab', TAB_IDS, 'overview', `health-tab:${id}`);
+  const { data: summary } = useHealthSummary(id);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -43,18 +55,19 @@ export default function HealthPage() {
             <h1 className="text-base font-semibold text-gray-100">Health</h1>
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex gap-1 overflow-x-auto">
             {TABS.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
-                className={`px-4 py-2 text-sm rounded-t transition-colors border-b-2 -mb-px ${
+                className={`flex items-center gap-2 px-4 py-2 text-sm rounded-t whitespace-nowrap transition-colors border-b-2 -mb-px ${
                   activeTab === tab.id
                     ? 'text-brand-300 border-brand-500 font-medium'
                     : 'text-gray-500 border-transparent hover:text-gray-300'
                 }`}
               >
                 {tab.label}
+                {tab.kind && summary && <TabBadge check={summary[tab.kind]} />}
               </button>
             ))}
           </div>
@@ -62,7 +75,10 @@ export default function HealthPage() {
 
         {/* Tab content */}
         <div className="flex-1 overflow-auto">
-          {activeTab === 'health-check' && (
+          {activeTab === 'overview' && (
+            <HealthOverview projectId={id} onOpen={(kind) => handleTabChange(TAB_FOR_KIND[kind])} />
+          )}
+          {activeTab === 'connection' && (
             <div className="p-6 pb-12 max-w-[62rem] mx-auto w-full">
               <HealthCheckPanel projectId={id} />
             </div>
@@ -72,5 +88,18 @@ export default function HealthPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function TabBadge({ check }: { check: CheckSummary }) {
+  const badge = tabBadge(check);
+  if (!badge) return null;
+  if (badge.label === null) {
+    return <span title="Running" className={`w-1.5 h-1.5 rounded-full ${TONE_DOT[badge.tone]}`} />;
+  }
+  return (
+    <span className={`min-w-[1.25rem] px-1 py-px rounded-full border text-[10px] font-medium leading-none text-center ${TONE_BADGE[badge.tone]}`}>
+      {badge.label}
+    </span>
   );
 }

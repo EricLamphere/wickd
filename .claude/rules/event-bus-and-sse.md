@@ -80,7 +80,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `health_check_finished` | project | `api/debug.py` — includes full DebugResultDto payload |
 | `drift_started` | project | `api/drift.py` — scan started |
 | `drift_progress` | project | `api/drift.py` — includes `checked`, `total`, `current`, and `batch_start`/`batch_end` (1-based range of the batch being probed; sent at each batch start and per model) |
-| `drift_finished` | project | `api/drift.py` — snapshot id + final status |
+| `drift_finished` | project | `api/drift.py` — snapshot id + final status; also sent by the single-model recheck (with `recheck: <unique_id>`) |
 | `freshness_started` | project | `api/freshness.py` — includes `snapshot_id` |
 | `freshness_finished` | project | `api/freshness.py` — includes `snapshot_id`, `ok`, `pass_count`, `warn_count`, `error_count` |
 | `column_lineage_started` | project | `api/column_lineage.py` — includes `snapshot_id`, `total` |

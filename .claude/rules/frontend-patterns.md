@@ -65,6 +65,7 @@ When handling SSE events, invalidate the relevant query:
 | `docs_generated` | `['docs-status', projectId]` |
 | `init_pipeline_finished` | `['project', projectId]`, `['init-steps', projectId]` (init status/logs are now persisted to the DB, so the cached project + step rows need to catch up once the run settles; the UI itself still updates live from `init_step` events during the run) |
 | `freshness_finished` | `['freshness-latest', projectId]` |
+| `health_check_*`, `drift_started`/`drift_finished`, `freshness_started`/`freshness_finished`, `statuses_changed` | `['health-summary', projectId]` (via `components/health/useHealth.ts`; also invalidated when the target or profile changes in the Header) |
 | `git_status_changed`, `files_changed`, `graph_changed` | `['impact-changes', projectId]` (via `lib/useImpactChanges.ts`) |
 | `ai_proposal_updated` | `['ai-proposals', projectId]` (via `components/Wicky/useAi.ts`) |
 | `ai_query_updated` | `['ai-conversation', projectId]` (via `components/Wicky/useAi.ts`) |

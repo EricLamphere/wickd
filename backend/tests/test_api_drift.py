@@ -144,3 +144,95 @@ async def test_drift_publishes_progress_per_model(client, db, tmp_path, monkeypa
     # each batch is announced (nothing checked yet) before its per-model events
     assert progress == [(0, 1, 2), (1, 1, 2), (2, 1, 2), (2, 3, 3), (3, 3, 3)]
     assert drift_events[-1].type == "drift_finished"
+
+
+async def _seed_mixed(db, tmp_path: Path) -> int:
+    """Two tables (one documented in YAML) and two views the scan skips."""
+    d = tmp_path / "proj"
+    (d / "target").mkdir(parents=True)
+    (d / "models").mkdir()
+    (d / "models" / "schema.yml").write_text("version: 2\n")
+    orders = {**_table("orders", ["id"]), "patch_path": "proj://models/schema.yml"}
+    view = {**_table("v", []), "config": {"materialized": "view"}}
+    nodes = {
+        "model.proj.orders": orders,
+        "model.proj.fresh": _table("fresh", ["id"]),
+        "model.proj.v": view,
+        "model.proj.v2": {**view, "unique_id": "model.proj.v2", "name": "v2"},
+    }
+    (d / "target" / "manifest.json").write_text(json.dumps({"nodes": nodes, "sources": {}}))
+    async with db() as session:
+        project = Project(name="proj", path=str(d), platform="local")
+        session.add(project)
+        await session.commit()
+        return project.id
+
+
+async def test_drift_reports_not_built_yaml_path_and_skipped(client, db, tmp_path):
+    pid = await _seed_mixed(db, tmp_path)
+    probes = {
+        "fresh": ProbeResult(columns=(), error="not built", not_built=True),
+        "orders": ProbeResult(columns=("id", "extra"), error=None),
+    }
+    with patch.object(drift_api, "probe_many_warehouse_columns", new=AsyncMock(return_value=probes)):
+        snap = await _run_to_completion(client, pid)
+
+    by_name = {r["name"]: r for r in snap["results"]}
+    assert by_name["fresh"]["not_built"] and not by_name["fresh"]["has_drift"]
+    assert by_name["orders"]["yaml_path"] == "models/schema.yml"
+    assert by_name["fresh"]["yaml_path"] is None
+    assert snap["skipped"] == {"view": 2}
+
+
+async def test_recheck_replaces_one_model_in_the_snapshot(client, db, tmp_path):
+    pid = await _seed_mixed(db, tmp_path)
+    first = {
+        "fresh": ProbeResult(columns=(), error="not built", not_built=True),
+        "orders": ProbeResult(columns=("id", "extra"), error=None),
+    }
+    with patch.object(drift_api, "probe_many_warehouse_columns", new=AsyncMock(return_value=first)):
+        snap = await _run_to_completion(client, pid)
+
+    rebuilt = {"fresh": ProbeResult(columns=("id",), error=None)}
+    with patch.object(drift_api, "probe_many_warehouse_columns", new=AsyncMock(return_value=rebuilt)) as probe:
+        resp = await client.post(
+            f"/api/projects/{pid}/drift/{snap['id']}/recheck", json={"unique_id": "model.proj.fresh"}
+        )
+
+    assert resp.status_code == 200
+    assert probe.await_args.args[2] == ("fresh",)
+    by_name = {r["name"]: r for r in resp.json()["results"]}
+    assert not by_name["fresh"]["not_built"] and not by_name["fresh"]["has_drift"]
+    assert by_name["orders"]["has_drift"]  # untouched
+    assert [r["name"] for r in resp.json()["results"]] == ["fresh", "orders"]
+
+
+async def test_recheck_unknown_model_is_404(client, db, tmp_path):
+    pid = await _seed_mixed(db, tmp_path)
+    with patch.object(drift_api, "probe_many_warehouse_columns", new=AsyncMock(return_value={
+        "fresh": ProbeResult(columns=("id",), error=None),
+        "orders": ProbeResult(columns=("id",), error=None),
+    })):
+        snap = await _run_to_completion(client, pid)
+    resp = await client.post(
+        f"/api/projects/{pid}/drift/{snap['id']}/recheck", json={"unique_id": "model.proj.v"}
+    )
+    assert resp.status_code == 404
+
+
+async def test_recheck_while_scanning_is_409(client, db, tmp_path):
+    pid = await _seed_mixed(db, tmp_path)
+    gate = asyncio.Event()
+
+    async def _slow(_pid, _path, batch, _env, _target):
+        await gate.wait()
+        return {n: ProbeResult(columns=("id",), error=None) for n in batch}
+
+    with patch.object(drift_api, "probe_many_warehouse_columns", new=AsyncMock(side_effect=_slow)):
+        start = await client.post(f"/api/projects/{pid}/drift", json={})
+        resp = await client.post(
+            f"/api/projects/{pid}/drift/{start.json()['id']}/recheck", json={"unique_id": "model.proj.orders"}
+        )
+        gate.set()
+        await drift_api._running[pid]
+    assert resp.status_code == 409

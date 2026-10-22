@@ -10,8 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
 from app.db.models import DriftSnapshot, Project
-from app.dbt.drift import ModelDriftResult, diff_columns, is_eligible_for_drift_check
-from app.dbt.manifest import load_manifest
+from app.dbt.drift import (
+    ModelDriftResult,
+    diff_columns,
+    is_eligible_for_drift_check,
+    skipped_counts,
+)
+from app.dbt.manifest import ModelNode, load_manifest
 from app.dbt.probe import ProbeResult, probe_many_warehouse_columns, probe_warehouse_columns
 from app.events.bus import Event, bus
 
@@ -42,6 +47,8 @@ class ModelDriftResultDto(BaseModel):
     error: str | None
     columns: list[ColumnDriftDto]
     has_drift: bool
+    not_built: bool = False
+    yaml_path: str | None = None  # project-relative schema YAML, for "Open YAML"
 
 
 class DriftSnapshotDto(BaseModel):
@@ -55,10 +62,15 @@ class DriftSnapshotDto(BaseModel):
     checked_models: int
     results: list[ModelDriftResultDto]
     error_message: str | None
+    skipped: dict[str, int]  # models the scan doesn't check, by materialization
 
 
 class StartDriftDto(BaseModel):
     select: list[str] | None = None  # optional: limit to subset of unique_ids
+
+
+class RecheckDriftDto(BaseModel):
+    unique_id: str
 
 
 def _to_utc_iso(dt: datetime) -> str:
@@ -81,6 +93,8 @@ def _snapshot_to_dto(snap: DriftSnapshot) -> DriftSnapshotDto:
             error=r.get("error"),
             columns=[ColumnDriftDto(**c) for c in r.get("columns", [])],
             has_drift=r.get("has_drift", False),
+            not_built=r.get("not_built", False),
+            yaml_path=r.get("yaml_path"),
         )
         for r in raw_results
     ]
@@ -95,7 +109,16 @@ def _snapshot_to_dto(snap: DriftSnapshot) -> DriftSnapshotDto:
         checked_models=snap.checked_models,
         results=results,
         error_message=snap.error_message,
+        skipped=_load_skipped(snap.skipped_json),
     )
+
+
+def _load_skipped(raw: str | None) -> dict[str, int]:
+    try:
+        data = json.loads(raw or "{}")
+    except ValueError:
+        return {}
+    return {str(k): int(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
 
 @router.post("/{project_id}/drift", status_code=202, response_model=DriftSnapshotDto)
@@ -137,6 +160,7 @@ async def start_drift(
         total_models=len(eligible),
         checked_models=0,
         results_json="[]",
+        skipped_json=json.dumps(skipped_counts(manifest.nodes)),
     )
     session.add(snap)
     await session.commit()
@@ -182,6 +206,60 @@ async def get_drift_snapshot(
     return _snapshot_to_dto(snap)
 
 
+@router.post("/{project_id}/drift/{snapshot_id}/recheck", response_model=DriftSnapshotDto)
+async def recheck_drift_model(
+    project_id: int,
+    snapshot_id: int,
+    dto: RecheckDriftDto,
+    session: AsyncSession = Depends(get_session),
+) -> DriftSnapshotDto:
+    """Re-probe one model and update its row in the snapshot (e.g. after rebuilding it)."""
+    project = await session.get(Project, project_id)
+    snap = await session.get(DriftSnapshot, snapshot_id)
+    if project is None or snap is None or snap.project_id != project_id:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    existing_task = _running.get(project_id)
+    if snap.status == "running" or (existing_task is not None and not existing_task.done()):
+        raise HTTPException(status_code=409, detail="drift check already running for this project")
+
+    project_path = Path(project.path)
+    manifest = await asyncio.get_event_loop().run_in_executor(
+        None, load_manifest, project_path / "target" / "manifest.json"
+    )
+    node = next(
+        (n for n in (manifest.nodes if manifest else ()) if n.unique_id == dto.unique_id), None
+    )
+    if node is None or not is_eligible_for_drift_check(node):
+        raise HTTPException(status_code=404, detail="model not found or not checked for drift")
+
+    from app.api.init import load_project_env
+    env = await load_project_env(project_id)
+    probe = await _probe_one(project_id, project_path, node, env, env.get("DBT_TARGET"))
+    updated = _result_to_dict(_drift_result(node, probe, project_path))
+
+    try:
+        results: list[dict] = json.loads(snap.results_json)
+    except ValueError:
+        results = []
+    results = [r for r in results if r.get("unique_id") != node.unique_id] + [updated]
+    results.sort(key=lambda r: r.get("name", ""))
+    snap.results_json = json.dumps(results)
+    await session.commit()
+    await session.refresh(snap)
+
+    await bus.publish(Event(
+        topic=f"project:{project_id}",
+        type="drift_finished",
+        data={
+            "snapshot_id": snapshot_id,
+            "ok": True,
+            "drifted_count": sum(1 for r in results if r.get("has_drift")),
+            "recheck": node.unique_id,
+        },
+    ))
+    return _snapshot_to_dto(snap)
+
+
 async def _run_drift_check(
     project_id: int,
     snap_id: int,
@@ -216,7 +294,7 @@ async def _run_drift_check(
             probe = probes[node.name] if probes is not None else await probe_warehouse_columns(
                 project_id, Path(project_path), node.name, env, target_val
             )
-            results.append(_result_to_dict(_drift_result(node, probe)))
+            results.append(_result_to_dict(_drift_result(node, probe, Path(project_path))))
             checked += 1
             await _save_progress(snap_id, checked, results)
             await _publish_progress(topic, snap_id, checked, total, node.name, batch_range)
@@ -240,27 +318,35 @@ async def _run_drift_check(
     ))
 
 
-def _drift_result(node, probe: ProbeResult) -> ModelDriftResult:
+def _drift_result(node: ModelNode, probe: ProbeResult, project_path: Path) -> ModelDriftResult:
+    base = {
+        "unique_id": node.unique_id,
+        "name": node.name,
+        "materialized": node.materialized,
+        "yaml_path": _yaml_path(node, project_path),
+    }
     if probe.error is not None:
         return ModelDriftResult(
-            unique_id=node.unique_id,
-            name=node.name,
-            materialized=node.materialized,
-            error=probe.error,
-            columns=(),
-            has_drift=False,
+            **base, error=probe.error, columns=(), has_drift=False, not_built=probe.not_built
         )
     drifted_cols = diff_columns(node.columns, probe.columns, probe.types)
     return ModelDriftResult(
-        unique_id=node.unique_id,
-        name=node.name,
-        materialized=node.materialized,
+        **base,
         error=None,
         columns=drifted_cols,
         has_drift=any(
             not c.in_manifest or not c.in_warehouse or c.type_mismatch for c in drifted_cols
         ),
     )
+
+
+def _yaml_path(node: ModelNode, project_path: Path) -> str | None:
+    """The node's schema YAML relative to the project, if it lives in this project
+    (patch_path is `package://path`; package nodes resolve elsewhere, so check it exists)."""
+    if not node.patch_path or "://" not in node.patch_path:
+        return None
+    rel = node.patch_path.split("://", 1)[1]
+    return rel if (project_path / rel).is_file() else None
 
 
 def _result_to_dict(result: ModelDriftResult) -> dict:
@@ -281,7 +367,18 @@ def _result_to_dict(result: ModelDriftResult) -> dict:
             for c in result.columns
         ],
         "has_drift": result.has_drift,
+        "not_built": result.not_built,
+        "yaml_path": result.yaml_path,
     }
+
+
+async def _probe_one(
+    project_id: int, project_path: Path, node: ModelNode, env: dict[str, str], target: str | None
+) -> ProbeResult:
+    probes = await probe_many_warehouse_columns(project_id, project_path, (node.name,), env, target)
+    if probes is not None:
+        return probes[node.name]
+    return await probe_warehouse_columns(project_id, project_path, node.name, env, target)
 
 
 async def _publish_progress(

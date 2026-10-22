@@ -1,293 +1,104 @@
 import { useCallback, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, FilePlus2, Loader2 } from 'lucide-react';
-import { api, type DriftSnapshot, type ModelDriftResult, type ColumnDrift } from '../../../lib/api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, type DriftSnapshot } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
-import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE, useOpenInFiles } from '../lib/openInFiles';
-import { describeDocumentResult, documentErrorMessage } from '../lib/documentModel';
+import { useOpenInFiles } from '../lib/openInFiles';
 import { driftProgressLabel, type DriftProgress } from '../lib/driftProgress';
+import { relativeTime } from '../lib/relativeTime';
+import DriftResults from './drift/DriftResults';
+import { categorize, skippedLabel } from './drift/driftView';
+import RunButton from './health/RunButton';
+import Spinner from './health/Spinner';
+import StaleNotice from './health/StaleNotice';
+import { errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from './health/useHealth';
 
 interface DriftPanelProps {
   projectId: number;
 }
 
-type FilterKey = 'all' | 'manifest_only' | 'warehouse_only' | 'type_mismatch' | 'errors';
-
-function Spinner() {
-  return (
-    <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
-    </svg>
-  );
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  return `${hrs}h ago`;
-}
-
-function isWarehouseOnly(col: ColumnDrift): boolean {
-  return !col.in_manifest && col.in_warehouse;
-}
-
-function columnDriftLabel(col: ColumnDrift): string {
-  if (col.type_mismatch) return 'type mismatch';
-  if (col.in_manifest && !col.in_warehouse) return 'manifest only';
-  if (!col.in_manifest && col.in_warehouse) return 'warehouse only';
-  return 'in sync';
-}
-
-function columnDriftColor(col: ColumnDrift): string {
-  if (col.type_mismatch) return 'text-amber-400';
-  if (col.in_manifest && !col.in_warehouse) return 'text-red-400';
-  if (!col.in_manifest && col.in_warehouse) return 'text-blue-400';
-  return 'text-emerald-400';
-}
-
-/** The type to show beside a column: the warehouse's when it has the column,
- *  else the type declared in YAML (if any). Informational only — not compared. */
-function columnType(col: ColumnDrift): { type: string; title: string } {
-  if (col.in_warehouse) return { type: col.warehouse_type, title: 'Type in the warehouse' };
-  return { type: col.manifest_type, title: 'Type declared in schema YAML' };
-}
-
-function matchesFilter(result: ModelDriftResult, filter: FilterKey): boolean {
-  if (filter === 'errors') return result.error != null;
-  if (filter === 'all') return result.has_drift || result.error != null;
-  if (filter === 'manifest_only') return result.columns.some((c) => c.in_manifest && !c.in_warehouse);
-  if (filter === 'warehouse_only') return result.columns.some((c) => !c.in_manifest && c.in_warehouse);
-  if (filter === 'type_mismatch') return result.columns.some((c) => c.type_mismatch);
-  return false;
-}
-
-interface DocumentColumnsButtonProps {
-  projectId: number;
-  uniqueId: string;
-  columns: string[];
-  onDocumented: (columns: string[]) => void;
-}
-
-/** Adds the model's warehouse-only columns to its schema YAML. */
-function DocumentColumnsButton({ projectId, uniqueId, columns, onDocumented }: DocumentColumnsButtonProps) {
-  const mutation = useMutation({
-    mutationFn: () => api.models.document(projectId, uniqueId, columns),
-    onSuccess: () => onDocumented(columns),
-  });
-
-  return (
-    <div className="flex items-center gap-2 pt-1.5">
-      {columns.length > 0 && (
-        <button
-          type="button"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          title="Add these columns to the model's schema YAML"
-          className="flex items-center gap-1.5 px-2 py-1 text-[10px] rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:border-brand-600 hover:text-brand-300 transition-colors disabled:opacity-40"
-        >
-          {mutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePlus2 className="w-3 h-3" />}
-          Document {columns.length} warehouse-only column{columns.length !== 1 ? 's' : ''}
-        </button>
-      )}
-      {mutation.isSuccess && (
-        <span className="text-[10px] text-emerald-400 truncate">{describeDocumentResult(mutation.data)}</span>
-      )}
-      {mutation.isError && (
-        <span className="text-[10px] text-red-400 break-all">{documentErrorMessage(mutation.error)}</span>
-      )}
-    </div>
-  );
-}
-
-interface ModelDriftRowProps {
-  projectId: number;
-  result: ModelDriftResult;
-  fileNav: ReturnType<typeof useOpenInFiles>;
-}
-
-function ModelDriftRow({ projectId, result, fileNav }: ModelDriftRowProps) {
-  const [open, setOpen] = useState(true);
-  // Columns documented from this row; the snapshot only catches up on the next scan
-  const [documented, setDocumented] = useState<ReadonlySet<string>>(new Set());
-  const canOpen = fileNav.canOpen(result.unique_id);
-
-  const driftCols = result.columns.filter(
-    (c) => !c.in_manifest || !c.in_warehouse || c.type_mismatch
-  );
-  const undocumentedCols = driftCols
-    .filter((c) => isWarehouseOnly(c) && !documented.has(c.name))
-    .map((c) => c.name);
-  const hasWarehouseOnly = driftCols.some(isWarehouseOnly);
-
-  const summary = result.error
-    ? 'error'
-    : `${driftCols.length} column${driftCols.length !== 1 ? 's' : ''} drifted`;
-
-  return (
-    <div className="border border-gray-800/60 rounded-lg overflow-hidden">
-      <button
-        type="button"
-        onClick={(e) => {
-          if (fileNav.handleClick(e, result.unique_id)) return;
-          setOpen((o) => !o);
-        }}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-surface-elevated/30 hover:bg-surface-elevated/60 transition-colors text-left"
-      >
-        {open ? (
-          <ChevronDown className="w-3.5 h-3.5 text-gray-600 shrink-0" />
-        ) : (
-          <ChevronRight className="w-3.5 h-3.5 text-gray-600 shrink-0" />
-        )}
-        <span className="flex-1 min-w-0 truncate">
-          <span
-            title={canOpen ? OPEN_IN_FILES_TITLE : undefined}
-            className={`text-xs font-mono text-gray-300 ${canOpen ? OPEN_IN_FILES_HOVER_CLS : ''}`}
-          >
-            {result.name}
-          </span>
-        </span>
-        <span className={`text-[10px] shrink-0 ${result.error ? 'text-red-400' : 'text-amber-400'}`}>
-          {summary}
-        </span>
-      </button>
-
-      {open && (
-        <div className="px-3 pb-2 pt-1 flex flex-col gap-0.5">
-          {result.error ? (
-            <p className="text-[10px] text-red-400 font-mono break-all">{result.error}</p>
-          ) : (
-            <>
-              {driftCols.map((col) => (
-                <div key={col.name} className="flex items-center gap-2 py-0.5">
-                  <span className="text-[10px] font-mono text-gray-400 flex-1 truncate">{col.name}</span>
-                  {columnType(col).type && (
-                    <span
-                      title={columnType(col).title}
-                      className="max-w-[40%] shrink-0 truncate text-[10px] font-mono text-gray-600"
-                    >
-                      {columnType(col).type}
-                    </span>
-                  )}
-                  {documented.has(col.name) ? (
-                    <span className="text-[10px] shrink-0 text-emerald-400">documented</span>
-                  ) : (
-                    <span className={`text-[10px] shrink-0 ${columnDriftColor(col)}`}>
-                      {columnDriftLabel(col)}
-                    </span>
-                  )}
-                </div>
-              ))}
-              {hasWarehouseOnly && (
-                <DocumentColumnsButton
-                  projectId={projectId}
-                  uniqueId={result.unique_id}
-                  columns={undocumentedCols}
-                  onDocumented={(cols) => setDocumented((prev) => new Set([...prev, ...cols]))}
-                />
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const FILTER_LABELS: Record<FilterKey, string> = {
-  all: 'All drift',
-  manifest_only: 'Manifest only',
-  warehouse_only: 'Warehouse only',
-  type_mismatch: 'Type mismatch',
-  errors: 'Errors',
-};
-
 export default function DriftPanel({ projectId }: DriftPanelProps) {
   const qc = useQueryClient();
   const fileNav = useOpenInFiles(projectId);
-  const [filter, setFilter] = useState<FilterKey>('all');
-  const [optimisticProgress, setOptimisticProgress] = useState<DriftProgress | null>(null);
+  const [liveProgress, setLiveProgress] = useState<DriftProgress | null>(null);
 
   const { data: snapshot, isLoading } = useQuery({
     queryKey: ['drift-latest', projectId],
     queryFn: () => api.drift.latest(projectId),
     retry: false,
   });
+  const { drift: run } = useHealthRuns(projectId);
+  const { data: summary } = useHealthSummary(projectId);
 
-  const mutation = useMutation({
-    mutationFn: () => api.drift.start(projectId),
-    // Clear before the request: the scan's first drift_progress event can arrive
-    // over SSE before the POST resolves, and clearing in onSuccess would drop it
-    onMutate: () => setOptimisticProgress(null),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['drift-latest', projectId] });
-    },
-  });
-
-  const isRunning = mutation.isPending || snapshot?.status === 'running';
+  // Started here or from the overview's Run / Run all
+  const isRunning = useIsStarting('drift', projectId) || snapshot?.status === 'running';
 
   useProjectEvents(projectId, useCallback((event) => {
+    if (event.type === 'drift_started') {
+      // Reset on the scan's own first event, whoever started it (clearing when the
+      // POST resolves would race the first drift_progress, which can arrive earlier)
+      setLiveProgress(null);
+      qc.invalidateQueries({ queryKey: ['drift-latest', projectId] });
+    }
     if (event.type === 'drift_progress') {
       const d = event.data as DriftProgress;
-      setOptimisticProgress(d);
+      setLiveProgress(d);
       qc.setQueryData<DriftSnapshot | null>(['drift-latest', projectId], (old) => {
         if (!old) return old;
         return { ...old, checked_models: d.checked, total_models: d.total };
       });
     }
     if (event.type === 'drift_finished') {
-      setOptimisticProgress(null);
+      setLiveProgress(null);
       qc.invalidateQueries({ queryKey: ['drift-latest', projectId] });
     }
   }, [projectId, qc]));
 
-  const display = snapshot;
-  const progress = optimisticProgress ?? (display ? { checked: display.checked_models, total: display.total_models, current: '' } : null);
-
-  const driftedResults = display?.results.filter((r) => r.has_drift || r.error != null) ?? [];
-  const syncedCount = (display?.results.length ?? 0) - driftedResults.length;
-  const filteredResults = driftedResults.filter((r) => matchesFilter(r, filter));
+  const progress = liveProgress ?? (snapshot ? { checked: snapshot.checked_models, total: snapshot.total_models, current: '' } : null);
+  const done = !isRunning && snapshot && snapshot.status === 'done';
+  const groups = categorize(snapshot?.results ?? []);
+  const issues = groups.drifted.length + groups.notBuilt.length + groups.errors.length;
+  const skipped = snapshot ? skippedLabel(snapshot.skipped) : null;
 
   return (
     <div className="p-6 pb-12 max-w-[62rem] mx-auto w-full">
       <div className="bg-surface-panel border border-gray-800 rounded-xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+        <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-gray-800">
           <div className="flex flex-col gap-0.5 min-w-0">
             <span className="text-sm font-semibold text-gray-100">Schema Drift</span>
-            {!isRunning && display && (
-              <span className={`text-xs ${driftedResults.length > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                {driftedResults.length > 0
-                  ? `${driftedResults.length} of ${display.total_models} with drift`
-                  : `All ${display.total_models} models in sync`}
-                {' · '}{relativeTime(display.started_at)}
+            {done && (
+              <span className={`text-xs ${issues > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {summary?.drift.headline ?? `${issues} of ${snapshot.total_models} with issues`}
+                <span className="text-gray-600"> · {relativeTime(snapshot.finished_at ?? snapshot.started_at)}</span>
               </span>
             )}
-            {!isRunning && !display && !isLoading && (
+            {done && (
+              <span className="text-[11px] text-gray-600" title="Only tables, incremental models, seeds and snapshots are checked">
+                {snapshot.total_models} checked{skipped ? ` · ${skipped}` : ''}
+                {' · target '}<span className="font-mono text-gray-500">{snapshot.target ?? 'default'}</span>
+              </span>
+            )}
+            {!isRunning && !snapshot && !isLoading && (
               <span className="text-xs text-gray-600">Not run yet</span>
             )}
             {isRunning && (
               <span className="text-xs text-brand-400 flex items-center gap-1.5">
                 <Spinner />
-                {progress
-                  ? driftProgressLabel(progress)
-                  : 'Starting…'}
+                {progress ? driftProgressLabel(progress) : 'Starting…'}
               </span>
             )}
           </div>
-          <button
-            onClick={() => mutation.mutate()}
-            disabled={isRunning}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:border-brand-600 hover:text-brand-300 transition-colors disabled:opacity-40"
-          >
-            {isRunning ? <Spinner /> : null}
-            {isRunning ? 'Running…' : 'Run'}
-          </button>
+          <RunButton running={isRunning} onClick={() => run.mutate()} />
         </div>
+
+        {done && summary && (
+          <StaleNotice reasons={summary.drift.stale_reasons} onRerun={() => run.mutate()} />
+        )}
+        {run.error && !isRunning && (
+          <p className="px-5 py-2 border-b border-gray-800 text-xs text-red-400">
+            Couldn't start the drift check: {errorMessage(run.error)}
+          </p>
+        )}
 
         {/* Progress bar */}
         {isRunning && progress && progress.total > 0 && (
@@ -302,64 +113,28 @@ export default function DriftPanel({ projectId }: DriftPanelProps) {
         )}
 
         {/* Results */}
-        {!isRunning && display && display.status !== 'running' && (
-          <div className="px-5 py-4 flex flex-col gap-4">
-            {driftedResults.length > 0 && (
-              <>
-                {/* Filter pills */}
-                <div className="flex flex-wrap gap-1.5">
-                  {(Object.keys(FILTER_LABELS) as FilterKey[]).map((key) => {
-                    const count = key === 'all'
-                      ? driftedResults.length
-                      : driftedResults.filter((r) => matchesFilter(r, key)).length;
-                    if (key !== 'all' && count === 0) return null;
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setFilter(key)}
-                        className={`text-[10px] px-2 py-1 rounded border transition-colors ${
-                          filter === key
-                            ? 'bg-brand-900/60 border-brand-700 text-brand-300'
-                            : 'bg-surface-elevated border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300'
-                        }`}
-                      >
-                        {FILTER_LABELS[key]} ({count})
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Drifted model list */}
-                <div className="flex flex-col gap-2">
-                  {filteredResults.length === 0 ? (
-                    <p className="text-xs text-gray-600">No models match this filter.</p>
-                  ) : (
-                    filteredResults.map((r) => <ModelDriftRow key={r.unique_id} projectId={projectId} result={r} fileNav={fileNav} />)
-                  )}
-                </div>
-              </>
-            )}
-
-            {/* Sync summary */}
-            {syncedCount > 0 && (
-              <p className="text-xs text-emerald-400/70 flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                {syncedCount} model{syncedCount !== 1 ? 's' : ''} in sync
+        {done && (
+          <div className="px-5 py-4">
+            {snapshot.results.length > 0 ? (
+              <DriftResults
+                projectId={projectId}
+                snapshotId={snapshot.id}
+                results={snapshot.results}
+                scanRunning={isRunning}
+                fileNav={fileNav}
+              />
+            ) : (
+              <p className="text-xs text-gray-600">
+                No eligible models found (only table, incremental, seed and snapshot models are checked).
               </p>
-            )}
-
-            {driftedResults.length === 0 && syncedCount === 0 && (
-              <p className="text-xs text-gray-600">No eligible models found (only table/incremental/seed/snapshot models are checked).</p>
             )}
           </div>
         )}
 
         {/* Error state */}
-        {!isRunning && display?.status === 'error' && (
+        {!isRunning && snapshot?.status === 'error' && (
           <div className="px-5 py-4">
-            <p className="text-xs text-red-400">Drift check failed: {display.error_message}</p>
+            <p className="text-xs text-red-400">Drift check failed: {snapshot.error_message}</p>
           </div>
         )}
 

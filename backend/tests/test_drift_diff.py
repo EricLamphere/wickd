@@ -28,3 +28,30 @@ def test_without_types_warehouse_type_is_empty():
 def test_manifest_only_column_has_no_warehouse_type():
     (col,) = diff_columns((_col("gone", "text"),), (), ())
     assert col.manifest_type == "text" and col.warehouse_type == ""
+
+
+def _node(name: str, resource_type: str = "model", materialized: str | None = "table"):
+    from app.dbt.manifest import ModelNode
+
+    return ModelNode(
+        unique_id=f"{resource_type}.p.{name}", name=name, resource_type=resource_type,
+        schema_=None, database=None, materialized=materialized, tags=(), description="",
+        original_file_path=None, raw_sql=None,
+    )
+
+
+def test_skipped_counts_groups_ineligible_buildable_nodes_by_materialization():
+    from app.dbt.drift import skipped_counts
+
+    nodes = [
+        _node("t"), _node("v1", materialized="view"), _node("v2", materialized="view"),
+        _node("e", materialized="ephemeral"), _node("s", "seed", "seed"),
+        _node("test_x", "test", "test"), _node("src", "source", None),
+    ]
+    assert skipped_counts(nodes) == {"view": 2, "ephemeral": 1}
+
+
+def test_skipped_counts_labels_missing_materialization():
+    from app.dbt.drift import skipped_counts
+
+    assert skipped_counts([_node("m", materialized=None)]) == {"unknown": 1}

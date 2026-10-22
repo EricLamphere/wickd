@@ -13,6 +13,10 @@ from app.dbt.runner import RunRequest, runner
 
 router = APIRouter(prefix="/api/projects", tags=["debug"])
 
+# Projects with a dbt debug in flight, so the health summary can report "running"
+# to every view (not just the one whose request started it)
+running_debug: set[int] = set()
+
 
 class DebugCheckDto(BaseModel):
     key: str
@@ -34,6 +38,9 @@ class DebugResultDto(BaseModel):
     raw_log: str
     started_at: str
     finished_at: str
+    # DBT_TARGET the check ran with (None = profile default); compared against the
+    # current target to mark the result stale
+    requested_target: str | None = None
 
 
 @router.post("/{project_id}/debug", response_model=DebugResultDto)
@@ -66,8 +73,12 @@ async def run_debug(
     )
 
     output_lines: list[str] = []
-    async for _kind, line in runner.stream(req):
-        output_lines.append(line)
+    running_debug.add(project_id)
+    try:
+        async for _kind, line in runner.stream(req):
+            output_lines.append(line)
+    finally:
+        running_debug.discard(project_id)
 
     raw_log = "\n".join(output_lines)
     result = parse_debug_output(raw_log)
@@ -89,6 +100,7 @@ async def run_debug(
         raw_log=raw_log,
         started_at=started_at,
         finished_at=finished_at,
+        requested_target=target_val,
     )
 
     # Persist to app_settings for "last run" retrieval

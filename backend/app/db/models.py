@@ -151,6 +151,8 @@ class DriftSnapshot(Base):
     checked_models: Mapped[int] = mapped_column(Integer, default=0)
     results_json: Mapped[str] = mapped_column(Text, default="[]")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # {materialization: count} of models the scan skipped (views, ephemeral, …)
+    skipped_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class FreshnessSnapshot(Base):

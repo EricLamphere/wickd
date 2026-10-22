@@ -1,4 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
+import { navAlert } from './health/healthStatus';
+import { useHealthSummary } from './health/useHealth';
 
 export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs';
 
@@ -101,18 +103,25 @@ const PROJECT_ITEMS: { key: CurrentPage; label: string; icon: React.ReactNode; p
   { key: 'git',       label: 'Source Control', icon: GIT_ICON,       path: 'git' },
 ];
 
+type NavAlerts = Partial<Record<CurrentPage, 'warn' | 'fail'>>;
+
+const ALERT_DOT: Record<'warn' | 'fail', string> = { warn: 'bg-amber-500', fail: 'bg-red-500' };
+const ALERT_TITLE: Record<'warn' | 'fail', string> = { warn: 'needs attention', fail: 'failing' };
+
 function NavSection({
   label,
   items,
   projectId,
   current,
   collapsed,
+  alerts = {},
 }: {
   label: string;
   items: typeof SETUP_ITEMS;
   projectId: number;
   current: CurrentPage;
   collapsed: boolean;
+  alerts?: NavAlerts;
 }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -124,19 +133,21 @@ function NavSection({
       {collapsed && <div className="pt-3" />}
       {items.map((item) => {
         const isActive = item.key === current;
+        const alert = alerts[item.key];
         if (collapsed) {
           return (
             <NavLink
               key={item.key}
               to={`/projects/${projectId}/${item.path}`}
-              title={item.label}
-              className={`flex items-center justify-center mx-1.5 p-2 rounded-lg transition-colors
+              title={alert ? `${item.label} — ${ALERT_TITLE[alert]}` : item.label}
+              className={`relative flex items-center justify-center mx-1.5 p-2 rounded-lg transition-colors
                 ${isActive
                   ? 'bg-brand-900/40 text-brand-300'
                   : 'text-gray-400 hover:bg-surface-elevated hover:text-gray-200'
                 }`}
             >
               {item.icon}
+              {alert && <span className={`absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full ${ALERT_DOT[alert]}`} />}
             </NavLink>
           );
         }
@@ -151,7 +162,10 @@ function NavSection({
               }`}
           >
             {item.icon}
-            <span className="truncate">{item.label}</span>
+            <span className="flex-1 truncate">{item.label}</span>
+            {alert && (
+              <span title={ALERT_TITLE[alert]} className={`w-1.5 h-1.5 rounded-full shrink-0 ${ALERT_DOT[alert]}`} />
+            )}
           </NavLink>
         );
       })}
@@ -160,6 +174,10 @@ function NavSection({
 }
 
 export default function ProjectNav({ projectId, current, collapsed = false, onToggleCollapse }: Props) {
+  const { data: health } = useHealthSummary(projectId);
+  const healthAlert = navAlert(health);
+  const alerts: NavAlerts = healthAlert ? { health: healthAlert } : {};
+
   return (
     <nav className="flex flex-col pt-2 overflow-hidden h-full">
       {collapsed ? (
@@ -181,7 +199,7 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
       <div className="mx-4 my-2 border-t border-gray-800" />
       <div className="flex flex-col flex-1 overflow-y-auto">
         <NavSection label="Setup"   items={SETUP_ITEMS}   projectId={projectId} current={current} collapsed={collapsed} />
-        <NavSection label="Project" items={PROJECT_ITEMS} projectId={projectId} current={current} collapsed={collapsed} />
+        <NavSection label="Project" items={PROJECT_ITEMS} projectId={projectId} current={current} collapsed={collapsed} alerts={alerts} />
       </div>
       {onToggleCollapse && (
         <button

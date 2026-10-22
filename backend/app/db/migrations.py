@@ -478,6 +478,12 @@ async def run_migrations() -> None:
             ))
             await session.commit()
 
+        if not await _column_exists(session, "drift_snapshots", "skipped_json"):
+            await session.execute(
+                text("ALTER TABLE drift_snapshots ADD COLUMN skipped_json TEXT NOT NULL DEFAULT '{}'")
+            )
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

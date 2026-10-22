@@ -15,6 +15,7 @@ BATCH_SECONDS_PER_MODEL = 2
 # Prefixes the JSON line a batch probe prints; parse_batch_probe_output() looks for it
 BATCH_MARKER = "WICKD_PROBE_COLUMNS:"
 NO_COLUMNS_ERROR = "no columns returned — table may be empty or schema not materialized"
+NOT_BUILT_ERROR = "not built in the warehouse yet"
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,8 @@ class ProbeResult:
     # Warehouse data types, same order as columns; empty when the probe can't read
     # them (probe_warehouse_columns' `dbt show` only returns names)
     types: tuple[str, ...] = ()
+    # The relation doesn't exist (only the batch probe can tell; error is set too)
+    not_built: bool = False
 
 
 async def probe_warehouse_columns(
@@ -78,11 +81,14 @@ def build_batch_probe_sql(node_names: tuple[str, ...]) -> str:
         "{% if execute %}\n"
         "{%- set wickd_cols = {} -%}\n"
         "{%- for n in wickd_names -%}\n"
+        "{%- set rel = load_relation(wickd_rels[n]) -%}\n"
+        "{%- if rel is none -%}{%- do wickd_cols.update({n: none}) -%}{%- else -%}\n"
         "{%- set pairs = [] -%}\n"
-        "{%- for c in adapter.get_columns_in_relation(wickd_rels[n]) -%}"
+        "{%- for c in adapter.get_columns_in_relation(rel) -%}"
         "{%- do pairs.append([c.name, c.data_type]) -%}"
         "{%- endfor -%}\n"
         "{%- do wickd_cols.update({n: pairs}) -%}\n"
+        "{%- endif -%}\n"
         "{%- endfor -%}\n"
         f"{{%- do print('{BATCH_MARKER}' ~ tojson(wickd_cols)) -%}}\n"
         "{% endif %}\n"
@@ -90,9 +96,10 @@ def build_batch_probe_sql(node_names: tuple[str, ...]) -> str:
     )
 
 
-def parse_batch_probe_output(text: str) -> dict[str, tuple[tuple[str, str], ...]] | None:
-    """(column, data type) pairs per node from a batch probe's output, or None if it
-    never printed them or printed something malformed."""
+def parse_batch_probe_output(text: str) -> dict[str, tuple[tuple[str, str], ...] | None] | None:
+    """(column, data type) pairs per node from a batch probe's output (None for a
+    node whose relation doesn't exist), or None if it never printed them or
+    printed something malformed."""
     for line in text.splitlines():
         _, sep, payload = line.partition(BATCH_MARKER)
         if not sep:
@@ -102,11 +109,13 @@ def parse_batch_probe_output(text: str) -> dict[str, tuple[tuple[str, str], ...]
         except ValueError:
             return None
         if not isinstance(data, dict) or not all(
-            isinstance(cols, list) and all(_is_pair(c) for c in cols) for cols in data.values()
+            cols is None or (isinstance(cols, list) and all(_is_pair(c) for c in cols))
+            for cols in data.values()
         ):
             return None
         return {
-            str(name): tuple((str(col), str(dtype or "")) for col, dtype in cols)
+            str(name): None if cols is None
+            else tuple((str(col), str(dtype or "")) for col, dtype in cols)
             for name, cols in data.items()
         }
     return None
@@ -164,7 +173,9 @@ def _is_pair(value: object) -> bool:
     return isinstance(value, list) and len(value) == 2
 
 
-def _probe_result(pairs: tuple[tuple[str, str], ...]) -> ProbeResult:
+def _probe_result(pairs: tuple[tuple[str, str], ...] | None) -> ProbeResult:
+    if pairs is None:
+        return ProbeResult(columns=(), error=NOT_BUILT_ERROR, not_built=True)
     return ProbeResult(
         columns=tuple(col for col, _ in pairs),
         error=None if pairs else NO_COLUMNS_ERROR,

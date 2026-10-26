@@ -4,6 +4,7 @@ import type { ModelNode } from '../../../lib/api';
 import { useColumnLineage } from '../lib/columnLineageContext';
 import { bucketFor, badgeClassesFor, COVERAGE_CLASS, type NodeCoverageData } from '../lib/testCoverage';
 import { typeIconFor } from '../lib/nodeTypeIcon';
+import { DURATION_CLASS, durationLabel, durationTitle, type NodeDurationData } from '../lib/durationOverlay';
 
 const STATUS_RING: Record<string, string> = {
   idle: 'ring-gray-700',
@@ -31,11 +32,12 @@ interface Props extends NodeProps {
     dimmed?: boolean;
     expanded?: boolean;
     coverage?: NodeCoverageData;
+    duration?: NodeDurationData;
   };
 }
 
 function ModelNodeComponent({ data, selected }: Props) {
-  const { model, dimmed, expanded, coverage } = data;
+  const { model, dimmed, expanded, coverage, duration } = data;
   const { activeColumnSels, relatedColumnsMap, onColumnClick, onToggleExpand } = useColumnLineage();
 
   const ring = STATUS_RING[model.status] ?? STATUS_RING.idle;
@@ -76,6 +78,14 @@ function ModelNodeComponent({ data, selected }: Props) {
               </span>
             );
           })()}
+          {duration && (
+            <span
+              className={`text-[9px] px-1 rounded font-mono shrink-0 ${DURATION_CLASS[duration.bucket].badge}`}
+              title={durationTitle(duration)}
+            >
+              ⏱ {durationLabel(duration)}
+            </span>
+          )}
           <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
         </div>
 
@@ -171,6 +181,7 @@ export default memo(ModelNodeComponent, (prev, next) => {
     prev.data.dimmed === next.data.dimmed &&
     prev.data.expanded === next.data.expanded &&
     prev.data.model === next.data.model &&
-    prev.data.coverage === next.data.coverage
+    prev.data.coverage === next.data.coverage &&
+    prev.data.duration === next.data.duration
   );
 });

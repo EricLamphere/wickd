@@ -315,10 +315,96 @@ export interface ModelTimingDto {
   status: string;
   execution_time: number | null;
   message: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  thread_id: string | null;
+  rows_affected: number | null;
+  bytes_processed: number | null;
 }
 
 export interface RunInvocationDetailDto extends RunInvocationDto {
   nodes: ModelTimingDto[];
+  threads: number | null;
+  elapsed_time: number | null;
+  /** False for runs recorded before timing capture. */
+  has_timing: boolean;
+}
+
+export interface NodeDurationDto {
+  median_s: number;
+  last_s: number;
+  runs: number;
+}
+
+export interface NodeDurationsDto {
+  nodes: Record<string, NodeDurationDto>;
+}
+
+export interface CriticalPathStepDto {
+  unique_id: string;
+  name: string;
+  resource_type: string | null;
+  materialized: string | null;
+  duration_s: number;
+  share: number;
+  wait_before_s: number;
+  wait_kind: 'starvation' | 'overhead' | null;
+}
+
+export interface RegressionDto {
+  unique_id: string;
+  name: string;
+  current: number;
+  baseline_median: number;
+  ratio: number;
+  runs_considered: number;
+}
+
+export type RecommendationKind = 'make_incremental' | 'materialize_view' | 'raise_threads' | 'split_bottleneck';
+
+export interface RecommendationDto {
+  kind: RecommendationKind;
+  unique_id: string | null;
+  name: string | null;
+  title: string;
+  evidence: string[];
+  confidence: string;
+  estimated_saving_s: number | null;
+  invocation_id: number | null;
+}
+
+export interface RunAnalysisDto {
+  invocation_id: number;
+  has_timing: boolean;
+  reason: string | null;
+  wall_time: number | null;
+  ideal_time: number | null;
+  potential_saving_s: number | null;
+  threads: number;
+  utilisation: number | null;
+  critical_path: CriticalPathStepDto[];
+  critical_path_waiting_s: number;
+  starvation_s: number;
+  regressions: RegressionDto[];
+  recommendations: RecommendationDto[];
+}
+
+export interface SlowNodeDto {
+  unique_id: string;
+  name: string;
+  resource_type: string;
+  median_s: number;
+  last_s: number;
+  runs: number;
+  recent: number[];
+}
+
+export interface ProjectPerformanceDto {
+  runs_considered: number;
+  runs_with_timing: number;
+  slowest: SlowNodeDto[];
+  regressions: RegressionDto[];
+  recommendations: RecommendationDto[];
 }
 
 export interface RunHistoryPageDto {
@@ -861,10 +947,22 @@ export const api = {
       get<{ lines: string[] }>(`/projects/${projectId}/run-history/${invocationId}/log`),
     nodeTrend: (projectId: number, uniqueId: string) =>
       get<NodeTrendPoint[]>(`/projects/${projectId}/node-trend/${encodeURIComponent(uniqueId)}`),
+    analysis: (projectId: number, invocationId: number) =>
+      get<RunAnalysisDto>(`/projects/${projectId}/run-history/${invocationId}/analysis`),
     cancel: (projectId: number) =>
       post<{ cancelled: boolean }>(`/projects/${projectId}/runs/cancel`, {}),
     rerun: (projectId: number, invocationId: number) =>
       post(`/projects/${projectId}/run-history/${invocationId}/rerun`, {}),
+  },
+  performance: {
+    project: (projectId: number, params: { command?: string; limit?: number } = {}) => {
+      const p = new URLSearchParams();
+      if (params.command) p.set('command', params.command);
+      if (params.limit !== undefined) p.set('limit', String(params.limit));
+      return get<ProjectPerformanceDto>(`/projects/${projectId}/performance?${p}`);
+    },
+    nodeDurations: (projectId: number, command?: string) =>
+      get<NodeDurationsDto>(`/projects/${projectId}/node-durations${command ? `?command=${encodeURIComponent(command)}` : ''}`),
   },
   files: {
     list: (projectId: number, path = '') =>

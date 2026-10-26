@@ -53,6 +53,7 @@ wickd/
 │   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document — docs generator (stub `- name:` entries in schema YAML)
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
+│   │   │   ├── performance.py       # /api/projects/{id}/node-durations (Base) + run analysis / project performance (Pro; analysis in wickd_pro via app/performance/pro.py)
 │   │   │   ├── exports.py           # /api/projects/{id}/exports/dag + /api/exports/default-dir, /reveal — writes DAG exports to a user-chosen folder (path validation in app/exports/paths.py)
 │   │   │   └── health.py            # /api/health
 │   │   ├── db/
@@ -61,7 +62,7 @@ wickd/
 │   │   │   └── migrations.py        # DDL-on-startup migrations (idempotent; no Alembic)
 │   │   ├── dbt/
 │   │   │   ├── manifest.py          # Parse target/manifest.json → nodes + edges
-│   │   │   ├── run_results.py       # Parse target/run_results.json → statuses
+│   │   │   ├── run_results.py       # Parse target/run_results.json → statuses + per-node timing (execute window, thread, adapter_response), elapsed_time, threads
 │   │   │   ├── runner.py            # DbtRunner singleton; subprocess + asyncio.Lock per project; .run() for silent invocations
 │   │   │   ├── select.py            # Build --select strings (only/upstream/downstream/full)
 │   │   │   ├── venv.py              # venv_dbt/venv_pip/venv_python — resolve binaries in settings.dbt_venv_dir; self-provisions the venv from the python_path setting on first use; rebuilds when it changes
@@ -202,6 +203,25 @@ run_invocations
   started_at    DATETIME
   finished_at   DATETIME
   custom_args   TEXT             -- JSON list of user-entered args for custom commands (null otherwise); replayed on rerun
+  threads       INTEGER          -- --threads from run_results.json args (else distinct thread ids); null before timing capture
+  elapsed_time  REAL             -- dbt's own elapsed_time from run_results.json
+
+invocation_model_results         -- per-node history per invocation (last 20 rows per node kept)
+  id                    INTEGER PK
+  invocation_id         INTEGER FK→run_invocations
+  project_id            INTEGER FK→projects
+  unique_id             TEXT(512)
+  name                  TEXT(255)
+  kind                  TEXT(32)     -- "model" or "test"
+  status                TEXT(32)
+  execution_time        REAL
+  message               TEXT
+  started_at            DATETIME     -- execute step window from run_results.json timing (compile step if execute is missing)
+  completed_at          DATETIME
+  thread_id             TEXT(128)    -- e.g. "Thread-1 (worker)"
+  rows_affected         INTEGER      -- from adapter_response
+  bytes_processed       INTEGER      -- from adapter_response (BigQuery)
+  adapter_response_json TEXT         -- raw adapter_response, capped ~2 KB (scalars only when larger)
 
 env_profiles
   id            INTEGER PK
@@ -433,6 +453,15 @@ POST   /api/projects/{id}/run
 POST   /api/projects/{id}/build
 POST   /api/projects/{id}/test
 POST   /api/projects/{id}/command                        run an arbitrary dbt command ({command: "ls -s +orders"}); 400 if invalid/blocked (init, docs serve)
+GET    /api/projects/{id}/run-history                    paginated invocations (?limit, offset, command, status, q)
+GET    /api/projects/{id}/run-history/{inv}              invocation + per-node results incl. timing (started_at, completed_at, thread_id, rows_affected, bytes_processed), threads, elapsed_time, has_timing
+GET    /api/projects/{id}/run-history/{inv}/log          captured dbt stdout lines
+POST   /api/projects/{id}/run-history/{inv}/rerun        rerun with the same selector / custom args
+POST   /api/projects/{id}/runs/cancel                    cancel the running dbt process
+GET    /api/projects/{id}/node-trend/{uid}               a node's execution-time history
+GET    /api/projects/{id}/node-durations?command=        median / last successful execution time + run count per node (DAG Durations overlay, Base)
+GET    /api/projects/{id}/run-history/{inv}/analysis     Pro: critical path, wall vs ideal time, thread utilisation, starvation, regressions, recommendations for one run (has_timing=false + reason for runs without timing); 403 not entitled, 503 Pro package missing
+GET    /api/projects/{id}/performance?command=&limit=20  Pro: slowest nodes (median of recent runs), each node's latest regression, recommendations merged from the 5 most recent runs with timing; 403 / 503 as above
 
 GET    /api/projects/{id}/docs/status                    timestamp of last generated docs
 POST   /api/projects/{id}/docs/generate                  runs dbt compile --write-catalog (≥1.9) or dbt docs generate
@@ -768,6 +797,13 @@ Same open-core split as column lineage: prompts, dbt context building and output
 - **Run results in context** — `app/ai/run_context.py` adds the node's latest status/message and its tests' results (from `model_statuses` + the manifest's `attached_node` links) to Ask. **Explain failure** (`mode: explain_failure`) also re-runs up to 2 failing tests with `dbt show --limit 10` and sends those rows.
 - **Add tests** — `app/ai/test_generation.py`: warehouse columns, a 500-row `dbt show` sample summarised per column (nulls, distinct, values when few), then a schema-constrained answer limited to real columns, the 4 generic tests and parent/grandparent relationship targets (validated again in `wickd_pro.ai.tests`). Every suggestion is pre-checked in ONE `dbt show --inline` union query (failing-row counts shown in review), then spliced in by `app/dbt/schema_tests.py` (uses the column's/entry's `data_tests:`/`tests:` key, else by dbt version; `arguments:` block on dbt 1.10+).
 - **Document with AI** — `POST .../ai/document` creates an `ai_proposals` row and generates in the background: warehouse columns via `probe_warehouse_columns()` (falls back to manifest + catalog columns), the node's entry planned with `schema_yaml.plan_document_node()`, descriptions from a JSON-schema-constrained streamed completion (partial output published as `ai_proposal_progress` so the chat shows them being written), spliced in by `schema_descriptions.set_descriptions()` (only columns without a description are sent to the model unless `overwrite`; if nothing is missing it returns `empty` without calling the model). Nothing is written until the user accepts the file in the review modal (Monaco diff, with the proposal's items listed beside it — click one to reveal it in the diff, accept or reject each; rejecting re-derives the file from the original without that item, through the same splicers and checks, never by patching the diff); accepting refuses with 409 if the file changed meanwhile.
+
+### 10c. Run performance (timeline Base, insights Pro)
+
+- **Capture (Base):** `dbt/run_results.py` `load_run_results_file()` also reads each result's `timing` (execute window, compile as fallback), `thread_id` and `adapter_response` (`rows_affected`, `bytes_processed`), plus the top-level `elapsed_time` and `args.threads` (falling back to the number of distinct thread ids). `_persist_results_after_run()` stores them on `invocation_model_results` / `run_invocations`; older rows stay NULL and every view degrades to "timing is recorded for runs from now on".
+- **Timeline (Base):** the run detail pane's Timeline tab (`RunHistory/RunTimeline.tsx`) lays bars out with `lib/runTimeline.ts` `buildTimeline()` (one lane per thread, % of wall time, nice ticks; nodes without a thread id packed into extra lanes).
+- **DAG Durations overlay (Base):** `GET /node-durations` → `lib/durationOverlay.ts` buckets each node by percentile rank of its median among nodes of the same resource type (unique_id prefix); `lib/useDurationOverlay.ts` owns the toggle (sessionStorage) and refetches on `statuses_changed`.
+- **Insights (Pro):** `api/performance.py` loads history and builds plain inputs with `app/performance/inputs.py`, then calls `wickd_pro.performance` through the shim `app/performance/pro.py`: `analyze_run()` (critical path walked back from the last-finishing node through each node's blocking parent; a wait is *starvation* when every thread was busy for at least half of it; ideal time = longest duration-weighted path; utilisation = busy / threads × wall), `detect_regressions()` (≥ 50% and ≥ 5 s over the median of the node's last 10 successful runs, needing 3+), `recommend()` (make incremental, materialize a view, raise threads, break up a bottleneck — thresholds are constants in wickd_pro). Gated by `licensing/gating.py` `require_pro()` (also used by column lineage and AI). The frontend invalidates `['run-analysis', id]` / `['performance', id]` on `statuses_changed`; no new SSE events.
 
 ### 10a. Licensing (wickd Pro entitlement)
 

@@ -20,7 +20,7 @@ from app.dbt.column_lineage import (
     trace_job_full,
 )
 from app.events.bus import Event, bus
-from app.licensing import entitlements
+from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -97,12 +97,7 @@ async def _require_pro(session: AsyncSession) -> None:
     computed ColumnLineageSnapshot persists in the DB indefinitely, so a
     lapsed subscription could otherwise keep reading old results forever
     just by never re-triggering a scan."""
-    entitlement = await entitlements.check_entitlement(session)
-    if not entitlement.entitled:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "pro_feature_required", "reason": entitlement.reason},
-        )
+    await require_pro(session)
 
 
 def _snapshot_to_dto(snap: ColumnLineageSnapshot) -> ColumnLineageSnapshotDto:

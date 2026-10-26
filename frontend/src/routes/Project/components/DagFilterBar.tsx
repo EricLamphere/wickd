@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { X, FlaskConical, Lock, Download } from 'lucide-react';
+import { X, FlaskConical, Lock, Download, Timer } from 'lucide-react';
 import type { GraphDto } from '../../../lib/api';
 import { type FilterState, emptyFilter, isFilterActive, getAvailableFilters } from '../lib/dagFilter';
 import { ProFeatureButton } from '../../../components/ProFeatureButton';
@@ -16,6 +16,8 @@ interface DagFilterBarProps {
   closeDropdownsSignal?: number;
   coverageOverlay?: boolean;
   onToggleCoverage?: () => void;
+  durationOverlay?: boolean;
+  onToggleDurations?: () => void;
   columnLineageLoaded: boolean;
   columnLineageLoading: boolean;
   columnLineageCompiling?: boolean;
@@ -38,6 +40,8 @@ export default function DagFilterBar({
   closeDropdownsSignal = 0,
   coverageOverlay,
   onToggleCoverage,
+  durationOverlay,
+  onToggleDurations,
   columnLineageLoaded,
   columnLineageLoading,
   columnLineageCompiling = false,
@@ -111,6 +115,22 @@ export default function DagFilterBar({
         >
           <FlaskConical size={12} />
           Coverage
+        </button>
+      )}
+
+      {/* Durations overlay toggle */}
+      {onToggleDurations && (
+        <button
+          onClick={onToggleDurations}
+          title="Toggle median run time overlay (from run history)"
+          className={`flex items-center gap-1 px-2.5 py-1.5 text-xs rounded border transition-colors shrink-0 ${
+            durationOverlay
+              ? 'bg-orange-600/20 border-orange-500 text-orange-300'
+              : 'bg-surface-elevated border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300'
+          }`}
+        >
+          <Timer size={12} />
+          Durations
         </button>
       )}
 

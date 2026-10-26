@@ -40,7 +40,7 @@ task start
 - **Impact analysis** — select a model to see everything downstream of it, grouped by depth, with test counts, column coverage, and risk flags (untested models, exposures, incremental models, failing or stale nodes); build the whole impacted slice or copy its selector in one click. Also works on your git changes: see what your uncommitted work, or your whole branch vs. `main`, affects before you commit or open a PR, including models changed indirectly through an edited macro
 - **Data preview** — see any model's output (via `dbt show`) in the side panel next to its SQL, and the failing rows behind a failed test
 - **Column profiling & test coverage** — row counts, null %, distinct counts, min/max, and samples per column; an optional DAG overlay shows per-column test coverage
-- **Run history** — every dbt invocation with duration and per-node results, plus per-node trends across recent runs
+- **Run history** — every dbt invocation with duration and per-node results, plus per-node trends across recent runs, a timeline of each run showing what every dbt thread was doing, and a DAG overlay of each node's median run time
 - **Environment control** — global default env vars, named env var profiles, dbt target switching, and an init pipeline (`pip install`, `dbt deps`, your own scripts) that runs when a project opens
 - **Integrated terminal & project creation** — multi-tab terminal in the bottom pane; `dbt init` runs in an in-app terminal with adapter install and `profiles.yml` setup handled for you
 - **Command palette** — ⌘K to jump to any page, project, or model, or run a dbt command
@@ -54,6 +54,7 @@ task start
 - **Column-level lineage** (Pro) — click any column in the DAG to trace where its data comes from and where it goes, derived from each model's compiled SQL
 - **Wicky, the local AI assistant** (Pro) — a private AI model that runs on your machine (downloaded once; or point it at your own Ollama/LM Studio server), in a panel on every project page (⌘I). Ask questions about your project or the selected model (including its latest run and test results), explain failures, query your warehouse (Wicky writes a read-only SELECT you review and run, then answers from the rows), and generate model/column descriptions and data tests (checked against your warehouse first) that you review as a diff and accept before anything is written — see [how Wicky works](docs/wicky.md)
 - **Column-level impact** (Pro) — in the Impact tab, pick the columns you're changing to see only the downstream columns, models and tests they reach, including models that filter, join or group on them (which changes every row)
+- **Run performance insights** (Pro) — find each run's critical path (the chain of models that set its wall time) and time lost waiting for threads, spot models that got meaningfully slower than their usual time, and get evidence-backed recommendations: make a model incremental, materialize a busy view, raise threads, or break up a bottleneck
 
 ## Developing wickd
 

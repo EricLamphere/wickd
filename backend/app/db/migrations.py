@@ -484,6 +484,32 @@ async def run_migrations() -> None:
             )
             await session.commit()
 
+        # Run performance: timing captured from run_results.json (older rows stay NULL)
+        if not await _column_exists(session, "run_invocations", "threads"):
+            await session.execute(text("ALTER TABLE run_invocations ADD COLUMN threads INTEGER"))
+            await session.commit()
+        if not await _column_exists(session, "run_invocations", "elapsed_time"):
+            await session.execute(text("ALTER TABLE run_invocations ADD COLUMN elapsed_time REAL"))
+            await session.commit()
+        if not await _column_exists(session, "invocation_model_results", "started_at"):
+            await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN started_at DATETIME"))
+            await session.commit()
+        if not await _column_exists(session, "invocation_model_results", "completed_at"):
+            await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN completed_at DATETIME"))
+            await session.commit()
+        if not await _column_exists(session, "invocation_model_results", "thread_id"):
+            await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN thread_id TEXT"))
+            await session.commit()
+        if not await _column_exists(session, "invocation_model_results", "rows_affected"):
+            await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN rows_affected INTEGER"))
+            await session.commit()
+        if not await _column_exists(session, "invocation_model_results", "bytes_processed"):
+            await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN bytes_processed INTEGER"))
+            await session.commit()
+        if not await _column_exists(session, "invocation_model_results", "adapter_response_json"):
+            await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN adapter_response_json TEXT"))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

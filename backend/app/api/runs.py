@@ -24,7 +24,7 @@ from app.db.models import (
 )
 from app.dbt.custom_command import CustomCommandError, ParsedCommand, parse_custom_command
 from app.dbt.manifest import load_manifest
-from app.dbt.run_results import load_run_results
+from app.dbt.run_results import load_run_results, load_run_results_file
 from app.dbt.runner import RunRequest, runner
 from app.dbt.select import SelectMode, build_selector
 from app.events.bus import Event, bus
@@ -82,6 +82,11 @@ class ModelTimingDto(BaseModel):
     status: str
     execution_time: float | None
     message: str | None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    thread_id: str | None = None
+    rows_affected: int | None = None
+    bytes_processed: int | None = None
 
 
 class NodeTrendPoint(BaseModel):
@@ -93,6 +98,10 @@ class NodeTrendPoint(BaseModel):
 
 class RunInvocationDetailDto(RunInvocationDto):
     nodes: list[ModelTimingDto]
+    threads: int | None = None
+    elapsed_time: float | None = None
+    # False for runs recorded before timing capture (or by dbt versions that don't write it)
+    has_timing: bool = False
 
 
 class RunHistoryPageDto(BaseModel):
@@ -138,7 +147,8 @@ async def _trim_node_history(session: AsyncSession, project_id: int, unique_id: 
 
 
 async def _persist_results_after_run(project: Project, invocation_id: int | None = None) -> None:
-    results = load_run_results(Path(project.path) / "target" / "run_results.json")
+    run_file = load_run_results_file(Path(project.path) / "target" / "run_results.json")
+    results = run_file.results
     if not results:
         return
     manifest = load_manifest(Path(project.path) / "target" / "manifest.json")
@@ -196,7 +206,17 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
                     status=r.status,
                     execution_time=r.execution_time,
                     message=r.message,
+                    started_at=r.started_at,
+                    completed_at=r.completed_at,
+                    thread_id=r.thread_id,
+                    rows_affected=r.rows_affected,
+                    bytes_processed=r.bytes_processed,
+                    adapter_response_json=json.dumps(r.adapter_response) if r.adapter_response else None,
                 ))
+            inv_row = await session.get(RunInvocation, invocation_id)
+            if inv_row is not None:
+                inv_row.threads = run_file.threads
+                inv_row.elapsed_time = run_file.elapsed_time
             await session.commit()
             unique_ids = {r.unique_id for r in results}
             for uid in unique_ids:
@@ -515,6 +535,13 @@ async def post_custom_command(
     return _launch_custom(project, parsed)
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    """SQLite hands back naive datetimes; they were stored as UTC."""
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
+
+
 def _invocation_to_dto(
     inv: RunInvocation,
     model_count: int,
@@ -628,6 +655,11 @@ async def get_run_invocation_detail(
             status=r.status,
             execution_time=r.execution_time,
             message=r.message,
+            started_at=_as_utc(r.started_at),
+            completed_at=_as_utc(r.completed_at),
+            thread_id=r.thread_id,
+            rows_affected=r.rows_affected,
+            bytes_processed=r.bytes_processed,
         )
         for r in results
     ]
@@ -635,7 +667,13 @@ async def get_run_invocation_detail(
     success_count = sum(1 for r in results if r.status == "success")
     error_count = sum(1 for r in results if r.status == "error")
     base = _invocation_to_dto(inv, len(nodes), success_count, error_count)
-    return RunInvocationDetailDto(**base.model_dump(), nodes=nodes)
+    return RunInvocationDetailDto(
+        **base.model_dump(),
+        nodes=nodes,
+        threads=inv.threads,
+        elapsed_time=inv.elapsed_time,
+        has_timing=any(n.started_at is not None and n.completed_at is not None for n in nodes),
+    )
 
 
 @router.get("/{project_id}/run-history/{invocation_id}/log", response_model=None)

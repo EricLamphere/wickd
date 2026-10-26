@@ -31,6 +31,8 @@ import { type FilterState, defaultFilter, applyFilter, serializeFilter, deserial
 import { ColumnLineageContext, type ColumnLineageContextValue } from './lib/columnLineageContext';
 import { buildCoverageMap, getModelCoverageStats } from './lib/testCoverage';
 import CoverageLegend from './components/CoverageLegend';
+import DurationLegend from './components/DurationLegend';
+import { useDurationOverlay } from './lib/useDurationOverlay';
 import { useReportSelectedColumns, useReportSelectedNode, useReportSelectedNodes } from './lib/selectedNodeContext';
 import { useLiveRunStatuses, applyLiveStatuses } from './lib/useLiveRunStatuses';
 import { applyDraggedPositions, clearDraggedPositions, draggedPositionsFor, recordDraggedPositions } from './lib/draggedPositions';
@@ -83,6 +85,8 @@ export default function ModelsPage() {
       return next;
     });
   }, [coverageKey]);
+
+  const durationOverlay = useDurationOverlay(id);
 
   const [selectedModels, setSelectedModels] = useState<ModelNode[]>([]);
   const [newModelOpen, setNewModelOpen] = useState(false);
@@ -499,12 +503,13 @@ export default function ModelsPage() {
                   stats: getModelCoverageStats(coverageMap, model),
                 }
               : undefined,
+            duration: durationOverlay.durations?.get(uid),
           },
         };
       });
     });
     setEdges(layoutEdges);
-  }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, durationOverlay.durations, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedModel) return;
@@ -636,6 +641,8 @@ export default function ModelsPage() {
             closeDropdownsSignal={closeDropdownsSignal}
             coverageOverlay={coverageOverlay}
             onToggleCoverage={handleToggleCoverage}
+            durationOverlay={durationOverlay.enabled}
+            onToggleDurations={durationOverlay.toggle}
             columnLineageLoaded={!!columnLineage}
             columnLineageLoading={columnLineageLoading}
             columnLineageCompiling={columnLineageCompiling}
@@ -715,9 +722,12 @@ export default function ModelsPage() {
                   )}
                 </div>
               </Panel>
-              {coverageOverlay && (
+              {(coverageOverlay || durationOverlay.enabled) && (
                 <Panel position="top-right">
-                  <CoverageLegend />
+                  <div className="flex flex-col items-end gap-1.5">
+                    {coverageOverlay && <CoverageLegend />}
+                    {durationOverlay.durations && <DurationLegend empty={durationOverlay.durations.size === 0} />}
+                  </div>
                 </Panel>
               )}
               <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#1f2937" />

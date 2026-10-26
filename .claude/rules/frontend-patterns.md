@@ -71,6 +71,7 @@ When handling SSE events, invalidate the relevant query:
 | `ai_query_updated` | `['ai-conversation', projectId]` (via `components/Wicky/useAi.ts`) |
 | `ai_model_download` (global stream) | `['ai-status']` once the download settles |
 | `files_changed` | `['file-content', projectId]` (bottom pane Node SQL tab) |
+| `statuses_changed` | `['run-analysis', projectId]`, `['performance', projectId]` (Run History, `RunHistory/index.tsx`), `['node-durations', projectId]` (DAG Durations overlay, `lib/useDurationOverlay.ts`) |
 
 When adding a new event type that signals stale data, add an entry here.
 

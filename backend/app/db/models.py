@@ -223,6 +223,9 @@ class RunInvocation(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # JSON list of user-entered args for custom dbt commands (null for built-in runs); replayed on rerun
     custom_args: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # From run_results.json: --threads (or distinct thread ids) and dbt's own elapsed_time
+    threads: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    elapsed_time: Mapped[float | None] = mapped_column(nullable=True)
 
     node_results: Mapped[list["InvocationModelResult"]] = relationship(
         back_populates="invocation", cascade="all, delete-orphan"
@@ -245,6 +248,13 @@ class InvocationModelResult(Base):
     status: Mapped[str] = mapped_column(String(32))
     execution_time: Mapped[float | None] = mapped_column(nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Execute window + thread from run_results.json timing (NULL for runs recorded before timing capture)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    rows_affected: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    bytes_processed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    adapter_response_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     invocation: Mapped["RunInvocation"] = relationship(back_populates="node_results")
 

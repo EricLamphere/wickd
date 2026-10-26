@@ -103,6 +103,10 @@ When the overlay is active:
 
 Coverage data is derived client-side from the full DAG (not filtered) — the overlay reflects all tests even if you've applied other filters. The toggle state persists across page reloads via sessionStorage.
 
+### Durations overlay
+
+Click **Durations** (timer icon) to badge each node with its median successful run time from run history, colored by how it ranks against nodes of the same type (models vs models, tests vs tests, seeds vs seeds): green (fastest half), yellow (top 50%), orange (top 20%), red (top 5%). Nodes under a second are never marked slow, and nodes that haven't run yet get no badge. The overlay refreshes after every run; the toggle is remembered for the session. See [Analyze run performance](analyze-run-performance.md).
+
 ### Column-level lineage
 
 Click **Load column lineage** in the filter bar to compute column-to-column lineage across the whole project. This traces exactly which upstream column each downstream column was derived from, by parsing each model's compiled SQL with sqlglot.

@@ -34,7 +34,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Documentation generator for schema YAML', base: true, pro: true },
   { label: 'Data preview & failing test rows', base: true, pro: true },
   { label: 'Column profiling & test coverage heatmap', base: true, pro: true },
-  { label: 'Run history', base: true, pro: true },
+  { label: 'Run history, run timeline & DAG durations overlay', base: true, pro: true },
   { label: 'Live sync with files on disk', base: true, pro: true },
   { label: 'Command palette (⌘K) — jump anywhere or run any dbt command', base: true, pro: true },
   { label: 'Search across projects — models, sources & columns', base: true, pro: true },
@@ -42,6 +42,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Model impact analysis — selection, uncommitted & branch changes', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },
+  { label: 'Run performance insights — critical path, regressions & recommendations', base: false, pro: true },
   { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs & tests', base: false, pro: true },
   { label: 'Priority support', base: false, pro: true },
 ];

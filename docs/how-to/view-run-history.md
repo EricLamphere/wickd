@@ -37,7 +37,7 @@ When there are more than 50 runs (after applying filters), **Prev** and **Next**
 
 ## The Detail Panel
 
-Clicking a run opens the Detail Panel on the right side of the page. The panel has two tabs:
+Clicking a run opens the Detail Panel on the right side of the page. The panel has Nodes, Timeline and Log tabs (plus Failed Rows when tests failed):
 
 ### Nodes tab
 
@@ -54,9 +54,17 @@ Shows every model and test that executed in the selected run, with:
 
 **Open in Files:** **Cmd+click** (Ctrl+click on Windows/Linux) a node name — in the Nodes tab or the Failed Rows tab — to open its file in the File Explorer (unit tests open the YAML file that defines them), same as the Refs/Sources chips in the SidePane. Nodes that are no longer in the manifest aren't linkable.
 
+### Timeline tab
+
+A Gantt chart of the run: one lane per dbt thread, a bar per node. With wickd Pro it also highlights the critical path. See [Analyze run performance](analyze-run-performance.md).
+
 ### Log tab
 
 Shows the raw stdout captured from dbt for that invocation. Lines containing `OK` or `PASS` are highlighted green; `ERROR` / `FAILED` lines are red; `WARN` lines are amber. This is the same output that appears in the Project Logs tab during a live run.
+
+## Performance tab
+
+The **Runs / Performance** switch at the top right of the page opens recommendations, regressions and the slowest nodes across recent runs (wickd Pro). See [Analyze run performance](analyze-run-performance.md).
 
 ## The Detail Panel — resizing and collapsing
 

@@ -298,3 +298,11 @@ html[data-theme="light"] .node-selected .node-name {
   background: rgb(var(--brand-500) / 0.18);
   border-left: 2px solid rgb(var(--brand-500));
 }
+
+/* Run timeline: waits before critical-path nodes (RunHistory/RunTimeline.tsx) */
+.timeline-gap-starvation {
+  background: repeating-linear-gradient(90deg, rgb(var(--amber-400)) 0 4px, transparent 4px 7px);
+}
+.timeline-gap-overhead {
+  background: repeating-linear-gradient(90deg, rgb(var(--gray-500) / 0.6) 0 2px, transparent 2px 5px);
+}

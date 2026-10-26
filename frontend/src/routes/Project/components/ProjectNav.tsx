@@ -75,7 +75,7 @@ const CHEVRON_RIGHT = (
   </svg>
 );
 
-const SETUP_ITEMS: { key: CurrentPage; label: string; icon: React.ReactNode; path: string }[] = [
+const CONFIGURE_ITEMS: { key: CurrentPage; label: string; icon: React.ReactNode; path: string }[] = [
   { key: 'environment',  label: 'Environment',    icon: ENV_ICON,  path: 'environment' },
   { key: 'init',         label: 'Initialization', icon: INIT_ICON, path: 'init' },
 ];
@@ -117,7 +117,7 @@ function NavSection({
   alerts = {},
 }: {
   label: string;
-  items: typeof SETUP_ITEMS;
+  items: typeof CONFIGURE_ITEMS;
   projectId: number;
   current: CurrentPage;
   collapsed: boolean;
@@ -198,7 +198,7 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
       )}
       <div className="mx-4 my-2 border-t border-gray-800" />
       <div className="flex flex-col flex-1 overflow-y-auto">
-        <NavSection label="Setup"   items={SETUP_ITEMS}   projectId={projectId} current={current} collapsed={collapsed} />
+        <NavSection label="Configure" items={CONFIGURE_ITEMS} projectId={projectId} current={current} collapsed={collapsed} />
         <NavSection label="Project" items={PROJECT_ITEMS} projectId={projectId} current={current} collapsed={collapsed} alerts={alerts} />
       </div>
       {onToggleCollapse && (

@@ -70,6 +70,7 @@ When handling SSE events, invalidate the relevant query:
 | `ai_proposal_updated` | `['ai-proposals', projectId]` (via `components/Wicky/useAi.ts`) |
 | `ai_query_updated` | `['ai-conversation', projectId]` (via `components/Wicky/useAi.ts`) |
 | `ai_model_download` (global stream) | `['ai-status']` once the download settles |
+| `files_changed` | `['file-content', projectId]` (bottom pane Node SQL tab) |
 
 When adding a new event type that signals stale data, add an entry here.
 
@@ -154,6 +155,14 @@ Order classes: layout → spacing → sizing → color → typography → state/
 ```tsx
 // layout first, then spacing, then color, then text
 <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800 text-sm text-zinc-300 hover:bg-zinc-700">
+```
+
+## Dialogs — Never window.alert / confirm / prompt
+
+Use `alertDialog` / `alertError` / `confirmDialog` / `promptDialog` from `lib/dialogs.ts` (rendered by `components/DialogHost.tsx`). The desktop app's WKWebView doesn't implement the native ones: `confirm()` returns false without showing anything, so a confirm-gated action silently does nothing there.
+
+```typescript
+if (!await confirmDialog(`Delete '${key}'?`, { confirmLabel: 'Delete', danger: true })) return;
 ```
 
 ## 204 No Content Responses

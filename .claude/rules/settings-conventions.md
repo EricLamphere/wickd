@@ -49,6 +49,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 |---|---|---|
 | `WICKD_PROJECTS_PATH` | `dbt_projects_path` | `/home/user/dbt-projects` |
 | `WICKD_GLOBAL_REQUIREMENTS_PATH` | `global_requirements_path` | `/home/user/dbt-projects/requirements.txt` |
+| `WICKD_DBT_CORE_VERSION` | `dbt_core_version` | `1.10.13` |
 | `WICKD_PYTHON_PATH` | `python_path` | `/opt/homebrew/bin/python3.12` |
 | `WICKD_LOG_LEVEL` | `log_level` | `INFO` |
 | `WICKD_AI_MODEL` | `ai_model` | `qwen3.5-4b` |

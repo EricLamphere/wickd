@@ -1,11 +1,12 @@
 import asyncio
 import os
-import re
 import shlex
 import subprocess
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -15,6 +16,13 @@ from sqlalchemy.orm import selectinload
 
 from app.db.engine import get_session
 from app.db.models import GlobalProfile, InitStep, Project, ProjectEnvVar
+from app.dbt.core_version import (
+    DBT_CORE_VERSION_KEY,
+    dbt_core_requirement,
+    install_spec,
+    parse_dbt_version,
+    requirement_satisfied,
+)
 from app.dbt.init_scripts import BASE_STEPS, INIT_DIR_NAME, delete_script, list_scripts, save_script
 from app.dbt.interactive import manager as init_manager
 from app.dbt.venv import existing_bin, venv_dbt, venv_pip, venv_python
@@ -40,6 +48,28 @@ def _init_lock_for(project_id: int) -> asyncio.Lock:
     return lock
 
 
+@dataclass
+class _ActiveRun:
+    """The init run in flight for a project: its steps and which have started so far."""
+    steps: tuple[str, ...]
+    started: set[str] = field(default_factory=set)
+
+
+# In memory only: a restart mid-run marks the run as failed (see migrations), so
+# there's nothing to resume.
+_active_runs: dict[int, _ActiveRun] = {}
+
+
+def step_run_state(project_id: int, step_name: str, last_status: str) -> str | None:
+    """Where a step stands in the project's run in progress: pending (not reached yet),
+    or its live status once started; None when no run is in progress or the step isn't
+    part of it (disabled, or another step's single-step run)."""
+    run = _active_runs.get(project_id)
+    if run is None or step_name not in run.steps:
+        return None
+    return last_status if step_name in run.started else "pending"
+
+
 def init_pipeline_running() -> bool:
     """True while any project's init pipeline is in flight."""
     return any(lock.locked() for lock in _init_locks.values())
@@ -57,6 +87,8 @@ class InitStepDto(BaseModel):
     last_started_at: str | None
     last_finished_at: str | None
     last_log: str
+    # Status in the run in progress (pending/running/success/error); null outside a run
+    run_state: str | None = None
 
 
 class InitStepCreateDto(BaseModel):
@@ -82,6 +114,7 @@ def _row_to_dto(r: "InitStep") -> InitStepDto:
         last_started_at=r.last_started_at.isoformat() if r.last_started_at else None,
         last_finished_at=r.last_finished_at.isoformat() if r.last_finished_at else None,
         last_log=r.last_log,
+        run_state=step_run_state(r.project_id, r.name, r.last_status),
     )
 
 
@@ -639,7 +672,11 @@ async def _set_step_status(project_id: int, step_name: str, **fields: object) ->
 async def _run_init_steps(project_id: int, project_path: str, steps: list[InitStep]) -> None:
     lock = _init_lock_for(project_id)
     async with lock:
-        await _run_init_steps_locked(project_id, project_path, steps)
+        _active_runs[project_id] = _ActiveRun(steps=tuple(s.name for s in steps))
+        try:
+            await _run_init_steps_locked(project_id, project_path, steps)
+        finally:
+            _active_runs.pop(project_id, None)
 
 
 async def _run_init_steps_locked(project_id: int, project_path: str, steps: list[InitStep]) -> None:
@@ -667,6 +704,9 @@ async def _run_init_steps_locked(project_id: int, project_path: str, steps: list
         await _set_step_status(
             project_id, step.name, last_status="running", last_started_at=step_started_at
         )
+        run = _active_runs.get(project_id)
+        if run is not None:
+            run.started.add(step.name)
         await bus.publish(
             Event(
                 topic=topic,
@@ -933,6 +973,14 @@ def _resolve_requirements_path(raw: str, project_path: str | Path) -> Path:
     return p if p.is_absolute() else Path(project_path) / p
 
 
+async def _get_dbt_core_version(session: AsyncSession) -> str:
+    """The dbt-core version global setup installs without a requirements file ("" = latest)."""
+    from app.db.models import AppSetting
+
+    row = await session.get(AppSetting, DBT_CORE_VERSION_KEY)
+    return row.value if row is not None else ""
+
+
 async def _get_global_requirements_path(session: AsyncSession | None = None) -> str | None:
     """Pass the request's session from endpoints (so DI overrides apply); the
     background init pipeline has none and opens its own."""
@@ -1092,6 +1140,13 @@ class PackageInfoDto(BaseModel):
 class DbtCoreStatusDto(BaseModel):
     installed: bool
     version: str | None
+    # What dbt-core should be: the global requirements file's dbt-core line, or
+    # dbt-core==<dbt_core_version> when there's no file; null when nothing decides it
+    expected: str | None = None
+    expected_source: Literal["requirements", "setting"] | None = None
+    # False when the installed version doesn't meet `expected` (e.g. a project's
+    # requirements or an adapter moved it); null when there's nothing to compare
+    matches: bool | None = None
 
 
 class AppendRequirementDto(BaseModel):
@@ -1118,15 +1173,32 @@ async def get_package_info(package: str) -> PackageInfoDto:
     return PackageInfoDto(package=package, installed_version=None)
 
 
+async def _expected_dbt_core(session: AsyncSession) -> tuple[str | None, str | None]:
+    """(requirement, source) for the dbt-core global setup would install: the global
+    requirements file's dbt-core line if it has one, else the dbt_core_version pin."""
+    path_str = await _get_global_requirements_path(session)
+    if path_str:
+        path = Path(path_str).expanduser()
+        try:
+            line = dbt_core_requirement(path.read_text(encoding="utf-8", errors="replace")) if path.is_file() else None
+        except OSError:
+            line = None
+        return (line, "requirements") if line else (None, None)
+    version = await _get_dbt_core_version(session)
+    return (install_spec(version), "setting") if version else (None, None)
+
+
 @global_router.get("/dbt-core-status", response_model=DbtCoreStatusDto)
-async def get_dbt_core_status() -> DbtCoreStatusDto:
-    """Check if dbt binary is available in the backend venv and return its version."""
+async def get_dbt_core_status(session: AsyncSession = Depends(get_session)) -> DbtCoreStatusDto:
+    """Whether dbt is installed in the dbt venv, its version, and whether that
+    matches the dbt-core the global requirements file / dbt_core_version asks for."""
+    expected, source = await _expected_dbt_core(session)
     # existing_bin, not venv_dbt(): a status check must never create the venv —
     # that blocks the event loop for ~1s and would build it before the setup
     # wizard has let the user choose a Python.
     dbt = existing_bin("dbt")
     if dbt is None:
-        return DbtCoreStatusDto(installed=False, version=None)
+        return DbtCoreStatusDto(installed=False, version=None, expected=expected, expected_source=source)
     proc = await asyncio.create_subprocess_exec(
         str(dbt), "--version",
         stdout=asyncio.subprocess.PIPE,
@@ -1134,9 +1206,11 @@ async def get_dbt_core_status() -> DbtCoreStatusDto:
     )
     stdout, _ = await proc.communicate()
     text = stdout.decode(errors="replace")
-    m = re.search(r'dbt[- ](?:Core\s+|core\s+)?(\d+\.\d+[\.\d]*)', text, re.IGNORECASE)
-    version = m.group(1) if m else None
-    return DbtCoreStatusDto(installed=True, version=version)
+    version = parse_dbt_version(text)
+    matches = requirement_satisfied(expected, version) if expected and version else None
+    return DbtCoreStatusDto(
+        installed=True, version=version, expected=expected, expected_source=source, matches=matches,
+    )
 
 
 @global_router.post("/append-requirement")
@@ -1184,11 +1258,12 @@ def _dbg(msg: str) -> None:
         _f.flush()
 
 
-def _global_setup_install_args(req_path: Path | None) -> list[str]:
+def _global_setup_install_args(req_path: Path | None, dbt_core_version: str = "") -> list[str]:
     """What global setup pip-installs: the global requirements file when one is
-    configured, otherwise the latest dbt-core — so there's always something to install."""
+    configured, otherwise dbt-core — the version chosen in setup (dbt_core_version
+    setting) or the latest — so there's always something to install."""
     if req_path is None:
-        return ["--upgrade", "dbt-core"]
+        return ["--upgrade", install_spec(dbt_core_version)]
     return ["-r", str(req_path)]
 
 
@@ -1300,7 +1375,7 @@ def _run_pip_in_thread(pip: Path, install_args: list[str], pip_env: dict) -> Non
 @global_router.post("/global-setup")
 async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
     """Install the global requirements.txt into the dbt venv — or, when none is
-    configured, the latest dbt-core."""
+    configured, dbt-core (the version chosen in setup, else the latest)."""
     global _global_setup_thread, _global_setup_return_code, _global_setup_replay
     _dbg("main: run_global_setup")
     path_str = await _get_global_requirements_path(session)
@@ -1330,7 +1405,7 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
                "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring"}
     _global_setup_thread = _threading.Thread(
         target=_run_pip_in_thread,
-        args=(pip, _global_setup_install_args(req_path), pip_env),
+        args=(pip, _global_setup_install_args(req_path, await _get_dbt_core_version(session)), pip_env),
         daemon=True,
     )
     _global_setup_thread.start()

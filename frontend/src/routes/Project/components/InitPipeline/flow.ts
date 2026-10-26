@@ -40,3 +40,33 @@ export function connectorState(from: StepStatus, to: StepStatus): ConnectorState
   if (from === 'success') return 'done';
   return 'idle';
 }
+
+interface PersistedStep {
+  name: string;
+  last_status: string;
+  last_log: string;
+  last_finished_at: string | null;
+  run_state: 'pending' | 'running' | 'success' | 'error' | null;
+}
+
+/**
+ * Tile states from the server's step rows, for when the page (re)mounts. During
+ * a run, steps not reached yet are idle (their stored status is from the last
+ * run) and the rest show their live status, the same as a page that watched the
+ * run start; outside a run every step shows how it last finished.
+ */
+export function seedStepStates(steps: readonly PersistedStep[]): { states: Record<string, StepRunState>; running: boolean } {
+  const states: Record<string, StepRunState> = {};
+  let running = false;
+  for (const s of steps) {
+    if (s.run_state) running = true;
+    const status = s.run_state ?? s.last_status;
+    if (status === 'pending' || status === 'idle' || !status) continue;
+    states[s.name] = {
+      status: status as StepStatus,
+      log: s.run_state === 'running' ? '' : s.last_log,
+      finishedAt: s.run_state === 'running' ? null : s.last_finished_at,
+    };
+  }
+  return { states, running };
+}

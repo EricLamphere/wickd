@@ -112,7 +112,7 @@ function buildNavCommands(projectId: number, navigate: NavigateFunction): Comman
     {
       id: 'nav-init',
       category: 'navigation',
-      title: 'Go to Init Scripts',
+      title: 'Go to Initialization',
       icon: <Zap size={14} />,
       onExecute: () => navigate(`${base}/init`),
     },
@@ -178,6 +178,18 @@ function buildProjectCommands(
       title: 'Generate docs',
       icon: <BookOpen size={14} />,
       onExecute: () => api.docs.generate(projectId),
+    },
+    {
+      id: 'proj-init',
+      category: 'project',
+      title: 'Run init pipeline',
+      subtitle: "pip install, dbt deps and the project's init scripts",
+      icon: <Zap size={14} />,
+      onExecute: () => {
+        navigate(`${base}/init`);
+        // 409 = already running; the Initialization page shows that run's progress
+        api.init.open(projectId).catch((err) => console.warn('init pipeline not started', err));
+      },
     },
     {
       id: 'proj-health',

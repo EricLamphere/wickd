@@ -346,7 +346,9 @@ GET    /api/health
 
 GET    /api/settings
 PUT    /api/settings
-POST   /api/setup/complete                               first-run wizard: validate + save projects path, python, requirements, theme, global env vars (optional; replaces the set); mark setup_completed
+POST   /api/setup/complete                               first-run wizard: validate + save projects path, python, requirements, dbt-core version, theme, global env vars (optional; replaces the set); mark setup_completed. The chosen dbt-core (`dbt_core_version`, "" = latest) seeds a new requirements file, is appended to an existing one that doesn't list dbt-core, or (no file) is saved as the dbt_core_version setting
+GET    /api/setup/dbt-core-versions                      stable dbt-core releases from PyPI, newest first (`{versions, latest}`; cached 1h; 502 if PyPI is unreachable)
+GET    /api/setup/requirements-file?path=                `{exists, dbt_core_line}` — whether a requirements file exists and already lists dbt-core (read-only; drives the wizard's version picker)
 GET    /api/settings/python-interpreters                 list Python 3.11+ installs for the WICKD_PYTHON_PATH dropdown
 
 GET    /api/projects
@@ -376,6 +378,17 @@ GET    /api/projects/{id}/column-lineage/{snapshot_id}   get a specific ColumnLi
 POST   /api/projects/{id}/exports/dag                    write a DAG export the frontend rendered (body `{directory, filename, format: html|svg|png, content, encoding: utf8|base64, overwrite}`) into the chosen folder; 201 `{path, bytes}`, 400 `{field, message}` for a bad folder/name, 409 if the file exists and `overwrite` is false
 GET    /api/exports/default-dir                          default export folder: ~/Downloads, else the home directory
 POST   /api/exports/reveal                               show an exported file in Finder / the platform file manager (204; 404 if missing)
+
+GET    /api/projects/{id}/files?path=                    one folder level of the project tree (all files; .git, dbt_packages, logs, venvs hidden)
+GET    /api/projects/{id}/files/content?path=            read a text file (known text extensions, or a small file without NUL bytes); 400 for binary
+PUT    /api/projects/{id}/files/content?path=            write a text file
+POST   /api/projects/{id}/files/new                      create a file or folder (`{name, dir_path, is_dir}`); 409 if it exists
+POST   /api/projects/{id}/files/rename?path=             rename in place (`{new_name}`)
+POST   /api/projects/{id}/files/move                     move paths into a folder (`{paths, dest_dir}`, "" = root); all-or-nothing: 409 on a name clash, 400 for a folder into itself
+POST   /api/projects/{id}/files/copy                     copy paths into a folder; clashing names get ` copy`, ` copy 2`, … (paste, duplicate)
+POST   /api/projects/{id}/files/upload                   multipart files dropped from the OS (`dest_dir`, `overwrite`, `files`; a file name may carry folders); 409 on existing files unless overwrite
+POST   /api/projects/{id}/files/reveal                   show a path in Finder / the platform file manager (204)
+DELETE /api/projects/{id}/files?path=                    delete a file or folder (recursive)
 
 GET    /api/ai/status                                     AI readiness: entitled, Pro package installed, llama-server found, endpoint in use, selected model, per-model download state, `ready`
 POST   /api/ai/models/{model_id}/download                 start (or resume) downloading a catalog model (202); progress on the `global` topic — Pro, 403 if not entitled
@@ -431,15 +444,16 @@ PUT    /api/projects/{id}/env-vars/{key}                 upsert a project env va
 DELETE /api/projects/{id}/env-vars/{key}                 delete a project env var
 
 POST   /api/projects/{id}/open                           runs init pipeline
-GET    /api/projects/{id}/init/steps
+GET    /api/projects/{id}/init/steps                 steps with persisted last_status/log; run_state = pending/running/success/error for steps in the run in progress (null otherwise)
 POST   /api/projects/{id}/init/steps
 DELETE /api/projects/{id}/init/steps/{name}
 POST   /api/projects/{id}/init/reorder
 POST   /api/projects/{id}/init/test-script               test-run editor script content with the project env (bash -euo pipefail, 5 min timeout); returns log + captured/missing vars, persists nothing
 
-POST   /api/init/global-setup                            run global pip install (global_requirements_path, else latest dbt-core) with global env vars set
+POST   /api/init/global-setup                            run global pip install (global_requirements_path, else dbt-core at dbt_core_version or the latest) with global env vars set
 POST   /api/init/global-setup/cancel                     cancel a running global setup
 GET    /api/init/global-setup/events                     SSE stream for global setup output
+GET    /api/init/dbt-core-status                         `{installed, version, expected, expected_source, matches}` — installed dbt-core vs the requirements file's dbt-core line (else the dbt_core_version pin); matches=false drives the home page drift warning. Never creates the venv
 
 POST   /api/projects/init-session/start                  pip install adapter + spawn PTY
 POST   /api/projects/init-session/{session_id}/input
@@ -936,6 +950,7 @@ Global settings (stored in `app_settings` table, set via UI):
 |---|---|
 | `dbt_projects_path` | Overrides `WICKD_PROJECTS_PATH` |
 | `global_requirements_path` | Absolute path to a `requirements.txt` installed into the dbt venv on every project open |
+| `dbt_core_version` | dbt-core release global setup installs when no `global_requirements_path` is set (UI label `WICKD_DBT_CORE_VERSION`); missing/empty = latest. Chosen in the setup wizard. Cleared when a requirements path is saved; refused while one is set (the file decides) |
 | `log_level` | Overrides `WICKD_LOG_LEVEL` |
 | `python_path` | Python 3.11+ interpreter the dbt venv is built from (UI label `WICKD_PYTHON_PATH`). Auto-detected on first launch; changing it rebuilds the venv. Not editable in a source checkout |
 

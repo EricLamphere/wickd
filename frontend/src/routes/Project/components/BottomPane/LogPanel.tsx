@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../../lib/api';
 import { useProjectEvents } from '../../../../lib/sse';
+import { logLineTone, type LogTone } from '../../../../lib/logLineTone';
 import { Trash2 } from 'lucide-react';
 
 interface LogPanelProps {
@@ -166,17 +167,14 @@ export function LogPanel({ projectId, logType }: LogPanelProps) {
   );
 }
 
-function LogLine({ line }: { line: string }) {
-  const colorClass =
-    line.includes('ERROR') || line.includes('FAILED') || line.includes('error')
-      ? 'text-red-400'
-      : line.includes('SUCCESS') || line.includes('OK') || line.includes('success')
-      ? 'text-green-400'
-      : line.includes('>>>') || line.includes('===') || line.includes('---')
-      ? 'text-brand-300'
-      : line.includes('WARN') || line.includes('warn')
-      ? 'text-amber-400'
-      : '';
+const TONE_CLASS: Record<LogTone, string> = {
+  error: 'text-red-400',
+  warn: 'text-amber-400',
+  success: 'text-green-400',
+  accent: 'text-brand-300',
+};
 
-  return <div className={colorClass || undefined}>{line}</div>;
+function LogLine({ line }: { line: string }) {
+  const tone = logLineTone(line);
+  return <div className={tone ? TONE_CLASS[tone] : undefined}>{line}</div>;
 }

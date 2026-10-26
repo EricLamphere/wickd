@@ -5,9 +5,12 @@ export interface SetupForm {
   createProjectsDir: boolean;
   /** '' → auto-detect */
   pythonPath: string;
-  /** '' → install the latest dbt-core */
+  /** '' → no file: global setup installs dbt-core (dbtCoreVersion) */
   requirementsPath: string;
   createRequirementsFile: boolean;
+  /** dbt-core to install when the requirements file doesn't decide it; '' = latest,
+   *  null = not chosen yet (the newest release once the list loads) */
+  dbtCoreVersion: string | null;
   /** Once the user edits the requirements path, stop deriving it from the projects folder. */
   requirementsTouched: boolean;
   theme: 'dark' | 'light';
@@ -47,6 +50,7 @@ export const FIELD_STEP: Record<SetupFieldError['field'], StepId> = {
   dbt_projects_path: 'projects',
   python_path: 'python',
   global_requirements_path: 'packages',
+  dbt_core_version: 'packages',
   global_env_vars: 'environment',
 };
 
@@ -55,5 +59,7 @@ export interface StepProps {
   update: (patch: Partial<SetupForm>) => void;
   /** Server error for this step's field, if the last save failed on it. */
   error: string | null;
+  /** Which server field `error` is about, when it came from saving. */
+  errorField?: SetupFieldError['field'] | null;
   onEnter: () => void;
 }

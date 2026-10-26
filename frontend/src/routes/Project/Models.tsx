@@ -33,6 +33,8 @@ import { buildCoverageMap, getModelCoverageStats } from './lib/testCoverage';
 import CoverageLegend from './components/CoverageLegend';
 import { useReportSelectedColumns, useReportSelectedNode, useReportSelectedNodes } from './lib/selectedNodeContext';
 import { useLiveRunStatuses, applyLiveStatuses } from './lib/useLiveRunStatuses';
+import { applyDraggedPositions, clearDraggedPositions, draggedPositionsFor, recordDraggedPositions } from './lib/draggedPositions';
+import { alertDialog, confirmDialog } from '../../lib/dialogs';
 
 function FitViewOnFirstLoad({ trigger }: { trigger: unknown }) {
   const { fitView } = useReactFlow();
@@ -304,6 +306,23 @@ export default function ModelsPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
+  // Dragged nodes keep their spot through re-syncs (selection, filters, runs) until reload
+  const [hasDragged, setHasDragged] = useState(() => draggedPositionsFor(id).size > 0);
+
+  const onNodeDragStop = useCallback((_e: React.MouseEvent, _node: Node, dragged: Node[]) => {
+    recordDraggedPositions(id, dragged);
+    setHasDragged(true);
+  }, [id]);
+
+  const resetDraggedPositions = useCallback(() => {
+    clearDraggedPositions(id);
+    setHasDragged(false);
+    const layoutById = new Map(layoutNodes.map((n) => [n.id, n.position]));
+    setNodes((prev) => prev.map((n) => {
+      const pos = layoutById.get(n.id);
+      return pos ? { ...n, position: pos } : n;
+    }));
+  }, [id, layoutNodes, setNodes]);
 
   // Model-level connection set for dimming (based on selected model, ignoring column state)
   const connectedUids = useMemo(() => {
@@ -463,7 +482,7 @@ export default function ModelsPage() {
     const effectiveConnected = columnConnectedUids ?? connectedUids;
     setNodes((prev) => {
       const prevSelected = new Map(prev.map((n) => [n.id, n.selected ?? false]));
-      return layoutNodes.map((n) => {
+      return applyDraggedPositions(layoutNodes, draggedPositionsFor(id)).map((n) => {
         const model = n.data?.model as ModelNode | undefined;
         const uid = model?.unique_id ?? '';
         return {
@@ -549,7 +568,7 @@ export default function ModelsPage() {
   };
 
   const handleDeleteModel = async (model: ModelNode) => {
-    if (!confirm(`Delete model '${model.name}'? This removes the file from disk.`)) return;
+    if (!await confirmDialog(`Delete model '${model.name}'? This removes the file from disk.`, { confirmLabel: 'Delete', danger: true })) return;
     await api.models.delete(id, model.unique_id);
     setSelectedModel(null);
     setModelParam(null, true);
@@ -576,15 +595,15 @@ export default function ModelsPage() {
         return; // already running — existing run's events will update our query
       }
       if (err instanceof ApiError && err.status === 503) {
-        alert('Column-level lineage is unavailable in this build (the wickd Pro package is not installed).');
+        alertDialog('Column-level lineage is unavailable in this build (the wickd Pro package is not installed).');
         return;
       }
       if (err instanceof ApiError && err.status === 422) {
-        alert('Column-level lineage requires a compiled project. Run dbt compile (or a run/build) first.');
+        alertDialog('Column-level lineage requires a compiled project. Run dbt compile (or a run/build) first.');
         return;
       }
       console.error('failed to start column lineage scan', err);
-      alert(`Failed to start column lineage scan: ${String(err)}`);
+      alertDialog(`Failed to start column lineage scan: ${String(err)}`);
     }).finally(() => {
       qc.invalidateQueries({ queryKey: ['column-lineage', id] });
     });
@@ -662,6 +681,7 @@ export default function ModelsPage() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
+              onNodeDragStop={onNodeDragStop}
               onPaneClick={onPaneClick}
               onSelectionChange={onSelectionChange}
               nodeTypes={nodeTypes}
@@ -672,6 +692,15 @@ export default function ModelsPage() {
               <FitViewOnFirstLoad trigger={layoutNodes} />
               <Panel position="top-center">
                 <div className="flex items-center gap-2">
+                  {hasDragged && (
+                    <button
+                      onClick={resetDraggedPositions}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-800/90 border border-zinc-700 text-xs text-zinc-300 shadow-lg transition-colors hover:bg-zinc-700/90"
+                      title="Move dragged nodes back to the automatic layout"
+                    >
+                      Reset layout
+                    </button>
+                  )}
                   {activeColumnSels.size > 0 && (
                     <button
                       onClick={() => setLineageMode((m) => m === 'direct' ? 'full' : 'direct')}

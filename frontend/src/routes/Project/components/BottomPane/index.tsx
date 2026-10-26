@@ -5,14 +5,16 @@ import { RunPanel } from './RunPanel';
 import { LogPanel } from './LogPanel';
 import { SingleTerminal } from './TerminalPanel';
 import { NodeDagPanel } from './NodeDagPanel';
+import { NodeSqlPanel } from './NodeSqlPanel';
 import { ImpactPanel } from './ImpactPanel';
 import { OPEN_BOTTOM_TAB_EVENT, type OpenBottomTabDetail } from '../../lib/bottomPaneEvents';
 import type { ImpactMode } from '../../lib/impactChanges';
 
-export type PaneTabId = 'run' | 'node-dag' | 'impact' | 'project-logs' | 'api-logs' | 'terminal';
+export type PaneTabId = 'run' | 'node-dag' | 'node-sql' | 'impact' | 'project-logs' | 'api-logs' | 'terminal';
 
 const PANE_TABS: { id: PaneTabId; label: string }[] = [
   { id: 'node-dag', label: 'Node DAG' },
+  { id: 'node-sql', label: 'Node SQL' },
   { id: 'run', label: 'Execution DAG' },
   { id: 'impact', label: 'Impact' },
   { id: 'terminal', label: 'Terminal' },
@@ -257,6 +259,12 @@ export function BottomPane({ projectId, graph, projectPath, selectedNodeId, sele
       {open && activeTab === 'node-dag' && (
         <div style={{ height }} className="overflow-hidden flex flex-col">
           <NodeDagPanel projectId={projectId} graph={graph} selectedNodeId={selectedNodeId} />
+        </div>
+      )}
+
+      {open && activeTab === 'node-sql' && (
+        <div style={{ height }} className="overflow-hidden flex flex-col">
+          <NodeSqlPanel projectId={projectId} graph={graph} selectedNodeId={selectedNodeId} />
         </div>
       )}
 

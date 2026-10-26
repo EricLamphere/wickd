@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.catalog import DEFAULT_MODEL_ID, find_model
 from app.ai.config import AI_ENDPOINT_MODEL_KEY, AI_ENDPOINT_URL_KEY, AI_MODEL_KEY
-from app.api.init import global_setup_running, init_pipeline_running
+from app.api.init import _get_global_requirements_path, global_setup_running, init_pipeline_running
 from app.config import settings
 from app.db.engine import get_session
 from app.db.models import AppSetting
 from app.dbt import venv
+from app.dbt.core_version import DBT_CORE_VERSION_KEY, is_valid_version
 from app.dbt.python_env import PYTHON_PATH_KEY
 from app.dbt.runner import runner
 from app.logging_setup import get_logger
@@ -34,6 +35,8 @@ class SettingsUpdateDto(BaseModel):
     ai_model: str | None = None
     ai_endpoint_url: str | None = None
     ai_endpoint_model: str | None = None
+    # "" clears it (global setup installs the latest dbt-core)
+    dbt_core_version: str | None = None
 
 
 class SettingsDto(BaseModel):
@@ -49,6 +52,8 @@ class SettingsDto(BaseModel):
     ai_model: str
     ai_endpoint_url: str | None
     ai_endpoint_model: str | None
+    # dbt-core global setup installs when no global requirements file is set; null = latest
+    dbt_core_version: str | None
     configured: bool
     setup_completed: bool
 
@@ -56,6 +61,12 @@ class SettingsDto(BaseModel):
 async def _get_override(session: AsyncSession, key: str) -> str | None:
     row = await session.get(AppSetting, key)
     return row.value if row is not None else None
+
+
+async def _delete_setting(session: AsyncSession, key: str) -> None:
+    row = await session.get(AppSetting, key)
+    if row is not None:
+        await session.delete(row)
 
 
 async def _upsert(session: AsyncSession, key: str, value: str) -> None:
@@ -99,6 +110,7 @@ async def get_settings(session: AsyncSession = Depends(get_session)) -> Settings
         ai_model=ai_model if find_model(ai_model) else DEFAULT_MODEL_ID,
         ai_endpoint_url=await _get_override(session, AI_ENDPOINT_URL_KEY) or None,
         ai_endpoint_model=await _get_override(session, AI_ENDPOINT_MODEL_KEY) or None,
+        dbt_core_version=await _get_override(session, DBT_CORE_VERSION_KEY) or None,
         setup_completed=setup_completed,
     )
 
@@ -159,12 +171,21 @@ async def put_settings(
     dto: SettingsUpdateDto,
     session: AsyncSession = Depends(get_session),
 ) -> SettingsDto:
+    # The requirements file in effect after this update: it decides dbt-core when set
+    requirements_after = (
+        dto.global_requirements_path.strip() if dto.global_requirements_path is not None
+        else await _get_global_requirements_path(session) or ""
+    )
     if dto.dbt_projects_path is not None:
         await _upsert(session, "dbt_projects_path", dto.dbt_projects_path.strip())
     if dto.log_level is not None:
         await _upsert(session, "log_level", dto.log_level)
     if dto.global_requirements_path is not None:
         await _upsert(session, "global_requirements_path", dto.global_requirements_path.strip())
+        if requirements_after:
+            # The file decides dbt-core now; a leftover version would show in settings
+            # and come back into force if the file setting were cleared later
+            await _delete_setting(session, DBT_CORE_VERSION_KEY)
     if dto.theme is not None:
         await _upsert(session, "theme", dto.theme)
     if dto.python_path is not None:
@@ -177,6 +198,17 @@ async def put_settings(
         await _upsert(session, AI_ENDPOINT_URL_KEY, _validate_endpoint(dto.ai_endpoint_url))
     if dto.ai_endpoint_model is not None:
         await _upsert(session, AI_ENDPOINT_MODEL_KEY, dto.ai_endpoint_model.strip())
+    if dto.dbt_core_version is not None:
+        version = dto.dbt_core_version.strip()
+        if version and not is_valid_version(version):
+            raise HTTPException(status_code=400, detail=f"'{version}' isn't a dbt-core release number (e.g. 1.10.13)")
+        if version and requirements_after:
+            raise HTTPException(
+                status_code=400,
+                detail="A global requirements file is set, so it decides the dbt-core version — "
+                "pin dbt-core in that file instead.",
+            )
+        await _upsert(session, DBT_CORE_VERSION_KEY, version)
     await session.commit()
     return await get_settings(session)
 

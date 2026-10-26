@@ -5,9 +5,18 @@ import { RotateCw } from 'lucide-react';
 import NavRail from './components/NavRail';
 import { api, ModelTimingDto, NodeTrendPoint, RunInvocationDetailDto, RunInvocationDto } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
+import { logLineTone, type LogTone } from '../../lib/logLineTone';
 import { DataTable } from '../../components/DataTable';
 import { CommandBadge } from './components/CommandBadge';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE, useOpenInFiles } from './lib/openInFiles';
+
+const RUN_LOG_TONE_CLASS: Record<LogTone | 'none', string> = {
+  error: 'text-red-400',
+  warn: 'text-amber-400',
+  success: 'text-emerald-400',
+  accent: '',
+  none: '',
+};
 
 type FileNav = ReturnType<typeof useOpenInFiles>;
 
@@ -463,7 +472,7 @@ function DetailPanel({ projectId, invocation, onRerun, failedRowsCache, onFailed
             <span className="text-gray-500">No log captured for this invocation.</span>
           ) : (
             logData.lines.map((line, i) => (
-              <div key={i} className={`whitespace-pre leading-5 ${line.includes('ERROR') || line.includes('FAILED') ? 'text-red-400' : line.includes('OK') || line.includes('PASS') ? 'text-emerald-400' : line.includes('WARN') ? 'text-amber-400' : ''}`}>
+              <div key={i} className={`whitespace-pre leading-5 ${RUN_LOG_TONE_CLASS[logLineTone(line) ?? 'none']}`}>
                 {line}
               </div>
             ))

@@ -32,6 +32,7 @@ Click any node to open the **SidePane** on the right. The SidePane shows:
 ## Navigating the graph
 
 - **Pan** — click and drag the canvas background
+- **Move nodes** — drag a node to rearrange the graph. Dragged nodes stay where you put them while you select, filter and run, and when you come back to the DAG, until you reload the app. **Reset layout** (top of the canvas) puts them back
 - **Zoom** — scroll wheel, or use the zoom controls in the corner
 - **Fit to view** — double-click the canvas background, or use the fit button in the controls
 - **After filtering** — the camera re-centers automatically on the visible nodes (200ms ease)
@@ -140,6 +141,8 @@ Pick a **Dark** or **Light** theme, then a folder (defaults to `~/Downloads`; **
 ## Viewing a node's lineage in the bottom pane
 
 The **Node DAG** tab in the bottom pane shows the selected node's full upstream and downstream lineage (`+model+`), centered on that node. It follows your selection on the DAG page, and on the Files page it follows the model whose file is open (or the test you're on in a YAML file). 
+
+The **Node SQL** tab, next to it, shows the selected node's uncompiled SQL (or Python) read-only, straight from its file, and refreshes when the file changes. Sources, seeds and YAML-defined tests have no SQL of their own, so the tab says so. **Open in Files** opens the file for editing.
 
 - Use the **Type**, **Materialization**, and **Status** dropdowns in the tab's header to narrow the lineage (same multi-select behavior as the main DAG's filters; saved per project for the session). The selected node always stays visible. When filtered-out nodes sit between two visible ones, a dashed edge connects them so the lineage stays readable. Type defaults to `seed`, `source`, `model`, and `exposure` (tests hidden); check `test` to show tests. The tab always shows the selected node's full `+node+` lineage; there's no Clear button, so the dropdowns only narrow which node types appear.
 - Click the crosshair button in the tab's header to re-center after panning.

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type EnvVarDto } from '../../../../lib/api';
+import { alertError, confirmDialog } from '../../../../lib/dialogs';
 
 interface SetupPaneProps {
   projectId: number;
@@ -28,19 +29,19 @@ export function SetupPane({ projectId }: SetupPaneProps) {
       setNewValue('');
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSavingNew(false);
     }
   };
 
   const handleDelete = async (key: string) => {
-    if (!confirm(`Delete env var '${key}'?`)) return;
+    if (!await confirmDialog(`Delete env var '${key}'?`, { confirmLabel: 'Delete', danger: true })) return;
     try {
       await api.init.deleteEnvVar(projectId, key);
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 
@@ -55,7 +56,7 @@ export function SetupPane({ projectId }: SetupPaneProps) {
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 

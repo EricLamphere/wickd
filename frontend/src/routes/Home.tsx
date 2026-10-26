@@ -24,7 +24,9 @@ import NewProjectModal from './Project/components/NewProjectModal';
 import { GlobalSettingsModal } from '../components/GlobalSettingsModal';
 import { HomeCommandPalette } from '../components/HomeCommandPalette';
 import { NodeSearchResults } from '../components/NodeSearchResults';
+import { DbtCoreDriftBanner } from '../components/DbtCoreDriftBanner';
 import { isNodeQuery } from '../lib/nodeSearch';
+import { alertError } from '../lib/dialogs';
 
 // ── Platform config ───────────────────────────────────────────────────────────
 
@@ -147,7 +149,7 @@ function ProjectCard({ project, focused, shortcutKey, cardRef, onClick, onContex
       onFocus={onFocus}
       onKeyDown={onKeyDown}
       className={[
-        'group flex flex-col gap-3 bg-surface-panel border rounded-xl p-4 text-left',
+        'group flex flex-col gap-3 min-w-0 bg-surface-panel border rounded-xl p-4 text-left',
         'hover:border-brand-600/70 hover:bg-surface-elevated/60 transition-all duration-150',
         'focus:outline-none',
         focused
@@ -175,13 +177,17 @@ function ProjectCard({ project, focused, shortcutKey, cardRef, onClick, onContex
         </div>
       </div>
 
-      {/* Path */}
-      <span className="text-[11px] text-gray-600 truncate font-mono leading-none">
-        {project.path}
+      {/* Path — ellipsis at the start (rtl) so the project's own folder stays visible */}
+      <span
+        dir="rtl"
+        title={project.path}
+        className="block max-w-full truncate text-left text-[11px] text-gray-600 font-mono leading-none"
+      >
+        <bdi dir="ltr">{project.path}</bdi>
       </span>
 
       {/* Footer: node type counts + last opened */}
-      <div className="flex items-center gap-2.5 mt-auto pt-2 border-t border-gray-800/60">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-auto pt-2 border-t border-gray-800/60">
         {counts ? (
           <>
             <CountChip label="models"  count={counts.models} />
@@ -196,7 +202,7 @@ function ProjectCard({ project, focused, shortcutKey, cardRef, onClick, onContex
           <span className="text-[11px] text-gray-700 italic">loading…</span>
         )}
         {project.last_opened_at && (
-          <span className="ml-auto text-[11px] text-gray-600">
+          <span className="ml-auto text-[11px] text-gray-600 whitespace-nowrap">
             {timeAgo(project.last_opened_at)}
           </span>
         )}
@@ -459,6 +465,8 @@ export default function Home() {
     queryFn: () => api.init.dbtCoreStatus(),
     refetchOnWindowFocus: false,
     staleTime: 60_000,
+    // Re-check on every visit: a project's init pipeline may have changed dbt-core meanwhile
+    refetchOnMount: 'always',
   });
 
   const isConfigured = appSettings?.configured ?? true;
@@ -551,7 +559,7 @@ export default function Home() {
       await api.projects.ignore(id, ignored);
       qc.invalidateQueries({ queryKey: ['projects'] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   }, [qc]);
 
@@ -560,7 +568,7 @@ export default function Home() {
       await api.projects.pin(id, pinned);
       qc.invalidateQueries({ queryKey: ['projects'] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   }, [qc]);
 
@@ -682,11 +690,13 @@ export default function Home() {
           <div className="flex flex-col gap-0.5">
             <p className="text-sm font-medium text-red-300">dbt is not installed</p>
             <p className="text-xs text-red-500">
-              Click Run global setup in the header to install it — your global requirements file if one is set, otherwise the latest <code className="font-mono">dbt-core</code>.
+              Click Run global setup in the header to install it — your global requirements file if one is set, otherwise <code className="font-mono">dbt-core</code> (the version chosen in setup, or the latest).
             </p>
           </div>
         </div>
       )}
+
+      <DbtCoreDriftBanner status={dbtCoreStatus} />
 
       {/* Workbench header */}
       <div className="flex items-center justify-between gap-4">

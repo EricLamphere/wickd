@@ -118,6 +118,7 @@ Global settings are shown for reference but can only be edited in the Global Set
 
 - **WICKD_PROJECTS_PATH** — the workspace directory scanned for dbt projects
 - **WICKD_GLOBAL_REQUIREMENTS_PATH** — a global `requirements.txt` installed for every project
+- **WICKD_DBT_CORE_VERSION** — the dbt-core release **Run global setup** installs when there's no global requirements file (blank = latest)
 - **WICKD_LOG_LEVEL** — logging verbosity
 - **WICKD_PYTHON_PATH** — the Python interpreter dbt runs on (see below)
 

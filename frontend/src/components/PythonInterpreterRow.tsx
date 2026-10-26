@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Lock, RefreshCw } from 'lucide-react';
 import { api, type PythonInterpreterDto, type SettingsDto } from '../lib/api';
 import { GlobalSetupModal } from './GlobalSetupModal';
+import { alertError, confirmDialog } from '../lib/dialogs';
 
 const LABEL = 'WICKD_PYTHON_PATH';
 
@@ -29,7 +30,7 @@ export function PythonInterpreterRow({ appSettings }: { appSettings: SettingsDto
   const handleSelect = async (path: string) => {
     const choice = interpreters?.find((p) => p.path === path);
     if (!choice || path === current) return;
-    const ok = confirm(
+    const ok = await confirmDialog(
       `Switch dbt to Python ${choice.version}?\n\n` +
         "This rebuilds dbt's environment from scratch — dbt-core and your adapters " +
         'will need to be reinstalled with Run global setup.',
@@ -43,7 +44,7 @@ export function PythonInterpreterRow({ appSettings }: { appSettings: SettingsDto
       qc.invalidateQueries({ queryKey: ['dbt-core-status'] });
       setRebuiltWith(choice);
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSwitching(false);
     }

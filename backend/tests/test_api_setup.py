@@ -402,3 +402,130 @@ async def test_setup_rejects_bad_global_env_vars(
     assert resp.status_code == 400
     assert resp.json()["detail"]["field"] == "global_env_vars"
     assert python_changes == []
+
+
+# ---- dbt-core version ----
+
+
+async def test_new_requirements_file_pins_chosen_dbt_core(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    req = tmp_path / "requirements.txt"
+    resp = await client.post("/api/setup/complete", json=_body(
+        tmp_path, global_requirements_path=str(req), create_requirements_file=True, dbt_core_version="1.10.13",
+    ))
+    assert resp.status_code == 200, resp.text
+    assert req.read_text() == "dbt-core==1.10.13\n"
+
+
+async def test_new_requirements_file_unpinned_when_latest(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    req = tmp_path / "requirements.txt"
+    await client.post("/api/setup/complete", json=_body(
+        tmp_path, global_requirements_path=str(req), create_requirements_file=True,
+    ))
+    assert req.read_text() == "dbt-core\n"
+
+
+async def test_existing_file_without_dbt_core_gets_the_pin_appended(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    req = tmp_path / "requirements.txt"
+    req.write_text("dbt-duckdb==1.9.4")
+    resp = await client.post("/api/setup/complete", json=_body(
+        tmp_path, global_requirements_path=str(req), dbt_core_version="1.9.0",
+    ))
+    assert resp.status_code == 200
+    assert req.read_text() == "dbt-duckdb==1.9.4\ndbt-core==1.9.0\n"
+    assert resp.json()["dbt_core_version"] is None
+
+
+async def test_existing_dbt_core_requirement_is_left_alone(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    req = tmp_path / "requirements.txt"
+    req.write_text("dbt-core>=1.8\ndbt-duckdb\n")
+    await client.post("/api/setup/complete", json=_body(
+        tmp_path, global_requirements_path=str(req), dbt_core_version="1.10.13",
+    ))
+    assert req.read_text() == "dbt-core>=1.8\ndbt-duckdb\n"
+
+
+async def test_no_file_saves_version_for_global_setup(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    resp = await client.post("/api/setup/complete", json=_body(tmp_path, dbt_core_version="1.10.13"))
+    assert resp.json()["dbt_core_version"] == "1.10.13"
+
+    installs: list[list[str]] = []
+
+    def fake_pip(pip: Path, install_args: list[str], pip_env: dict) -> None:
+        installs.append(install_args)
+        init_api._global_output_queue.put(None)
+
+    monkeypatch.setattr(init_api, "_run_pip_in_thread", fake_pip)
+    monkeypatch.setattr(init_api, "venv_pip", lambda: tmp_path / "pip")
+    await client.post("/api/init/global-setup")
+    init_api._global_setup_thread.join(timeout=5)
+    assert installs == [["--upgrade", "dbt-core==1.10.13"]]
+
+
+async def test_choosing_latest_again_clears_the_version(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    await client.post("/api/setup/complete", json=_body(tmp_path, dbt_core_version="1.10.13"))
+    resp = await client.post("/api/setup/complete", json=_body(tmp_path))
+    assert resp.json()["dbt_core_version"] is None
+
+
+async def test_invalid_dbt_core_version_rejected_before_writing(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    req = tmp_path / "requirements.txt"
+    resp = await client.post("/api/setup/complete", json=_body(
+        tmp_path, global_requirements_path=str(req), create_requirements_file=True, dbt_core_version="1.10.13; evil",
+    ))
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["field"] == "dbt_core_version"
+    assert not req.exists()
+
+
+def test_global_setup_installs_pinned_dbt_core_without_a_file() -> None:
+    assert init_api._global_setup_install_args(None, "1.9.0") == ["--upgrade", "dbt-core==1.9.0"]
+
+
+async def test_settings_dbt_core_version_validated_and_clearable(client: AsyncClient) -> None:
+    assert (await client.put("/api/settings", json={"dbt_core_version": "nope"})).status_code == 400
+    assert (await client.put("/api/settings", json={"dbt_core_version": "1.9.0"})).json()["dbt_core_version"] == "1.9.0"
+    assert (await client.put("/api/settings", json={"dbt_core_version": ""})).json()["dbt_core_version"] is None
+
+
+async def test_requirements_file_endpoint(client: AsyncClient, tmp_path: Path) -> None:
+    req = tmp_path / "requirements.txt"
+    missing = (await client.get("/api/setup/requirements-file", params={"path": str(req)})).json()
+    assert missing == {"exists": False, "dbt_core_line": None}
+    req.write_text("dbt-duckdb\n")
+    assert (await client.get("/api/setup/requirements-file", params={"path": str(req)})).json() == {
+        "exists": True, "dbt_core_line": None,
+    }
+    req.write_text("dbt-core~=1.9  # pinned\n")
+    assert (await client.get("/api/setup/requirements-file", params={"path": str(req)})).json()["dbt_core_line"] == "dbt-core~=1.9"
+
+
+async def test_dbt_core_versions_endpoint(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_fetch() -> list[str]:
+        return ["1.10.13", "1.9.0"]
+
+    monkeypatch.setattr(setup_api, "fetch_dbt_core_versions", fake_fetch)
+    assert (await client.get("/api/setup/dbt-core-versions")).json() == {"versions": ["1.10.13", "1.9.0"], "latest": "1.10.13"}
+
+
+async def test_dbt_core_versions_unreachable_is_502(client: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def failing() -> list[str]:
+        raise setup_api.VersionLookupError("offline")
+
+    monkeypatch.setattr(setup_api, "fetch_dbt_core_versions", failing)
+    resp = await client.get("/api/setup/dbt-core-versions")
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "offline"

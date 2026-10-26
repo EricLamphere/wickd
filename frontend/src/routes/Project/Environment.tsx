@@ -6,6 +6,7 @@ import { api, type EnvVarDto, type Project } from '../../lib/api';
 import NavRail from './components/NavRail';
 import { GlobalEnvVarsReadOnly } from './components/GlobalEnvVarsReadOnly';
 import { EnvPrecedenceNote } from '../../components/GlobalEnvVarsSection';
+import { alertError, confirmDialog } from '../../lib/dialogs';
 
 // ---- Collapsible tile wrapper ----
 
@@ -86,7 +87,7 @@ function GlobalProfileSelector({ projectId }: { projectId: number }) {
       }
       qc.invalidateQueries({ queryKey: ['active-global-profile', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 
@@ -189,7 +190,7 @@ function ProjectSettingRow({ label, value, placeholder, kind = 'example', onSave
       await onSave(editValue.trim());
       setEditing(false);
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSaving(false);
     }
@@ -388,32 +389,32 @@ function EnvironmentVariablesSection({ projectId }: { projectId: number }) {
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
       newKeyRef.current?.focus();
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSaving(false);
     }
   };
 
   const handleDelete = async (key: string) => {
-    if (!confirm(`Delete '${key}'?`)) return;
+    if (!await confirmDialog(`Delete '${key}'?`, { confirmLabel: 'Delete', danger: true })) return;
     try {
       await api.init.deleteEnvVar(projectId, key);
       setSelected((prev) => { const next = new Set(prev); next.delete(key); return next; });
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 
   const handleDeleteSelected = async () => {
-    if (!confirm(`Delete ${selected.size} variable${selected.size > 1 ? 's' : ''}?`)) return;
+    if (!await confirmDialog(`Delete ${selected.size} variable${selected.size > 1 ? 's' : ''}?`, { confirmLabel: 'Delete', danger: true })) return;
     setDeleting(true);
     try {
       await Promise.all([...selected].map((key) => api.init.deleteEnvVar(projectId, key)));
       setSelected(new Set());
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setDeleting(false);
     }
@@ -425,7 +426,7 @@ function EnvironmentVariablesSection({ projectId }: { projectId: number }) {
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 

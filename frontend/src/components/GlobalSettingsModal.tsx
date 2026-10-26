@@ -7,6 +7,7 @@ import { GlobalEnvVarsSection } from './GlobalEnvVarsSection';
 import { PythonInterpreterRow } from './PythonInterpreterRow';
 import { OPEN_SETUP_EVENT } from './setup/SetupGate';
 import { SubscriptionSection } from './SubscriptionSection';
+import { alertError, confirmDialog } from '../lib/dialogs';
 
 type ModalTab = 'settings' | 'profiles' | 'requirements' | 'theme' | 'subscription';
 
@@ -96,9 +97,17 @@ function SettingsTab() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const rows: { key: string; label: string; value: string | null | undefined; hint?: string; example?: string }[] = [
+  // A global requirements file decides dbt-core, so the version setting doesn't apply
+  const versionLockedReason = appSettings?.global_requirements_path ? 'Set by your requirements file' : undefined;
+
+  const rows: {
+    key: string; label: string; value: string | null | undefined; hint?: string; example?: string;
+    /** Shown instead of the value, not editable */
+    locked?: string;
+  }[] = [
     { key: 'dbt_projects_path', label: 'WICKD_PROJECTS_PATH', value: appSettings?.dbt_projects_path, example: '/home/user/dbt-projects' },
     { key: 'global_requirements_path', label: 'WICKD_GLOBAL_REQUIREMENTS_PATH', value: appSettings?.global_requirements_path, hint: 'requirements.txt installed via Run global setup', example: '/home/user/dbt-projects/requirements.txt' },
+    { key: 'dbt_core_version', label: 'WICKD_DBT_CORE_VERSION', value: appSettings?.dbt_core_version, hint: 'dbt-core Run global setup installs when no requirements file is set (blank = latest)', example: '1.10.13', locked: versionLockedReason },
     { key: 'log_level', label: 'WICKD_LOG_LEVEL', value: appSettings?.log_level, hint: 'takes effect on restart', example: 'INFO' },
     { key: 'ai_model', label: 'WICKD_AI_MODEL', value: appSettings?.ai_model, hint: 'bundled local model (Pro)', example: 'qwen3.5-4b' },
     { key: 'ai_endpoint_url', label: 'WICKD_AI_ENDPOINT_URL', value: appSettings?.ai_endpoint_url, hint: 'OpenAI-compatible server used instead', example: 'http://localhost:11434' },
@@ -112,8 +121,12 @@ function SettingsTab() {
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ['app-settings'] });
       if (key.startsWith('ai_')) qc.invalidateQueries({ queryKey: ['ai-status'] });
+      // Both decide which dbt-core is expected, so the installed-version check changes
+      if (key === 'global_requirements_path' || key === 'dbt_core_version') {
+        qc.invalidateQueries({ queryKey: ['dbt-core-status'] });
+      }
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSaving(false);
     }
@@ -136,14 +149,16 @@ function SettingsTab() {
         </div>
         <div className="flex flex-col gap-1.5">
           {!appSettings && <p className="text-xs text-gray-600">Loading…</p>}
-          {rows.map(({ key, label, value, hint, example }) => (
+          {rows.map(({ key, label, value, hint, example, locked }) => (
             <div key={key} className="flex items-center gap-2 px-3 py-2 bg-surface-elevated rounded border border-gray-800 text-xs">
               <div className="w-60 shrink-0">
                 <span className="font-mono text-brand-300 truncate block">{label}</span>
                 {hint && <span className="text-gray-600 italic">{hint}</span>}
               </div>
               <span className="text-gray-600">=</span>
-              {editingKey === key ? (
+              {locked ? (
+                <span className="flex-1 text-gray-500 italic truncate">{locked}</span>
+              ) : editingKey === key ? (
                 <>
                   <input
                     autoFocus
@@ -209,9 +224,10 @@ function RequirementsTab() {
     try {
       await api.requirementsFile.put(editContent);
       qc.invalidateQueries({ queryKey: ['requirements-file'] });
+      qc.invalidateQueries({ queryKey: ['dbt-core-status'] });
       setEditing(false);
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSaving(false);
     }
@@ -368,19 +384,19 @@ function GlobalProfilesSection() {
       setNewName('');
       qc.invalidateQueries({ queryKey: ['global-profiles'] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setCreating(false);
     }
   };
 
   const handleDelete = async (profile: GlobalProfileDto) => {
-    if (!confirm(`Delete global profile '${profile.name}'?`)) return;
+    if (!await confirmDialog(`Delete global profile '${profile.name}'?`, { confirmLabel: 'Delete', danger: true })) return;
     try {
       await api.globalProfiles.delete(profile.id);
       qc.invalidateQueries({ queryKey: ['global-profiles'] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 
@@ -462,7 +478,7 @@ function GlobalProfileCard({ profile, expanded, onToggle, onDelete }: GlobalProf
       qc.invalidateQueries({ queryKey: ['global-profiles'] });
       newKeyRef.current?.focus();
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSavingVar(false);
     }
@@ -474,7 +490,7 @@ function GlobalProfileCard({ profile, expanded, onToggle, onDelete }: GlobalProf
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ['global-profiles'] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 
@@ -483,7 +499,7 @@ function GlobalProfileCard({ profile, expanded, onToggle, onDelete }: GlobalProf
       await api.globalProfiles.deleteVar(profile.id, key);
       qc.invalidateQueries({ queryKey: ['global-profiles'] });
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 

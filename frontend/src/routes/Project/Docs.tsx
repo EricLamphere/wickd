@@ -10,6 +10,8 @@ import ReactMarkdown from 'react-markdown';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
 import { useUrlTab } from '../../lib/useUrlTab';
+import { buildMacroCall, macroCallName, wrapJinja } from './lib/macroCall';
+import { readSessionValue, restorableDocsView } from './lib/docsLastView';
 import NavRail from './components/NavRail';
 
 // ---- tree types ----
@@ -431,16 +433,24 @@ export default function DocsPage() {
     };
   }, [docsData, projectName]);
 
-  // Auto-select the project overview on load
+  // Remember where you were (node + browse/detail tabs) so the nav link back to Docs returns there
+  const lastViewKey = `docs-last-view-${id}`;
   useEffect(() => {
-    if (docsData && !selectedUid) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('node', '__project__');
-        return next;
-      }, { replace: true });
-    }
-  }, [docsData, selectedUid, setSearchParams]);
+    if (!selectedUid) return;
+    try { sessionStorage.setItem(lastViewKey, searchParams.toString()); } catch { /* storage unavailable */ }
+  }, [lastViewKey, selectedUid, searchParams]);
+
+  // Arriving without ?node=: restore the last view if its node still exists, else the project overview
+  useEffect(() => {
+    if (!docsData || selectedUid) return;
+    const restored = restorableDocsView(readSessionValue(lastViewKey), (uid) => nodeMap.has(uid) || macroMap.has(uid));
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (restored) restored.forEach((value, key) => { if (!next.has(key)) next.set(key, value); });
+      else next.set('node', '__project__');
+      return next;
+    }, { replace: true });
+  }, [docsData, selectedUid, lastViewKey, nodeMap, macroMap, setSearchParams]);
 
   // When a node is selected (e.g. via ReferencedBy link), expand the tree to reveal it
   useEffect(() => {
@@ -601,7 +611,12 @@ export default function DocsPage() {
           />
         )}
         {selectedNode && <NodeDetail node={selectedNode} allNodes={nodeMap} allMacros={macroMap} projectId={id} />}
-        {selectedMacro && <MacroDetail key={selectedMacro.unique_id} macro={selectedMacro} projectId={id} />}
+        {selectedMacro && <MacroDetail
+            key={selectedMacro.unique_id}
+            macro={selectedMacro}
+            projectId={id}
+            callName={macroCallName(selectedMacro.name, selectedMacro.package_name, projectName, docsData?.adapter_type ?? '')}
+          />}
         {!isProjectOverview && !selectedNode && !selectedMacro && (
           <div className="flex items-center justify-center h-full text-gray-600 text-sm select-none">
             Select a node to view documentation
@@ -1154,24 +1169,13 @@ function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDt
   );
 }
 
-function buildMacroCall(name: string, argValues: Record<string, string>): string {
-  const args = Object.entries(argValues);
-  if (args.length === 0) return `${name}()`;
-  const lines = args.map(([k, v]) => `    ${k}=${v || "''"}`).join(',\n');
-  return `${name}(\n${lines}\n)`;
-}
-
-function wrapJinja(call: string): string {
-  return `{{ ${call.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim()} }}`;
-}
-
-function MacroDetail({ macro, projectId }: { macro: DocsMacroDto; projectId: number }) {
+function MacroDetail({ macro, projectId, callName }: { macro: DocsMacroDto; projectId: number; callName: string }) {
   const [copied, setCopied] = useState(false);
   const [argValues, setArgValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(macro.arguments.map((a) => [a.name, '']))
   );
   const [callText, setCallText] = useState(() =>
-    buildMacroCall(macro.name, Object.fromEntries(macro.arguments.map((a) => [a.name, ''])))
+    buildMacroCall(callName, Object.fromEntries(macro.arguments.map((a) => [a.name, ''])))
   );
   const [compiledSql, setCompiledSql] = useState<string | null>(null);
   const [compileError, setCompileError] = useState<string | null>(null);
@@ -1187,7 +1191,14 @@ function MacroDetail({ macro, projectId }: { macro: DocsMacroDto; projectId: num
   function handleArgChange(name: string, value: string) {
     const next = { ...argValues, [name]: value };
     setArgValues(next);
-    setCallText(buildMacroCall(macro.name, next));
+    setCallText(buildMacroCall(callName, next));
+  }
+
+  /** ⌘/Ctrl+Enter in the call box or an argument input compiles, like the SQL Workspace's run. */
+  function handleCompileShortcut(e: React.KeyboardEvent) {
+    if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return;
+    e.preventDefault();
+    if (!compiling) handleCompile();
   }
 
   async function handleCompile() {
@@ -1265,6 +1276,7 @@ function MacroDetail({ macro, projectId }: { macro: DocsMacroDto; projectId: num
                   type="text"
                   value={argValues[arg.name] ?? ''}
                   onChange={(e) => handleArgChange(arg.name, e.target.value)}
+                  onKeyDown={handleCompileShortcut}
                   placeholder="value"
                   className="bg-surface-app border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 font-mono focus:border-brand-500 focus:outline-none"
                 />
@@ -1279,12 +1291,14 @@ function MacroDetail({ macro, projectId }: { macro: DocsMacroDto; projectId: num
             <textarea
               value={callText}
               onChange={(e) => setCallText(e.target.value)}
+              onKeyDown={handleCompileShortcut}
               rows={Math.max(3, callText.split('\n').length)}
               spellCheck={false}
               className="w-full bg-surface-app border border-gray-700 rounded px-3 py-2 text-xs text-gray-300 font-mono focus:border-brand-500 focus:outline-none resize-none leading-relaxed"
             />
             <button
               onClick={handleCompile}
+              title="Compile (⌘Enter)"
               disabled={compiling}
               className="absolute top-2 right-2 text-xs px-2.5 py-1 rounded bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
             >

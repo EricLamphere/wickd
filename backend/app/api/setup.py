@@ -23,6 +23,15 @@ from app.config import settings
 from app.db.engine import get_session
 from app.db.models import AppSetting
 from app.dbt import venv
+from app.dbt.core_version import (
+    DBT_CORE_VERSION_KEY,
+    VersionLookupError,
+    append_pin,
+    dbt_core_requirement,
+    fetch_dbt_core_versions,
+    install_spec,
+    is_valid_version,
+)
 from app.envvars import is_valid_env_key
 from app.logging_setup import get_logger
 from app.projects.service import rescan_projects
@@ -31,9 +40,6 @@ log = get_logger(__name__)
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 
-# Seed for a requirements file the wizard creates: installs the same thing as
-# leaving the path blank, but gives the user a file to add adapters to.
-DEFAULT_REQUIREMENTS = "dbt-core\n"
 
 
 class SetupDto(BaseModel):
@@ -43,8 +49,12 @@ class SetupDto(BaseModel):
     python_path: str = ""
     # Empty → global setup installs the latest dbt-core instead of a file.
     global_requirements_path: str = ""
-    # Create a missing requirements file (seeded with DEFAULT_REQUIREMENTS).
+    # Create a missing requirements file (seeded with the chosen dbt-core).
     create_requirements_file: bool = False
+    # dbt-core to install, e.g. "1.10.13"; "" = latest. Written into a new
+    # requirements file, appended to an existing one that doesn't mention
+    # dbt-core, or saved as the dbt_core_version setting when there's no file.
+    dbt_core_version: str = ""
     theme: Literal["dark", "light"] = "dark"
     # Global env vars, replacing the current set. None → leave them as they are.
     global_env_vars: list[GlobalEnvVarDto] | None = None
@@ -91,13 +101,35 @@ def _resolve_requirements(raw: str, create: bool) -> tuple[Path | None, bool]:
     return path, True
 
 
-def _create_requirements_file(path: Path) -> None:
+def _validate_dbt_core_version(raw: str) -> str:
+    version = raw.strip()
+    if version and not is_valid_version(version):
+        raise _field_error("dbt_core_version", "invalid", f"'{version}' isn't a dbt-core release number.")
+    return version
+
+
+def _create_requirements_file(path: Path, dbt_core_version: str) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(DEFAULT_REQUIREMENTS)
+        path.write_text(f"{install_spec(dbt_core_version)}\n")
     except OSError as exc:
         raise _field_error("global_requirements_path", "invalid", f"Couldn't create {path}: {exc}")
-    log.info("setup_requirements_file_created", path=str(path))
+    log.info("setup_requirements_file_created", path=str(path), dbt_core=dbt_core_version or "latest")
+
+
+def _pin_dbt_core_if_missing(path: Path, dbt_core_version: str) -> None:
+    """Add the chosen dbt-core to an existing file that doesn't list it; leave
+    any dbt-core the user already has alone."""
+    if not dbt_core_version:
+        return
+    try:
+        text = path.read_text(encoding="utf-8")
+        if dbt_core_requirement(text) is not None:
+            return
+        path.write_text(append_pin(text, dbt_core_version), encoding="utf-8")
+    except OSError as exc:
+        raise _field_error("global_requirements_path", "invalid", f"Couldn't update {path}: {exc}")
+    log.info("setup_requirements_pinned", path=str(path), dbt_core=dbt_core_version)
 
 
 def _normalize_env_vars(env_vars: list[GlobalEnvVarDto]) -> list[GlobalEnvVarDto]:
@@ -139,6 +171,7 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
     requirements, create_requirements = _resolve_requirements(
         dto.global_requirements_path, dto.create_requirements_file
     )
+    dbt_core_version = _validate_dbt_core_version(dto.dbt_core_version)
     env_vars = _normalize_env_vars(dto.global_env_vars) if dto.global_env_vars is not None else None
 
     if not venv.is_own_venv():
@@ -148,13 +181,22 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
             raise _field_error("python_path", "invalid", str(exc.detail)) from exc
 
     if requirements is not None and create_requirements:
-        _create_requirements_file(requirements)
+        _create_requirements_file(requirements, dbt_core_version)
+    elif requirements is not None:
+        _pin_dbt_core_if_missing(requirements, dbt_core_version)
 
     await _upsert(session, "dbt_projects_path", str(projects_dir))
     if requirements is None:
         await _delete_setting(session, "global_requirements_path")
+        # No file: global setup installs this version (missing = latest)
+        if dbt_core_version:
+            await _upsert(session, DBT_CORE_VERSION_KEY, dbt_core_version)
+        else:
+            await _delete_setting(session, DBT_CORE_VERSION_KEY)
     else:
         await _upsert(session, "global_requirements_path", str(requirements))
+        # The file decides what's installed; a leftover version would only mislead
+        await _delete_setting(session, DBT_CORE_VERSION_KEY)
     await _upsert(session, "theme", dto.theme)
     if env_vars is not None:
         await replace_global_env_vars(session, env_vars)
@@ -164,6 +206,41 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
 
     await rescan_projects(session)
     return await get_settings(session)
+
+
+class DbtCoreVersionsDto(BaseModel):
+    versions: list[str]  # newest first
+    latest: str
+
+
+@router.get("/dbt-core-versions", response_model=DbtCoreVersionsDto)
+async def dbt_core_versions() -> DbtCoreVersionsDto:
+    """Stable dbt-core releases from PyPI for the wizard's version picker (502 if unreachable)."""
+    try:
+        versions = await fetch_dbt_core_versions()
+    except VersionLookupError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return DbtCoreVersionsDto(versions=versions, latest=versions[0])
+
+
+class RequirementsFileDto(BaseModel):
+    exists: bool
+    # The line requiring dbt-core (e.g. "dbt-core>=1.8"); null if the file doesn't mention it
+    dbt_core_line: str | None
+
+
+@router.get("/requirements-file", response_model=RequirementsFileDto)
+async def requirements_file(path: str) -> RequirementsFileDto:
+    """Whether a requirements file exists and already pins dbt-core, so the wizard
+    knows whether to offer the version picker. Read-only."""
+    target = Path(path.strip()).expanduser()
+    if not path.strip() or not target.is_absolute() or not target.is_file():
+        return RequirementsFileDto(exists=False, dbt_core_line=None)
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return RequirementsFileDto(exists=True, dbt_core_line=None)
+    return RequirementsFileDto(exists=True, dbt_core_line=dbt_core_requirement(text))
 
 
 async def seed_setup_completed(session: AsyncSession) -> None:

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type InitStepDto } from '../../../../lib/api';
 import { StatusLogPopover } from '../StatusLogPopover';
 import { TILE_WIDTH_PCT, type StepRunState, type StepStatus } from './flow';
+import { alertDialog } from '../../../../lib/dialogs';
 
 // ---- status icon ----
 
@@ -127,7 +128,7 @@ export function StepTile({ step, index, offsetPct, projectId, runState, onToggle
       await onRunStep();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      alert(message.startsWith('409') ? 'Init pipeline is already running for this project.' : message);
+      alertDialog(message.startsWith('409') ? 'Init pipeline is already running for this project.' : message);
     } finally {
       setRunning(false);
     }

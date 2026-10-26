@@ -33,7 +33,8 @@ async def test_dbt_core_status_without_venv(client: AsyncClient, missing_venv: P
     resp = await client.get("/api/init/dbt-core-status")
 
     assert resp.status_code == 200
-    assert resp.json() == {"installed": False, "version": None}
+    assert resp.json()["installed"] is False
+    assert resp.json()["version"] is None
     assert not missing_venv.exists()
 
 

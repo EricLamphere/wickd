@@ -205,7 +205,8 @@ async def get_docs_data(project_id: int) -> dict[str, Any]:
     result_nodes.sort(key=lambda n: (order.get(n["resource_type"], 9), n["name"]))
     result_macros.sort(key=lambda n: (n["package_name"] or "", n["name"]))
 
-    project_name: str = (manifest.get("metadata") or {}).get("project_name") or ""
+    metadata: dict[str, Any] = manifest.get("metadata") or {}
+    project_name: str = metadata.get("project_name") or ""
 
     # Extract project overview from the docs block (may be project-specific or dbt default)
     docs_blocks: dict[str, Any] = manifest.get("docs") or {}
@@ -217,6 +218,7 @@ async def get_docs_data(project_id: int) -> dict[str, Any]:
         "nodes": result_nodes,
         "macros": result_macros,
         "project_name": project_name,
+        "adapter_type": metadata.get("adapter_type") or "",
         "project_description": project_description,
     }
 

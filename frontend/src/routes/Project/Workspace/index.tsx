@@ -14,6 +14,7 @@ import { TreeItem } from './TreeItem';
 import { DatabaseExplorer } from './DatabaseExplorer';
 import type { ContextMenuState, QueryResult, RenameState, TreeNode } from './types';
 import { updateNode } from './types';
+import { alertError, confirmDialog, promptDialog } from '../../../lib/dialogs';
 
 const OPEN_KEY = (id: number) => `ws-open-${id}`;
 const EXPANDED_KEY = (id: number) => `ws-expanded-${id}`;
@@ -336,14 +337,14 @@ export default function WorkspacePage() {
   };
 
   const handleNewFolder = async (dirPath: string) => {
-    const name = prompt('Folder name:');
+    const name = await promptDialog('Folder name:');
     if (!name) return;
     await api.files.newFile(id, name, dirPath, true);
     await refreshDir(dirPath);
   };
 
   const handleDelete = async (node: TreeNode) => {
-    if (!confirm(`Delete '${node.name}'?`)) return;
+    if (!await confirmDialog(`Delete '${node.name}'?`, { confirmLabel: 'Delete', danger: true })) return;
     if (openPath === node.path) {
       setOpenPath(null);
       setEditorContent('');
@@ -378,7 +379,7 @@ export default function WorkspacePage() {
       setIsDirty(false);
       sessionStorage.setItem(CONTENT_KEY(id, openPath), editorContent);
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSaving(false);
     }

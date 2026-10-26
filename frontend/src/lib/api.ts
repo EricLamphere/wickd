@@ -435,6 +435,8 @@ export interface InitStepDto {
   last_started_at: string | null;
   last_finished_at: string | null;
   last_log: string;
+  /** Status in the init run in progress; 'pending' = not reached yet; null outside a run. */
+  run_state: 'pending' | 'running' | 'success' | 'error' | null;
 }
 
 export interface ScriptTestResultDto {
@@ -451,6 +453,18 @@ export interface SqlDto {
   unique_id: string;
   path: string;
   content: string;
+}
+
+export interface MovedPathDto {
+  src: string;
+  dst: string;
+  is_dir: boolean;
+}
+
+/** A file dropped in from the OS; `relativePath` keeps folders when a folder was dropped. */
+export interface UploadEntry {
+  file: File;
+  relativePath: string;
 }
 
 export interface FileNode {
@@ -570,6 +584,7 @@ export interface DocsDataDto {
   nodes: DocsNodeDto[];
   macros: DocsMacroDto[];
   project_name: string;
+  adapter_type: string;
   project_description: string;
 }
 
@@ -681,6 +696,8 @@ export interface SettingsDto {
   ai_model: string;
   ai_endpoint_url: string | null;
   ai_endpoint_model: string | null;
+  /** dbt-core global setup installs when no global requirements file is set; null = latest. */
+  dbt_core_version: string | null;
   configured: boolean;
   setup_completed: boolean;
 }
@@ -693,13 +710,37 @@ export interface SetupDto {
   /** Empty → global setup installs the latest dbt-core. */
   global_requirements_path: string;
   create_requirements_file?: boolean;
+  /** dbt-core to install, e.g. "1.10.13"; "" = latest. */
+  dbt_core_version?: string;
   theme: 'dark' | 'light';
   /** Replaces the global env vars; omit to leave them unchanged. */
   global_env_vars?: GlobalEnvVarDto[];
 }
 
+export interface DbtCoreStatusDto {
+  installed: boolean;
+  version: string | null;
+  /** What global setup would install: the requirements file's dbt-core line, or dbt-core==<chosen version>. */
+  expected: string | null;
+  expected_source: 'requirements' | 'setting' | null;
+  /** false = the installed version doesn't meet `expected`; null = nothing to compare. */
+  matches: boolean | null;
+}
+
+export interface DbtCoreVersionsDto {
+  /** Stable releases, newest first. */
+  versions: string[];
+  latest: string;
+}
+
+export interface RequirementsFileDto {
+  exists: boolean;
+  /** The line requiring dbt-core, e.g. "dbt-core>=1.8"; null if the file doesn't list it. */
+  dbt_core_line: string | null;
+}
+
 export interface SetupFieldError {
-  field: 'dbt_projects_path' | 'python_path' | 'global_requirements_path' | 'global_env_vars';
+  field: 'dbt_projects_path' | 'python_path' | 'global_requirements_path' | 'dbt_core_version' | 'global_env_vars';
   code: 'required' | 'invalid' | 'not_found';
   message: string;
 }
@@ -727,6 +768,8 @@ export interface SettingsUpdateDto {
   ai_model?: string;
   ai_endpoint_url?: string;
   ai_endpoint_model?: string;
+  /** "" clears it (latest). */
+  dbt_core_version?: string;
 }
 
 export const api = {
@@ -840,6 +883,20 @@ export const api = {
       }),
     delete: (projectId: number, path: string) =>
       request<void>(`/projects/${projectId}/files?path=${encodeURIComponent(path)}`, { method: 'DELETE' }),
+    move: (projectId: number, paths: string[], destDir: string) =>
+      post<MovedPathDto[]>(`/projects/${projectId}/files/move`, { paths, dest_dir: destDir }),
+    copy: (projectId: number, paths: string[], destDir: string) =>
+      post<MovedPathDto[]>(`/projects/${projectId}/files/copy`, { paths, dest_dir: destDir }),
+    upload: (projectId: number, entries: UploadEntry[], destDir: string, overwrite = false) => {
+      const form = new FormData();
+      form.append('dest_dir', destDir);
+      form.append('overwrite', String(overwrite));
+      for (const e of entries) form.append('files', e.file, e.relativePath);
+      // No JSON Content-Type: the browser sets the multipart boundary
+      return request<FileNode[]>(`/projects/${projectId}/files/upload`, { method: 'POST', body: form, headers: {} });
+    },
+    reveal: (projectId: number, path: string) =>
+      post<void>(`/projects/${projectId}/files/reveal`, { path }),
     newFile: (projectId: number, name: string, dirPath: string, isDir = false) =>
       request<FileNode>(`/projects/${projectId}/files/new`, {
         method: 'POST',
@@ -898,8 +955,7 @@ export const api = {
       post(`/projects/init-session/${sessionId}/stop`),
     checkPackage: (pkg: string) =>
       get<{ package: string; installed_version: string | null }>(`/init/package-info?package=${encodeURIComponent(pkg)}`),
-    dbtCoreStatus: () =>
-      get<{ installed: boolean; version: string | null }>('/init/dbt-core-status'),
+    dbtCoreStatus: () => get<DbtCoreStatusDto>('/init/dbt-core-status'),
     appendRequirement: (line: string) =>
       post<{ ok: boolean }>('/init/append-requirement', { line }),
     runGlobalSetup: () =>
@@ -1001,6 +1057,9 @@ export const api = {
   },
   setup: {
     complete: (body: SetupDto) => post<SettingsDto>('/setup/complete', body),
+    dbtCoreVersions: () => get<DbtCoreVersionsDto>('/setup/dbt-core-versions'),
+    requirementsFile: (path: string) =>
+      get<RequirementsFileDto>(`/setup/requirements-file?path=${encodeURIComponent(path)}`),
   },
   drift: {
     start: (projectId: number, select?: string[]) =>

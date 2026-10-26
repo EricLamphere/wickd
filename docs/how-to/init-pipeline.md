@@ -31,9 +31,13 @@ You can change the init directory path in the **Settings** section of the Enviro
 
 Linked scripts are tracked in the database independently of the init directory. They survive directory changes and can live anywhere on the filesystem.
 
+## Running the pipeline
+
+Click **Initialize** on the **Initialization** page (or on the project home page), or press ⌘K and choose **Run init pipeline**, which opens the Initialization page so you can watch the steps run. If a run is already in progress, the page shows that run.
+
 ## Reordering steps
 
-In the **Init Scripts** page, drag steps to reorder them. Base steps (`base: pip install`, `base: dbt deps`) always run first and cannot be moved below custom steps.
+On the **Initialization** page, drag steps to reorder them. Base steps (`base: pip install`, `base: dbt deps`) always run first and cannot be moved below custom steps.
 
 ## Reading the flow
 

@@ -18,6 +18,7 @@ import {
 import { QuickRunBar, type RunKind } from './components/QuickRunBar';
 import { DbtCommandRow } from './components/DbtCommandRow';
 import { CommandBadge } from './components/CommandBadge';
+import { alertDialog } from '../../lib/dialogs';
 
 const PLATFORM_ICONS: Record<string, string> = {
   postgres: '🐘', bigquery: '☁️', snowflake: '❄️', redshift: '🔴',
@@ -137,9 +138,9 @@ export default function ProjectHome() {
       setInitStatus('error');
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('409')) {
-        alert('Init pipeline is already running for this project.');
+        alertDialog('Init pipeline is already running for this project.');
       } else {
-        alert(message);
+        alertDialog(message);
       }
     },
   });
@@ -531,6 +532,8 @@ function YamlViewer({ content }: { content: string }) {
       ref={containerRef}
       style={{ minHeight: 100 }}
       onWheelCapture={(e) => {
+        // Horizontal scrolls (trackpad, Shift+wheel) belong to Monaco, for long lines
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) return;
         const target = e.currentTarget;
         let ancestor = target.parentElement;
         while (ancestor) {
@@ -646,7 +649,7 @@ function InitStatusBadge({
   ) : (
     <div className="flex flex-col gap-1.5">
       <p className="text-xs text-red-400 font-medium">
-        {failedStep ? `Failed at step: ${failedStep}` : 'Setup failed'}
+        {failedStep ? `Failed at step: ${failedStep}` : 'Initialization failed'}
       </p>
       {/* span, not button — this panel is nested inside the outer "Initialize" <button> */}
       <span

@@ -18,7 +18,7 @@ A local-first desktop app for [dbt-core](https://github.com/dbt-labs/dbt-core): 
 2. Open it and drag **wickd** into **Applications**.
 3. Launch wickd and point it at the folder that holds your dbt projects.
 
-The app is signed and notarized by Apple, so it opens like any other Mac app. You'll need `git` on your `PATH`. dbt itself is installed for you: on first launch a setup wizard asks where your projects live and which Python to use, then installs dbt into an isolated environment.
+The app is signed and notarized by Apple, so it opens like any other Mac app. You'll need `git` on your `PATH`. dbt itself is installed for you: on first launch a setup wizard asks where your projects live, which Python to use and which dbt-core version you want, then installs dbt into an isolated environment.
 
 wickd is free and open source. [wickd Pro](https://lampherelabs.com/tools/wickd#pricing) is an optional subscription that adds advanced features and supports continued development. You can upgrade from **Upgrade to Pro** in the app's header.
 
@@ -32,7 +32,7 @@ task start
 - **Interactive DAG** — dependency graph with live status badges, dbt selector syntax (`+model`, `tag:x`), upstream/downstream traversal, and real-time updates while models run. Multi-select nodes to run, build, or test a whole slice at once
 - **Run / build / test** — trigger any dbt command from the side panel with upstream/downstream/full selectors; logs stream live
 - **SQL Workspace** — a scratchpad with the Monaco editor (the engine behind VS Code), a Compiled SQL tab, and a resizable results pane. Cmd+Enter runs, Cmd+S saves
-- **File explorer & editor** — browse and edit model SQL, YAML, and config with autocomplete on refs, sources, and documented columns
+- **File explorer & editor** — browse and edit model SQL, YAML, and config with autocomplete on refs, sources, and documented columns; a VS Code-style file tree with drag and drop (including from Finder), multi-select, cut/copy/paste, duplicate, inline rename and keyboard shortcuts
 - **Source control** — a VS Code-style Git panel: stage, diff, commit, push/pull, switch branches, and browse history
 - **Docs browser** — native dbt docs with searchable columns, cross-linked to the DAG and editor; macros include a live "Try It" compiler
 - **Health checks** — an overview of your connection (`dbt debug`), schema drift between your warehouse and `manifest.json`, and source freshness, with one-click Run all, status badges, and warnings when results are out of date. Drift separates models that aren't built yet, and lets you rebuild, re-check, open the YAML, or document new columns per model; freshness puts sources closest to their thresholds first
@@ -45,7 +45,7 @@ task start
 - **Integrated terminal & project creation** — multi-tab terminal in the bottom pane; `dbt init` runs in an in-app terminal with adapter install and `profiles.yml` setup handled for you
 - **Command palette** — ⌘K to jump to any page, project, or model, or run a dbt command
 - **Search across projects** — find a model, source, seed, snapshot, exposure or column in any of your projects from the home page search box or ⌘K, and jump straight to it in the DAG
-- **Node DAG** — a bottom-pane tab showing the full upstream and downstream lineage of whatever node you have selected, on any page, filterable by type, materialization, and status
+- **Node DAG & Node SQL** — bottom-pane tabs showing the full upstream and downstream lineage of whatever node you have selected, on any page (filterable by type, materialization, and status), and its uncompiled SQL
 - **Live sync with disk** — wickd watches your project, so a dbt run or compile from another terminal updates the DAG and run statuses, and commits or branch switches made outside the app show up in the Git panel, all without a reload
 - **Light & dark themes** — the whole app, switchable from Global Settings
 - **Back / forward navigation** — header arrows (or ⌘[ / ⌘] or ⌘← / ⌘→ and mouse side buttons) step through your last 25 pages, in-page tabs, opened files, and selected DAG/docs nodes

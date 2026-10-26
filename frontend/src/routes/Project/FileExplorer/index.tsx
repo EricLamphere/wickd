@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronsDownUp } from 'lucide-react';
-import { api, type FileContentDto, type GraphDto, type ModelNode } from '../../../lib/api';
+import { api, ApiError, type FileContentDto, type GraphDto, type ModelNode, type MovedPathDto } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import NavRail from '../components/NavRail';
 import { SidePane, type FailedRowsCache } from '../components/SidePane';
-import { ContextMenu } from './ContextMenu';
-import { TreeItem } from './TreeItem';
+import { FileTree } from './FileTree';
 import { ViewPane } from './panes/ViewPane';
-import type { ContextMenuState, RenameState, TreeNode } from './types';
-import { filterTree, updateNode } from './types';
+import { isAtOrUnder, remapPath } from './treeOps';
+import { fileOpErrorMessage } from './useFileOps';
 import { useReportSelectedNode } from '../lib/selectedNodeContext';
+import { confirmDialog } from '../../../lib/dialogs';
 
 /** File path a ?model= deep-link points at (unit tests aren't graph nodes — use their YAML file). */
 function resolveDeepLinkPath(graph: GraphDto, uid: string | null): string | null {
@@ -35,16 +34,16 @@ export default function FileExplorerPage() {
   const pathParam = searchParams.get('path');
   const modelParam = searchParams.get('model');
 
-  const [tree, setTree] = useState<TreeNode[]>([]);
-  const [filterText, setFilterText] = useState('');
   const [openFile, setOpenFile] = useState<FileContentDto | null>(null);
   const [edited, setEdited] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [saveError, setSaveError] = useState('');
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [renameState, setRenameState] = useState<RenameState | null>(null);
+  /** Why the last file couldn't be opened (binary, deleted), shown instead of the editor */
+  const [openError, setOpenError] = useState<string | null>(null);
+  /** Bumped when the page itself changes files (delete from the editor), so the tree re-reads */
+  const [treeVersion, setTreeVersion] = useState(0);
   /** model node corresponding to the open file, if any */
   const [selectedModel, setSelectedModel] = useState<ModelNode | null>(null);
   /** unique_id of the model corresponding to the open file, for ViewPane compiled SQL */
@@ -94,6 +93,11 @@ export default function FileExplorerPage() {
     refetchInterval: false,
   });
 
+  const { data: project } = useQuery({
+    queryKey: ['project', id],
+    queryFn: () => api.projects.get(id),
+  });
+
   useReportSelectedNode((selectedTestNode ?? selectedModel)?.unique_id ?? null);
 
   // When graph re-fetches (e.g. after statuses_changed), refresh stale node references
@@ -127,67 +131,7 @@ export default function FileExplorerPage() {
     };
   }, []);
 
-  // Dismiss context menu on outside click
-  useEffect(() => {
-    if (!contextMenu) return;
-    const dismiss = () => setContextMenu(null);
-    window.addEventListener('mousedown', dismiss);
-    return () => window.removeEventListener('mousedown', dismiss);
-  }, [contextMenu]);
-
   const SESSION_KEY = `file-explorer-open-${id}`;
-  const EXPANDED_KEY = `file-explorer-expanded-${id}`;
-
-  const getExpandedPaths = useCallback((): Set<string> => {
-    try {
-      const raw = sessionStorage.getItem(EXPANDED_KEY);
-      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-    } catch {
-      return new Set();
-    }
-  }, [EXPANDED_KEY]);
-
-  const saveExpandedPaths = useCallback((paths: Set<string>) => {
-    sessionStorage.setItem(EXPANDED_KEY, JSON.stringify([...paths]));
-  }, [EXPANDED_KEY]);
-
-  // Re-expand a flat tree by replaying the saved expanded paths breadth-first
-  const reexpandTree = useCallback(async (rootNodes: TreeNode[], expandedPaths: Set<string>): Promise<TreeNode[]> => {
-    if (expandedPaths.size === 0) return rootNodes;
-
-    let current = rootNodes;
-
-    // Walk each saved path and expand it, loading children if needed
-    const expand = async (nodes: TreeNode[], parts: string[]): Promise<TreeNode[]> => {
-      if (parts.length === 0) return nodes;
-      const [head, ...rest] = parts;
-      const results = await Promise.all(nodes.map(async (n) => {
-        if (!n.is_dir || n.name !== head) return n;
-        const children = n.children?.length ? n.children : (await api.files.list(id, n.path) as TreeNode[]);
-        const expandedChildren = rest.length > 0 ? await expand(children, rest) : children;
-        return { ...n, expanded: true, children: expandedChildren };
-      }));
-      return results;
-    };
-
-    for (const p of expandedPaths) {
-      const parts = p.split('/');
-      current = await expand(current, parts);
-    }
-    return current;
-  }, [id]);
-
-  const reloadDir = useCallback(async () => {
-    const root = await api.files.list(id);
-    const expandedPaths = getExpandedPaths();
-    const reexpanded = await reexpandTree(root as TreeNode[], expandedPaths);
-    setTree(reexpanded);
-  }, [id, getExpandedPaths, reexpandTree]);
-
-  useEffect(() => {
-    reloadDir();
-  }, [reloadDir]);
-
   useProjectEvents(id, useCallback((event) => {
     if (event.type === 'test_failed') {
       const d = event.data as { test_uid: string };
@@ -205,6 +149,7 @@ export default function FileExplorerPage() {
       const file = await api.files.getContent(id, path);
       if (seq !== loadSeqRef.current) return;
       setOpenFile(file);
+      setOpenError(null);
       // Resolve model for this file
       if (graph) {
         const node = graph.nodes.find((n) => n.original_file_path && path.endsWith(n.original_file_path));
@@ -235,7 +180,13 @@ export default function FileExplorerPage() {
     } catch (e) {
       // e.g. going back to a file that has since been deleted or renamed
       console.error(e);
-      if (seq === loadSeqRef.current) setOpenFile(null);
+      if (seq === loadSeqRef.current) {
+        setOpenFile(null);
+        const binary = e instanceof ApiError && e.body === 'binary file';
+        setOpenError(binary
+          ? `${path} is a binary file — it can't be opened here.`
+          : `Couldn't open ${path}: ${fileOpErrorMessage(e)}`);
+      }
     } finally {
       if (seq === loadSeqRef.current) setLoadingPath(null);
     }
@@ -250,6 +201,7 @@ export default function FileExplorerPage() {
   /** Clears the open file (after delete/rename) without leaving a stale ?path= or session restore behind. */
   const closeFile = useCallback(() => {
     setOpenFile(null);
+    setOpenError(null);
     setEdited(undefined);
     setModelUid(null);
     setSelectedModel(null);
@@ -269,52 +221,6 @@ export default function FileExplorerPage() {
       sessionStorage.setItem(SESSION_KEY, openFile.path);
     }
   }, [openFile, SESSION_KEY]);
-
-  // Expand all ancestor directories of a file path so the file is visible in the tree.
-  // Fetches all levels upfront, then applies a single setTree update to avoid stale-closure issues.
-  const expandToPath = useCallback(async (filePath: string) => {
-    const parts = filePath.split('/');
-    const dirSegments = parts.slice(0, -1);
-    if (dirSegments.length === 0) return;
-
-    // Fetch children for every ancestor directory in parallel
-    const childrenByPath: Record<string, TreeNode[]> = {};
-    await Promise.all(
-      dirSegments.map(async (_, i) => {
-        const dirPath = dirSegments.slice(0, i + 1).join('/');
-        childrenByPath[dirPath] = (await api.files.list(id, dirPath)) as TreeNode[];
-      })
-    );
-
-    // Single tree update: walk down by segment name, expanding and injecting fetched children.
-    // We only replace children for a directory when it has no children yet (first open); otherwise
-    // we keep the existing subtree so already-expanded nested folders are not collapsed.
-    setTree((prev) => {
-      const expand = (nodes: TreeNode[], remaining: string[], depth: number): TreeNode[] =>
-        nodes.map((n) => {
-          if (!n.is_dir || n.name !== remaining[0]) return n;
-          const dirPath = dirSegments.slice(0, depth + 1).join('/');
-          const existingChildren = n.children ?? [];
-          const children = existingChildren.length > 0 ? existingChildren : ((childrenByPath[dirPath] ?? []) as TreeNode[]);
-          if (remaining.length === 1) {
-            return { ...n, expanded: true, children };
-          }
-          return {
-            ...n,
-            expanded: true,
-            children: expand(children, remaining.slice(1), depth + 1),
-          };
-        });
-      return expand(prev, dirSegments, 0);
-    });
-
-    // Persist all expanded directory paths
-    const expandedPaths = getExpandedPaths();
-    dirSegments.forEach((_, i) => {
-      expandedPaths.add(dirSegments.slice(0, i + 1).join('/'));
-    });
-    saveExpandedPaths(expandedPaths);
-  }, [id, getExpandedPaths, saveExpandedPaths]);
 
   // The URL's ?path= is the open file: load it whenever it changes (click, back/forward).
   // Arriving without one, resolve the ?model= deep-link or the last-open file and write
@@ -339,41 +245,8 @@ export default function FileExplorerPage() {
     loadedKeyRef.current = key;
     // For test deep-links, scroll the editor to that test
     const testNode = graph.nodes.find((n) => n.unique_id === modelParam && n.resource_type === 'test') ?? null;
-    expandToPath(pathParam);
     loadFile(pathParam, testNode);
-  }, [graph, pathParam, modelParam, SESSION_KEY, setSearchParams, expandToPath, loadFile]);
-
-  const loadChildren = useCallback(async (node: TreeNode, pathParts: string[]) => {
-    if (!node.is_dir) return;
-    const children = await api.files.list(id, node.path);
-    const willExpand = !node.expanded;
-    setTree((prev) => updateNode(prev, pathParts, (n) => ({
-      ...n,
-      expanded: willExpand,
-      children: willExpand ? (children as TreeNode[]) : n.children,
-    })));
-    const expandedPaths = getExpandedPaths();
-    if (willExpand) {
-      expandedPaths.add(node.path);
-    } else {
-      // Collapse this folder and all descendants
-      for (const p of expandedPaths) {
-        if (p === node.path || p.startsWith(node.path + '/')) {
-          expandedPaths.delete(p);
-        }
-      }
-    }
-    saveExpandedPaths(expandedPaths);
-  }, [id, getExpandedPaths, saveExpandedPaths]);
-
-  const collapseAll = useCallback(() => {
-    saveExpandedPaths(new Set());
-    setTree((prev) => {
-      const collapse = (nodes: TreeNode[]): TreeNode[] =>
-        nodes.map((n) => ({ ...n, expanded: false, children: n.children ? collapse(n.children) : n.children }));
-      return collapse(prev);
-    });
-  }, [saveExpandedPaths]);
+  }, [graph, pathParam, modelParam, SESSION_KEY, setSearchParams, loadFile]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -408,11 +281,11 @@ export default function FileExplorerPage() {
 
   const handleDeleteFile = async () => {
     if (!openFile) return;
-    if (!confirm(`Delete '${openFile.path}'? This cannot be undone.`)) return;
+    if (!await confirmDialog(`Delete '${openFile.path}'? This cannot be undone.`, { confirmLabel: 'Delete', danger: true })) return;
     try {
       await api.files.delete(id, openFile.path);
       closeFile();
-      await reloadDir();
+      setTreeVersion((v) => v + 1);
     } catch (e) {
       console.error(e);
     }
@@ -420,94 +293,32 @@ export default function FileExplorerPage() {
 
   const handleDeleteModel = async () => {
     if (!selectedModel) return;
-    if (!confirm(`Delete model '${selectedModel.name}'? This removes the file from disk.`)) return;
+    if (!await confirmDialog(`Delete model '${selectedModel.name}'? This removes the file from disk.`, { confirmLabel: 'Delete', danger: true })) return;
     try {
       await api.models.delete(id, selectedModel.unique_id);
       closeFile();
-      await reloadDir();
+      setTreeVersion((v) => v + 1);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleContextRename = (node: TreeNode) => {
-    setContextMenu(null);
-    setRenameState({ path: node.path, currentName: node.name });
-  };
+  /** Moved or renamed on the tree: keep the open file (and any unsaved edits) under its new path. */
+  const handlePathsMoved = useCallback((moves: MovedPathDto[]) => {
+    if (!openFile) return;
+    const next = remapPath(openFile.path, moves);
+    if (!next) return;
+    setOpenFile({ ...openFile, path: next });
+    loadedKeyRef.current = `${next}\n`;
+    try { sessionStorage.setItem(SESSION_KEY, next); } catch { /* storage unavailable */ }
+    setSearchParams({ path: next }, { replace: true });
+  }, [openFile, SESSION_KEY, setSearchParams]);
 
-  const handleContextDelete = async (node: TreeNode) => {
-    setContextMenu(null);
-    const label = node.is_dir ? `folder '${node.name}' and all its contents` : `'${node.name}'`;
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
-    try {
-      await api.files.delete(id, node.path);
-      if (openFile?.path === node.path || openFile?.path.startsWith(node.path + '/')) {
-        closeFile();
-      }
-      await reloadDir();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleContextNewFile = async (node: TreeNode) => {
-    setContextMenu(null);
-    const dirPath = node.is_dir ? node.path : node.path.split('/').slice(0, -1).join('/');
-    const name = prompt('New file name:');
-    if (!name?.trim()) return;
-    try {
-      await api.files.newFile(id, name.trim(), dirPath, false);
-      await reloadDir();
-    } catch (e) {
-      alert(String(e));
-    }
-  };
-
-  const handleContextNewFolder = async (node: TreeNode) => {
-    setContextMenu(null);
-    const dirPath = node.is_dir ? node.path : node.path.split('/').slice(0, -1).join('/');
-    const name = prompt('New folder name:');
-    if (!name?.trim()) return;
-    try {
-      await api.files.newFile(id, name.trim(), dirPath, true);
-      await reloadDir();
-    } catch (e) {
-      alert(String(e));
-    }
-  };
-
-  const handleContextCopyPath = (node: TreeNode) => {
-    setContextMenu(null);
-    navigator.clipboard.writeText(node.path).catch(console.error);
-  };
-
-  const handleContextCopyRelativePath = (node: TreeNode) => {
-    setContextMenu(null);
-    navigator.clipboard.writeText(node.path).catch(console.error);
-  };
-
-  const handleRenameSubmit = async (newName: string) => {
-    if (!renameState) return;
-    const trimmed = newName.trim();
-    if (!trimmed || trimmed === renameState.currentName) {
-      setRenameState(null);
-      return;
-    }
-    try {
-      await api.files.rename(id, renameState.path, trimmed);
-      if (openFile?.path === renameState.path) {
-        closeFile();
-      }
-      await reloadDir();
-    } catch (e) {
-      alert(String(e));
-    } finally {
-      setRenameState(null);
-    }
-  };
+  const handlePathsDeleted = useCallback((paths: string[]) => {
+    if (openFile && paths.some((p) => isAtOrUnder(openFile.path, p))) closeFile();
+  }, [openFile, closeFile]);
 
   const isDirty = edited !== undefined && edited !== openFile?.content;
-  const visibleTree = filterText.trim() ? filterTree(tree, filterText) : tree;
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -516,42 +327,17 @@ export default function FileExplorerPage() {
 
       {/* File tree */}
       <div style={{ width: treeWidth }} className="shrink-0 bg-surface-app border-r border-gray-800 flex flex-col overflow-hidden relative">
-        <div className="flex items-center gap-1 px-2 py-2 border-b border-gray-800 shrink-0">
-          <input
-            type="search"
-            placeholder="Filter files…"
-            value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
-            className="flex-1 bg-surface-elevated border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
-          <button
-            onClick={collapseAll}
-            title="Collapse all folders"
-            className="shrink-0 p-1 text-gray-600 hover:text-gray-300 transition-colors"
-          >
-            <ChevronsDownUp className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div className="overflow-auto flex-1 py-1">
-          {visibleTree.map((node, i) => (
-            <TreeItem
-              key={node.path}
-              node={node}
-              depth={0}
-              pathParts={[String(i)]}
-              onToggle={loadChildren}
-              onOpen={openFileNode}
-              activePath={openFile?.path ?? null}
-              loadingPath={loadingPath}
-              onContextMenu={(e, n, pp) => {
-                e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, node: n, pathParts: pp });
-              }}
-              renameState={renameState}
-              onRenameSubmit={handleRenameSubmit}
-            />
-          ))}
-        </div>
+        <FileTree
+          projectId={id}
+          projectPath={project?.path ?? null}
+          activePath={openFile?.path ?? null}
+          revealPath={pathParam}
+          loadingPath={loadingPath}
+          refreshSignal={treeVersion}
+          onOpen={openFileNode}
+          onMoved={handlePathsMoved}
+          onDeleted={handlePathsDeleted}
+        />
         <div
           onMouseDown={(e) => { e.preventDefault(); treeResizing.current = true; }}
           className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-brand-500/40 transition-colors"
@@ -580,7 +366,7 @@ export default function FileExplorerPage() {
           />
         ) : (
           <div className="flex items-center justify-center text-gray-600 text-sm select-none h-full">
-            Select a file to view or edit
+            {openError ?? 'Select a file to view or edit'}
           </div>
         )}
       </div>
@@ -617,21 +403,6 @@ export default function FileExplorerPage() {
         })}
       />
 
-      {/* Context menu */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          node={contextMenu.node}
-          onRename={() => handleContextRename(contextMenu.node)}
-          onDelete={() => handleContextDelete(contextMenu.node)}
-          onNewFile={() => handleContextNewFile(contextMenu.node)}
-          onNewFolder={() => handleContextNewFolder(contextMenu.node)}
-          onCopyPath={() => handleContextCopyPath(contextMenu.node)}
-          onCopyRelativePath={() => handleContextCopyRelativePath(contextMenu.node)}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
     </div>
   );
 }

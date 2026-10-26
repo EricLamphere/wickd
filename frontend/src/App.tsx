@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
+import { DialogHost } from './components/DialogHost';
 import { SetupGate } from './components/setup/SetupGate';
 import { NavHistoryProvider } from './lib/navHistoryContext';
 import Home from './routes/Home';
@@ -44,6 +45,7 @@ export default function App() {
             </main>
           </div>
         </SetupGate>
+        <DialogHost />
       </NavHistoryProvider>
     </BrowserRouter>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, setupFieldError, type SettingsDto } from '../../lib/api';
+import { api, setupFieldError, type SettingsDto, type SetupFieldError } from '../../lib/api';
 import { applyTheme } from '../../lib/useTheme';
 import { EnvVarsStep } from './EnvVarsStep';
 import { InstallStep } from './InstallStep';
@@ -30,6 +30,8 @@ function initialForm(settings: SettingsDto): SetupForm {
     pythonPath: settings.setup_completed ? settings.python_path ?? '' : '',
     requirementsPath: savedRequirements ?? defaultRequirementsPath(projectsPath),
     createRequirementsFile: true,
+    // A re-run keeps the saved version; first run defaults to the newest release
+    dbtCoreVersion: settings.setup_completed ? settings.dbt_core_version ?? '' : null,
     requirementsTouched: savedRequirements != null,
     theme: settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : currentTheme,
     envVars: null,
@@ -49,6 +51,8 @@ export function SetupWizard({ settings, onFinish }: Props) {
   const [originalTheme] = useState(form.theme);
   const [step, setStep] = useState<StepId>('welcome');
   const [errors, setErrors] = useState<Partial<Record<StepId, string>>>({});
+  /** The server field the current error is about, for steps with more than one input */
+  const [errorField, setErrorField] = useState<SetupFieldError['field'] | null>(null);
   const [saving, setSaving] = useState(false);
   const [installAttempt, setInstallAttempt] = useState(0);
   const { data: savedEnvVars } = useQuery({
@@ -84,6 +88,7 @@ export function SetupWizard({ settings, onFinish }: Props) {
         python_path: form.pythonPath,
         global_requirements_path: form.requirementsPath,
         create_requirements_file: form.createRequirementsFile,
+        dbt_core_version: form.dbtCoreVersion ?? '',
         theme: form.theme,
         global_env_vars: form.envVars ?? undefined,
       });
@@ -97,6 +102,7 @@ export function SetupWizard({ settings, onFinish }: Props) {
       if (fieldError) {
         const target = FIELD_STEP[fieldError.field];
         setErrors({ [target]: fieldError.message });
+        setErrorField(fieldError.field);
         setStep(target);
       } else {
         setErrors({ review: e instanceof Error ? e.message : String(e) });
@@ -151,11 +157,11 @@ export function SetupWizard({ settings, onFinish }: Props) {
 
         <div className="flex-1 min-h-0 overflow-auto px-6 py-6">
           {StepBody ? (
-            <StepBody form={form} update={update} error={errors[step] ?? null} onEnter={next} />
+            <StepBody form={form} update={update} error={errors[step] ?? null} errorField={errorField} onEnter={next} />
           ) : (
             <InstallStep
               key={installAttempt}
-              installing={form.requirementsPath.trim() || 'the latest dbt-core'}
+              installing={form.requirementsPath.trim() || (form.dbtCoreVersion ? `dbt-core ${form.dbtCoreVersion}` : 'the latest dbt-core')}
               onRetry={() => setInstallAttempt((n) => n + 1)}
               onFinish={onFinish}
             />

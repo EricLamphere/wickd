@@ -6,7 +6,7 @@ import { CapturedVarsSection } from './CapturedVarsSection';
 import { ScriptTestOutput } from './ScriptTestOutput';
 
 // Starting point for a new script (Monaco has no placeholder text).
-const NEW_SCRIPT_TEMPLATE = '#!/usr/bin/env bash\nset -e\n\n# your setup here\n';
+const NEW_SCRIPT_TEMPLATE = '#!/usr/bin/env bash\nset -e\n\n# your init steps here\n';
 
 function sameVars(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
@@ -121,7 +121,7 @@ export function ScriptEditorModal({ projectId, initScriptPath, existing, onClose
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="setup_env"
+              placeholder="load_env"
               autoFocus={!isEdit}
               className="bg-surface-elevated border border-gray-700 rounded px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />

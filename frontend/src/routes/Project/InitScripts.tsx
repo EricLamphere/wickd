@@ -12,8 +12,9 @@ import { ScriptEditorModal } from './components/InitPipeline/ScriptEditorModal';
 import { useElementWidth } from './components/InitPipeline/useElementWidth';
 import {
   connectorState, laneCenterPct, laneOffsetPct,
-  type StepRunState, type StepStatus,
+  seedStepStates, type StepRunState, type StepStatus,
 } from './components/InitPipeline/flow';
+import { alertDialog, alertError, confirmDialog } from '../../lib/dialogs';
 
 // Stable reference for the "no data yet" default below — `data: steps = []`
 // would otherwise allocate a brand-new empty array on every render where the
@@ -37,7 +38,7 @@ export default function InitScriptsPage() {
     refetchOnMount: 'always',
   });
 
-  const { data: steps = EMPTY_STEPS, isLoading } = useQuery({
+  const { data: steps = EMPTY_STEPS, isLoading, isFetchedAfterMount } = useQuery({
     queryKey: ['init-steps', id],
     queryFn: () => api.init.steps(id),
     refetchOnMount: 'always',
@@ -45,50 +46,44 @@ export default function InitScriptsPage() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['init-steps', id] });
 
-  const [setupRunning, setSetupRunning] = useState(false);
+  const [initRunning, setInitRunning] = useState(false);
   const [lastRunAt, setLastRunAt] = useState<string | null>(null);
   const [stepStates, setStepStates] = useState<Record<string, StepRunState>>({});
 
-  // Seed stepStates from persisted step status once steps first load, so status/logs
-  // survive navigation and server restarts. SSE overwrites this live during a run.
+  // Seed stepStates from the server once fresh steps arrive, so status/logs survive
+  // navigation and restarts. Not from the cache: coming back mid-run, the cached rows
+  // predate the run and would paint every tile with its previous result. Live SSE
+  // updates that arrived first win over the fetched rows.
   const seededStepStatesRef = useRef(false);
   useEffect(() => {
-    if (seededStepStatesRef.current || steps.length === 0) return;
+    if (seededStepStatesRef.current || !isFetchedAfterMount || steps.length === 0) return;
     seededStepStatesRef.current = true;
-    const seeded: Record<string, StepRunState> = {};
-    for (const s of steps) {
-      if (s.last_status && s.last_status !== 'idle') {
-        seeded[s.name] = {
-          status: s.last_status as StepStatus,
-          log: s.last_log,
-          finishedAt: s.last_finished_at,
-        };
-      }
-    }
-    setStepStates(seeded);
-  }, [steps]);
+    const { states, running } = seedStepStates(steps);
+    setStepStates((live) => ({ ...states, ...live }));
+    if (running) setInitRunning(true);
+  }, [steps, isFetchedAfterMount]);
 
-  const runSetupMutation = useMutation({
+  const runInitMutation = useMutation({
     mutationFn: () => api.init.open(id),
     onMutate: () => {
-      setSetupRunning(true);
+      setInitRunning(true);
       // Clear previous run states
       setStepStates({});
     },
     onError: (err) => {
-      setSetupRunning(false);
+      setInitRunning(false);
       const message = err instanceof Error ? err.message : String(err);
       if (message.startsWith('409')) {
-        alert('Init pipeline is already running for this project.');
+        alertDialog('Init pipeline is already running for this project.');
       } else {
-        alert(message);
+        alertDialog(message);
       }
     },
   });
 
   useProjectEvents(id, useCallback((event) => {
     if (event.type === 'init_pipeline_started') {
-      setSetupRunning(true);
+      setInitRunning(true);
       // Only clear state for the steps actually in this run (a single-step
       // run publishes the same event with just that one step's name) — other
       // steps' persisted status must not be wiped.
@@ -116,7 +111,7 @@ export default function InitScriptsPage() {
       }));
     }
     if (event.type === 'init_pipeline_finished') {
-      setSetupRunning(false);
+      setInitRunning(false);
       setLastRunAt(new Date().toISOString());
       qc.invalidateQueries({ queryKey: ['project', id] });
       qc.invalidateQueries({ queryKey: ['init-steps', id] });
@@ -331,14 +326,14 @@ export default function InitScriptsPage() {
 
   const statusOf = (name: string): StepStatus => stepStates[name]?.status ?? 'idle';
 
-  const handleDelete = (step: InitStepDto) => {
-    if (!confirm(`Delete script "${step.name.replace(/^custom:\s*/, '')}"? This cannot be undone.`)) return;
+  const handleDelete = async (step: InitStepDto) => {
+    if (!await confirmDialog(`Delete script "${step.name.replace(/^custom:\s*/, '')}"? This cannot be undone.`, { confirmLabel: 'Delete', danger: true })) return;
     deleteMutation.mutate(step.name);
   };
 
   // Persisted status (survives navigation + restarts); local SSE-driven state
   // during an active run takes priority once it fires.
-  const displayRunning = setupRunning || project?.last_init_status === 'running';
+  const displayRunning = initRunning || project?.last_init_status === 'running';
   const effectiveLastRunAt = lastRunAt ?? project?.last_init_finished_at ?? null;
   const formattedLastRun = effectiveLastRunAt
     ? new Date(effectiveLastRunAt).toLocaleString(undefined, {
@@ -350,7 +345,7 @@ export default function InitScriptsPage() {
   return (
     <PageShell id={id}>
       <div className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
-        {/* Header with Run Setup button */}
+        {/* Header with Initialize button */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-sm font-semibold text-gray-200">Initialization</h1>
@@ -359,8 +354,8 @@ export default function InitScriptsPage() {
             )}
           </div>
           <button
-            onClick={() => runSetupMutation.mutate()}
-            disabled={displayRunning || runSetupMutation.isPending}
+            onClick={() => runInitMutation.mutate()}
+            disabled={displayRunning || runInitMutation.isPending}
             className="flex items-center gap-2 px-4 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-medium transition-colors"
           >
             {displayRunning && (
@@ -369,14 +364,14 @@ export default function InitScriptsPage() {
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z" />
               </svg>
             )}
-            {displayRunning ? 'Running…' : 'Run Setup'}
+            {displayRunning ? 'Running…' : 'Initialize'}
           </button>
         </div>
 
-        {/* Setup steps section — a staggered flow of tiles joined by connectors */}
+        {/* Init steps section — a staggered flow of tiles joined by connectors */}
         <div className="flex flex-col gap-4">
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            Setup steps
+            Init steps
           </h2>
 
           {/* pl-3 leaves room for the step-number badges straddling each tile's left edge */}
@@ -465,7 +460,7 @@ export default function InitScriptsPage() {
               setFilePickerOpen(false);
               invalidate();
             } catch (e) {
-              alert(String(e));
+              alertError(e);
             }
           }}
         />

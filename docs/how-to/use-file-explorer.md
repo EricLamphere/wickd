@@ -8,12 +8,36 @@ Click **Files** in the project nav. The left panel shows the project directory t
 
 ## Browsing files
 
-The file tree shows all files in your dbt project. Click any file to open it in the editor.
+The file tree shows every file in your dbt project (except `.git`, `dbt_packages`, `logs`, virtualenvs and `__pycache__`). Click a file to open it in the editor; click a folder to expand or collapse it.
 
-- Folders can be expanded/collapsed by clicking them
-- The currently selected file is highlighted
-- `.sql`, `.yml`, and `.yaml` files open in the editor
-- Other file types (e.g. `.md`, `.txt`) open read-only
+- The open file is highlighted, and its folders open automatically when you arrive from a deep link or with back/forward
+- Text files open in the editor (including extensionless ones such as `.gitignore`); binary files such as `dev.duckdb` show a "binary file" notice instead
+- The tree refreshes on its own when files change on disk (dbt, git, another editor), and when the window regains focus. The header also has **New File**, **New Folder**, **Refresh** and **Collapse all** buttons
+
+## Managing files and folders
+
+The tree works like VS Code's explorer.
+
+**Selecting.** Click selects one item. Cmd/Ctrl+click adds or removes items; Shift+click selects a range. Cmd/Ctrl+A selects everything visible.
+
+**Drag and drop.** Drag files or folders onto a folder to move them there. Dropping on a file drops into that file's folder, and dropping on the empty space below the tree moves to the project root. Hold Alt/Option while dropping to copy instead. Hovering a closed folder while dragging opens it. You can also drag files or whole folders in from Finder/Explorer to add them; if a file already exists you're asked before it's replaced.
+
+**Right-click menu.** New File, New Folder, Reveal in Finder (Explorer on Windows), Cut, Copy, Paste, Duplicate, Copy Path (absolute), Copy Relative Path, Rename and Delete. Right-clicking empty space acts on the project root. When several items are selected, Cut/Copy/Delete apply to all of them.
+
+**Keyboard** (with the tree focused):
+
+| Key | Action |
+|-----|--------|
+| ↑ / ↓ (Shift to extend) | Move the selection |
+| → / ← | Expand / collapse a folder, or go to its first child / parent |
+| Space, or Enter on Windows/Linux | Open the file or toggle the folder |
+| Enter on macOS, or F2 | Rename inline (the name is selected without its extension) |
+| ⌘⌫ / Delete | Delete (with confirmation) |
+| ⌘C / ⌘X / ⌘V | Copy / cut / paste into the selected folder (or the selected file's folder) |
+| ⌥⌘C / ⌥⇧⌘C | Copy path / copy relative path |
+| Esc | Clear the cut and the multi-selection |
+
+New files and folders are named inline in the tree, and a new file opens straight away. Pasting or duplicating where the name is taken adds ` copy` (then ` copy 2`, …), like VS Code. A move that would overwrite something is refused, and nothing moves. If you move or rename the open file, it stays open (unsaved edits included) at its new path.
 
 ## Editing a file
 

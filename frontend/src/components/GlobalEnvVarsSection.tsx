@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
+import { alertError, confirmDialog } from '../lib/dialogs';
 
 export const GLOBAL_ENV_QUERY_KEY = ['global-env'] as const;
 
@@ -45,7 +46,7 @@ export function GlobalEnvVarsSection() {
       refresh();
       newKeyRef.current?.focus();
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     } finally {
       setSaving(false);
     }
@@ -57,17 +58,17 @@ export function GlobalEnvVarsSection() {
       setEditingKey(null);
       refresh();
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 
   const handleDelete = async (key: string) => {
-    if (!confirm(`Delete '${key}'?`)) return;
+    if (!await confirmDialog(`Delete '${key}'?`, { confirmLabel: 'Delete', danger: true })) return;
     try {
       await api.globalEnv.delete(key);
       refresh();
     } catch (e) {
-      alert(String(e));
+      alertError(e);
     }
   };
 

@@ -3,6 +3,8 @@ import { RefreshCw } from 'lucide-react';
 import { api } from '../../lib/api';
 import { applyTheme } from '../../lib/useTheme';
 import { Choice, InlineCode, PathInput, StepHeading } from './fields';
+import { DbtCoreVersionPicker, useRequirementsFile } from './DbtCoreVersionPicker';
+import { dbtCorePlan } from './dbtCorePlan';
 import type { SetupForm, StepProps } from './types';
 
 export function WelcomeStep() {
@@ -102,12 +104,17 @@ export function PythonStep({ form, update, error }: StepProps) {
   );
 }
 
-export function PackagesStep({ form, update, error, onEnter }: StepProps) {
+export function PackagesStep({ form, update, error, errorField, onEnter }: StepProps) {
+  const file = useRequirementsFile(form.requirementsPath);
+  const plan = dbtCorePlan({
+    path: form.requirementsPath, createFile: form.createRequirementsFile, file, version: form.dbtCoreVersion ?? '',
+  });
+  const versionError = errorField === 'dbt_core_version' ? error : null;
   return (
     <>
       <StepHeading title="Which dbt packages should be installed?">
         A <InlineCode className="text-gray-300">requirements.txt</InlineCode> listing dbt-core and the adapters you use.
-        Clear the field to just install the latest dbt-core.
+        Clear the field to install only dbt-core.
       </StepHeading>
       <PathInput
         label="Global requirements file (optional)"
@@ -115,7 +122,7 @@ export function PackagesStep({ form, update, error, onEnter }: StepProps) {
         onChange={(requirementsPath) => update({ requirementsPath })}
         onEnter={onEnter}
         placeholder="~/dbt-projects/requirements.txt"
-        error={error}
+        error={versionError ? null : error}
         hint={
           <>
             dbt also needs an adapter for your warehouse (e.g. <InlineCode>dbt-duckdb</InlineCode>,{' '}
@@ -133,6 +140,19 @@ export function PackagesStep({ form, update, error, onEnter }: StepProps) {
           />
           Create this file if it doesn't exist (it will start with dbt-core)
         </label>
+      )}
+      {plan.showPicker && (
+        <DbtCoreVersionPicker
+          value={form.dbtCoreVersion}
+          onChange={(dbtCoreVersion) => update({ dbtCoreVersion })}
+          plan={plan}
+          error={versionError}
+        />
+      )}
+      {plan.kind === 'from-file' && file?.dbt_core_line && (
+        <p className="mt-5 text-xs text-gray-500">
+          dbt-core comes from your file: <InlineCode>{file.dbt_core_line}</InlineCode>
+        </p>
       )}
     </>
   );
@@ -161,10 +181,14 @@ function describeEnvVars(form: SetupForm): string {
 }
 
 export function ReviewStep({ form }: StepProps) {
+  const file = useRequirementsFile(form.requirementsPath);
+  const plan = dbtCorePlan({
+    path: form.requirementsPath, createFile: form.createRequirementsFile, file, version: form.dbtCoreVersion ?? '',
+  });
   const rows: [string, string][] = [
     ['Projects folder', form.projectsPath.trim()],
     ['Python', form.pythonPath || 'Auto-detect'],
-    ['Installs', form.requirementsPath.trim() || 'Latest dbt-core'],
+    ['Installs', plan.installs],
     ['Environment', describeEnvVars(form)],
     ['Theme', form.theme === 'dark' ? 'Dark' : 'Light'],
   ];

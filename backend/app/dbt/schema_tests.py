@@ -4,6 +4,8 @@ Same approach as schema_descriptions.py: text is never re-serialised — lines
 are spliced in (in the file's own indentation) and the result is re-parsed and
 checked against the original plus exactly these tests. Pure.
 
+add_model_tests() does the same for model-level tests (under the entry itself).
+
 Uses the column's existing test key (`data_tests:` or the pre-1.8 `tests:`),
 else the one this entry already uses elsewhere, else the dbt version's default.
 dbt 1.10+ wants test arguments under `arguments:`.
@@ -32,8 +34,9 @@ TEST_KEYS = ("data_tests", "tests")
 
 @dataclass(frozen=True)
 class DataTestSpec:
-    name: str  # not_null | unique | accepted_values | relationships
-    args: dict = field(default_factory=dict)  # values / quote / to / field
+    # not_null | unique | accepted_values | relationships | dbt_utils.unique_combination_of_columns
+    name: str
+    args: dict = field(default_factory=dict)  # values / quote / to / field / combination_of_columns
 
 
 def _version(dbt_version: str | None) -> tuple[int, int]:
@@ -131,6 +134,77 @@ def add_column_tests(
         return text
     new_text = _apply(lines, splices)
     _verify(text, new_text, filename, resource_key, name, applied, arguments_block)
+    return new_text
+
+
+def add_model_tests(
+    text: str,
+    filename: str,
+    resource_key: str,
+    name: str,
+    specs: Sequence[DataTestSpec],
+    dbt_version: str | None,
+) -> str:
+    """Append model-level `specs` (e.g. dbt_utils.unique_combination_of_columns) to the node's entry."""
+    if not specs:
+        return text
+    data = _parse(text, filename)
+    lines = text.splitlines(keepends=True)
+    entries = data.get(resource_key)
+    entry = _find_entry(entries, name) if isinstance(entries, list) else None
+    if entry is None:
+        raise SchemaYamlError(f"{name!r} is not in {filename}")
+    index = entries.index(entry)
+    entry_end = (
+        entries.lc.item(index + 1)[0]
+        if index + 1 < len(entries)
+        else _key_bound(data, resource_key, len(lines))
+    )
+    columns = entry.get("columns") if isinstance(entry.get("columns"), list) else []
+    column_key = next((k for c in columns if isinstance(c, dict) for k in TEST_KEYS if k in c), None)
+    arguments_block = uses_arguments_block(dbt_version)
+    offset = _seq_offset(text)
+    name_line, key_col = entry.lc.key("name")
+    if lines[name_line].lstrip().lstrip("- ").startswith("{"):
+        raise SchemaYamlError("inline {…} entries can't be edited — convert them to block style")
+
+    key = next((k for k in TEST_KEYS if k in entry), None)
+    if key is None:
+        key = column_key or default_test_key(dbt_version)
+        at = _after_content(lines, name_line, _key_bound(entry, "name", entry_end))
+        new = [f"{' ' * key_col}{key}:\n"]
+        for spec in specs:
+            new += render_test(spec, key_col + offset, arguments_block)
+    else:
+        key_line, col = entry.lc.key(key)
+        existing = entry[key]
+        if existing is not None and not isinstance(existing, list):
+            raise SchemaYamlError(f"`{key}` for {name!r} is not a list")
+        if lines[key_line].split(":", 1)[-1].strip().startswith("["):
+            raise SchemaYamlError(f"`{key}` for {name!r} uses inline [...] syntax")
+        if existing:
+            dash = lines[existing.lc.item(0)[0]].find("-")
+            dash_col = dash if dash >= 0 else col + offset
+            at = _after_content(lines, key_line, _key_bound(entry, key, entry_end))
+        else:
+            dash_col, at = col + offset, key_line + 1
+        new = []
+        for spec in specs:
+            new += render_test(spec, dash_col, arguments_block)
+
+    new_text = _apply(lines, [_Splice(at, at, tuple(new))])
+    expected = copy.deepcopy(_plain(data))
+    target = _find_entry(expected[resource_key], name)
+    assert target is not None
+    target[key] = (target.get(key) or []) + [_plain_test(s, arguments_block) for s in specs]
+    try:
+        actual = _plain(_parse(new_text, filename))
+    except SchemaYamlError as exc:
+        raise SchemaYamlError(f"could not safely edit {filename}: {exc}") from exc
+    if actual != expected:
+        raise SchemaYamlError(
+            f"could not safely edit {filename} — its layout is unusual; add the tests by hand"
+        )
     return new_text
 
 

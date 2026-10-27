@@ -6,16 +6,16 @@ text it was made against with only the items the user ticked — through the
 same splicers and safety checks as the original, never by editing the diff.
 
 Lineage propagation proposals (kind "propagate", app/propagation/proposals.py)
-span several files: each item names its file, and only that file's items are
-rebuilt.
+and batch test proposals (Test gaps, app/test_targets/batch.py) span several
+files: each item names its file, and only that file's items are rebuilt.
 """
 
 from pathlib import PurePosixPath
 
 from app.dbt.schema_descriptions import set_descriptions
-from app.dbt.schema_tests import DataTestSpec, add_column_tests
 from app.dbt.schema_yaml import node_text
 from app.propagation import proposals as propagation
+from app.test_targets.items import render_tests
 
 DESCRIPTION_KEY = "description"
 COLUMN_PREFIX = "col:"
@@ -30,7 +30,10 @@ def item_keys(kind: str, result: dict, path: str | None = None) -> list[str]:
     if kind == propagation.KIND:
         return [i["key"] for i in result.get("items") or [] if path is None or i.get("file") == path]
     if kind == "tests":
-        return [t["key"] for t in result.get("tests") or [] if "key" in t]
+        return [
+            t["key"] for t in result.get("tests") or []
+            if "key" in t and (path is None or t.get("file") in (None, path))
+        ]
     if kind == "document":
         keys = [DESCRIPTION_KEY] if result.get("description") else []
         return keys + [COLUMN_PREFIX + c for c in result.get("columns") or {}]
@@ -48,6 +51,8 @@ def rebuild(kind: str, result: dict, original: str | None, path: str, keys: list
         chosen = set(keys)
         items = [i for i in result["items"] if i.get("file") == path and i["key"] in chosen]
         return propagation.render_file(original, filename, items)
+    if kind == "tests" and result.get("batch"):
+        return _rebuild_batch_tests(result, original, path, filename, keys)
 
     plan = result.get("plan")
     available = item_keys(kind, result)
@@ -60,15 +65,9 @@ def rebuild(kind: str, result: dict, original: str | None, path: str, keys: list
 
     if kind == "tests":
         tests = [t for t in result["tests"] if t.get("key") in chosen]
-        by_column: dict[str, list[DataTestSpec]] = {}
-        for t in tests:
-            by_column.setdefault(t["column"], []).append(DataTestSpec(t["spec"]["name"], t["spec"]["args"]))
-        if not by_column:
+        if not tests:
             return original or ""
-        text = node_text(original, filename, plan["resource_key"], plan["name"], list(by_column))
-        return add_column_tests(
-            text, filename, plan["resource_key"], plan["name"], by_column, plan.get("dbt_version")
-        )
+        return render_tests(original, filename, plan["resource_key"], plan["name"], tests, plan.get("dbt_version"))
 
     # document: the node's entry + column stubs as originally planned, then chosen descriptions
     text = node_text(original, filename, plan["resource_key"], plan["name"], plan.get("columns") or [])
@@ -80,3 +79,19 @@ def rebuild(kind: str, result: dict, original: str | None, path: str, keys: list
         text, filename, plan["resource_key"], plan["name"], description, columns,
         overwrite=bool(plan.get("overwrite")),
     ).text
+
+
+def _rebuild_batch_tests(result: dict, original: str | None, path: str, filename: str, keys: list[str]) -> str:
+    available = item_keys("tests", result, path)
+    unknown = set(keys) - set(available)
+    if not available or unknown:
+        raise SelectionError(f"unknown items: {', '.join(sorted(unknown))}" if unknown else "no items in this file")
+    chosen = set(keys)
+    by_node: dict[tuple[str, str], list[dict]] = {}
+    for test in result["tests"]:
+        if test.get("file") == path and test["key"] in chosen:
+            by_node.setdefault((test["resource_key"], test["name"]), []).append(test)
+    text = original
+    for (resource_key, name), tests in by_node.items():
+        text = render_tests(text, filename, resource_key, name, tests, result.get("dbt_version"))
+    return text if text is not None else ""

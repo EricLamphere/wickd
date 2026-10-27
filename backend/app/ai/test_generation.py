@@ -2,11 +2,15 @@
 
 1. Columns from the warehouse (same probe as documentation) and a data sample,
    summarised per column (nulls, distinct values) so suggestions are grounded.
-2. The model picks tests from a schema that only allows real columns, the four
-   generic tests and upstream relationship targets; wickd_pro validates again.
-3. Every suggestion is pre-checked against the warehouse in ONE `dbt show`
+2. Tests with structural evidence — join keys and the model's grain, from the
+   column lineage snapshot (app/test_targets) — are added without the LLM, so
+   they work without an AI model set up.
+3. The model picks further tests from a schema that only allows real columns,
+   the four generic tests and upstream relationship targets, prompted with the
+   columns ranked by how much depends on them; wickd_pro validates again.
+4. Every suggestion is pre-checked against the warehouse in ONE `dbt show`
    query, so the review shows which tests pass today.
-4. Tests are spliced into the schema YAML (app/dbt/schema_tests.py).
+5. Tests are spliced into the schema YAML (app/test_targets/items.py).
 Nothing is written here — the result becomes an AiProposal the user reviews.
 """
 
@@ -15,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.ai import pro
-from app.ai.client import stream_chat
+from app.ai.client import LlmError, stream_chat
 from app.ai.config import AiConfig
 from app.ai.documentation import (
     MAX_AI_COLUMNS,
@@ -27,14 +31,21 @@ from app.ai.documentation import (
     node_columns,
 )
 from app.ai.errors import NothingToPropose, ProposalError
-from app.ai.provider import resolve_provider
+from app.ai.provider import llm_ready, resolve_provider
 from app.ai.run_context import tests_on
-from app.ai.runtime import llama_server
+from app.ai.runtime import RuntimeUnavailable, llama_server
 from app.dbt.runner import RunRequest, runner
-from app.dbt.schema_tests import DataTestSpec, add_column_tests
+from app.dbt.schema_tests import DataTestSpec
 from app.dbt.schema_yaml import RESOURCE_KEYS, DocumentTarget, plan_document_node
 from app.dbt.show_parser import parse_show_json
 from app.logging_setup import get_logger
+from app.test_targets.items import (
+    COMBINATION,
+    COMBINATION_MACRO,
+    render_tests,
+    structural_tests,
+    suggestion_key,
+)
 
 log = get_logger(__name__)
 
@@ -46,7 +57,8 @@ SHOW_TIMEOUT_S = 60
 @dataclass(frozen=True)
 class TestsResult:
     change: FileChange
-    # {"tests": [{column, test, reason, values?, to?, field?, failures: int | None}]}
+    # {"tests": [{key, column, test, reason, evidence?, source, values?, to?, field?,
+    #             columns?, failures: int | None, spec}], "plan": {...}, "note"?}
     summary: dict
 
 
@@ -122,6 +134,8 @@ def _relation(manifest: dict, unique_id: str) -> str | None:
 
 def to_spec(test: dict, manifest: dict, stats: dict) -> DataTestSpec | None:
     kind = test["test"]
+    if kind == COMBINATION:
+        return DataTestSpec(COMBINATION_MACRO, {"combination_of_columns": list(test["columns"])})
     if kind in ("not_null", "unique"):
         return DataTestSpec(kind)
     if kind == "accepted_values":
@@ -149,7 +163,13 @@ def check_sql(model_ref: str, tests: list[tuple[dict, DataTestSpec]]) -> str:
     parts = []
     for i, (test, spec) in enumerate(tests):
         col = test["column"]
-        if spec.name == "not_null":
+        if spec.name == COMBINATION_MACRO:
+            cols = ", ".join(spec.args["combination_of_columns"])
+            body = (
+                f"from (select {cols} from {{{{ {model_ref} }}}} "
+                f"group by {cols} having count(*) > 1) dupes"
+            )
+        elif spec.name == "not_null":
             body = f"from {{{{ {model_ref} }}}} where {col} is null"
         elif spec.name == "unique":
             body = (
@@ -169,7 +189,7 @@ def check_sql(model_ref: str, tests: list[tuple[dict, DataTestSpec]]) -> str:
     return "\nunion all\n".join(parts)
 
 
-async def _precheck(
+async def precheck_tests(
     project_id: int, project_path: Path, env: dict[str, str], model_ref: str,
     tests: list[tuple[dict, DataTestSpec]],
 ) -> list[int | None]:
@@ -204,6 +224,57 @@ def existing_tests(manifest: dict, unique_id: str) -> list[dict]:
     ]
 
 
+LINEAGE_ONLY_NOTE = (
+    "Only lineage-backed tests (join keys and grain) — set up the AI model for more suggestions."
+)
+
+
+async def _ai_suggestions(
+    config: AiConfig,
+    manifest: dict,
+    unique_id: str,
+    columns: list[str],
+    stats: dict,
+    existing: list[dict],
+    targets: list[dict] | None,
+    on_phase: PhaseCallback,
+    on_text: TextCallback,
+) -> list[dict]:
+    prompt = pro.suggest_tests_prompt(manifest, unique_id, columns, stats, existing, targets)
+    await on_phase("writing")
+    provider = await resolve_provider(config)
+    parts: list[str] = []
+    async for delta in stream_chat(
+        provider, prompt["messages"], max_tokens=prompt.get("max_tokens"), schema=prompt["schema"]
+    ):
+        parts.append(delta)
+        llama_server.touch()
+        await on_text("".join(parts))
+    raw = "".join(parts).strip()
+    try:
+        suggested = pro.parse_suggested_tests(raw, manifest, unique_id, columns, existing)
+    except ValueError as exc:
+        log.warning("ai_tests_unparseable", unique_id=unique_id, error=str(exc), raw=raw[:500])
+        raise ProposalError(f"the model's answer wasn't usable: {exc}") from exc
+    return [{**t, "source": "ai"} for t in suggested]
+
+
+def summary_item(index: int, test: dict, spec: DataTestSpec, failures: int | None) -> dict:
+    return {
+        "column": test["column"],
+        "test": test["test"],
+        "reason": test.get("reason", ""),
+        **({"columns": test["columns"]} if test.get("columns") else {}),
+        **({"evidence": test["evidence"]} if test.get("evidence") else {}),
+        "source": test.get("source", "ai"),
+        **({"values": test["values"]} if "values" in test else {}),
+        **({"to": test["to"].split(".")[-1], "field": test["field"]} if "to" in test else {}),
+        "failures": failures,
+        "key": f"t{index}",
+        "spec": {"name": spec.name, "args": spec.args},
+    }
+
+
 async def generate_tests(
     *,
     project_id: int,
@@ -213,7 +284,10 @@ async def generate_tests(
     config: AiConfig,
     on_phase: PhaseCallback = _noop,
     on_text: TextCallback = _noop,
+    targets: list[dict] | None = None,
 ) -> TestsResult:
+    """`targets`: the model's ranking (app/test_targets/service.targets_for_model), or
+    None when column lineage with structure isn't available."""
     manifest = await asyncio.to_thread(load_manifest_dict, project_path)
     node = (manifest.get("nodes") or {}).get(unique_id)
     if not isinstance(node, dict):
@@ -231,31 +305,39 @@ async def generate_tests(
     stats = column_stats(*sample) if sample else {}
 
     existing = existing_tests(manifest, unique_id)
-    prompt = pro.suggest_tests_prompt(manifest, unique_id, columns, stats, existing)
-    await on_phase("writing")
-    provider = await resolve_provider(config)
-    parts: list[str] = []
-    async for delta in stream_chat(
-        provider, prompt["messages"], max_tokens=prompt.get("max_tokens"), schema=prompt["schema"]
-    ):
-        parts.append(delta)
-        llama_server.touch()
-        await on_text("".join(parts))
-    raw = "".join(parts).strip()
-    try:
-        suggested = pro.parse_suggested_tests(raw, manifest, unique_id, columns, existing)
-    except ValueError as exc:
-        log.warning("ai_tests_unparseable", unique_id=unique_id, error=str(exc), raw=raw[:500])
-        raise ProposalError(f"the model's answer wasn't usable: {exc}") from exc
+    seen = {suggestion_key(e) for e in existing if e.get("test")}
+    structural = []
+    for test in structural_tests(targets or [], columns):
+        if suggestion_key(test) not in seen:
+            seen.add(suggestion_key(test))
+            structural.append(test)
 
-    pairs = [(t, s) for t in suggested if (s := to_spec(t, manifest, stats)) is not None]
+    note: str | None = None
+    suggested: list[dict] = []
+    if structural and not llm_ready(config):
+        note = LINEAGE_ONLY_NOTE
+    else:
+        known = existing + [{"column": t["column"], "test": t["test"]} for t in structural if t["column"]]
+        try:
+            suggested = await _ai_suggestions(
+                config, manifest, unique_id, columns, stats, known, targets, on_phase, on_text
+            )
+        except (ProposalError, RuntimeUnavailable, LlmError) as exc:
+            if not structural:
+                raise
+            log.warning("ai_tests_llm_failed", unique_id=unique_id, error=str(exc))
+            note = f"Only lineage-backed tests — the AI suggestions failed: {exc}"
+
+    pairs = [
+        (t, s) for t in structural + suggested if (s := to_spec(t, manifest, stats)) is not None
+    ]
     if not pairs:
         raise NothingToPropose("No new tests worth adding — the existing tests already cover this model.")
 
     failures: list[int | None] = [None] * len(pairs)
     if sample is not None:
         await on_phase("checking")
-        failures = await _precheck(project_id, project_path, env, f"ref('{node['name']}')", pairs)
+        failures = await precheck_tests(project_id, project_path, env, f"ref('{node['name']}')", pairs)
 
     target = DocumentTarget(
         name=node["name"],
@@ -263,31 +345,15 @@ async def generate_tests(
         original_file_path=node["original_file_path"],
         patch_path=node.get("patch_path"),
     )
-    tested_columns = list(dict.fromkeys(t["column"] for t, _ in pairs))
-    plan = await asyncio.to_thread(plan_document_node, project_path, target, tested_columns)
-    by_column: dict[str, list[DataTestSpec]] = {}
-    for test, spec in pairs:
-        by_column.setdefault(test["column"], []).append(spec)
+    plan = await asyncio.to_thread(plan_document_node, project_path, target, [])
     dbt_version = (manifest.get("metadata") or {}).get("dbt_version")
-    text = add_column_tests(
-        plan.text, plan.file.name, plan.resource_key, target.name, by_column, dbt_version
-    )
+    items = [summary_item(i, t, spec, failures[i]) for i, (t, spec) in enumerate(pairs)]
+    text = render_tests(plan.original, plan.file.name, plan.resource_key, target.name, items, dbt_version)
 
     summary = {
-        "tests": [
-            {
-                "column": t["column"],
-                "test": t["test"],
-                "reason": t.get("reason", ""),
-                **({"values": t["values"]} if "values" in t else {}),
-                **({"to": t["to"].split(".")[-1], "field": t["field"]} if "to" in t else {}),
-                "failures": failures[i],
-                "key": f"t{i}",
-                "spec": {"name": spec.name, "args": spec.args},
-            }
-            for i, (t, spec) in enumerate(pairs)
-        ],
+        "tests": items,
         # how to rebuild the file for a subset of items (app/ai/selection.py)
         "plan": {"resource_key": plan.resource_key, "name": target.name, "dbt_version": dbt_version},
+        **({"note": note} if note else {}),
     }
     return TestsResult(change=FileChange(plan.result.path, plan.original, text), summary=summary)

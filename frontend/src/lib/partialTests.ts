@@ -48,9 +48,20 @@ export function parsePartialTests(text: string): PartialTest[] {
   return tests;
 }
 
-/** e.g. `unique`, `accepted_values [a, b]`, `relationships → customers.id` */
+/** e.g. `unique`, `accepted_values [a, b]`, `relationships → customers.id`, `unique_combination_of_columns` */
 export function describeTest(t: Pick<PartialTest, 'test' | 'values' | 'to' | 'field'>): string {
   if (t.test === 'accepted_values' && t.values?.length) return `accepted_values [${t.values.join(', ')}]`;
   if (t.test === 'relationships' && t.to) return `relationships → ${t.to.split('.').pop()}.${t.field ?? ''}`;
   return t.test;
+}
+
+/** What a test is on: its column, or `(a, b)` for a model-level combination test. */
+export function testSubject(t: { column: string | null; columns?: string[] }): string {
+  return t.column ?? `(${(t.columns ?? []).join(', ')})`;
+}
+
+/** Why a test was suggested: lineage evidence (join keys, grain), else the model's reason. */
+export function testWhy(t: { reason?: string; evidence?: string; source?: string }): string {
+  if (t.source === 'lineage' && t.evidence) return `From lineage: ${t.evidence}`;
+  return t.reason ?? '';
 }

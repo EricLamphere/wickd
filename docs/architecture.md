@@ -54,6 +54,7 @@ wickd/
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
 │   │   │   ├── propagation.py       # /api/projects/{id}/propagate/* + /lineage/tag-flow — inherited descriptions and tag flow (Pro; engine in wickd_pro via app/propagation/pro.py)
+│   │   │   ├── test_gaps.py         # /api/projects/{id}/test-gaps + /ai/tests/batch — riskiest untested columns and a batch tests proposal (Pro; ranking in wickd_pro via app/test_targets/pro.py)
 │   │   │   ├── refactor.py          # /api/projects/{id}/refactor + Wicky refactor requests — rename model / rename column / extract CTE (Pro; engine in wickd_pro via app/refactor/pro.py)
 │   │   │   ├── ai_proposal_apply.py # /api/projects/{id}/ai/proposals/{pid}/accept (whole proposal at once) + /undo (file ops in app/ai/file_ops.py)
 │   │   │   ├── performance.py       # /api/projects/{id}/node-durations (Base) + run analysis / project performance (Pro; analysis in wickd_pro via app/performance/pro.py)
@@ -123,7 +124,7 @@ wickd/
 │   │           ├── Docs.tsx             # Native docs browser (folder tree)
 │   │           ├── Environment.tsx      # Env vars + profiles
 │   │           ├── InitScripts.tsx      # Init pipeline management
-│   │           ├── Health.tsx           # Health page: Overview (default) + Connection + Schema Drift + Source Freshness tabs, each check tab with a status badge
+│   │           ├── Health.tsx           # Health page: Overview (default) + Connection + Schema Drift + Test Gaps (Pro) + Source Freshness tabs, each check tab with a status badge
 │   │           ├── FileExplorer/        # File browser + Monaco editor; SidePane replaces old tab bar
 │   │           ├── Git/                 # Source Control page (VSCode-style SCM)
 │   │           ├── Workspace/           # SQL Workspace — file tree + Monaco editor + results pane + autocomplete
@@ -140,7 +141,7 @@ wickd/
 │   │               ├── ProjectNav.tsx       # Nav items (DAG/Files/Docs/Workspace/Git/Environment/Init/Health); icon-only mode when collapsed
 │   │               ├── HealthCheckPanel.tsx # dbt debug runner — shows per-check status table, version info, raw log
 │   │               ├── DriftPanel.tsx       # Schema drift UI — header (target, checked/skipped), stale notice, progress; results in drift/ (DriftResults: search, filters, Drifted/Not built/Errors/In sync groups; ModelDriftRow: re-check, Build model, Open YAML, Document columns)
-│   │               ├── health/              # Shared Health pieces: HealthOverview (cards + Run all), useHealth.ts (useHealthSummary, useHealthRuns — keyed mutations shared across views), healthStatus.ts (badge/nav-dot logic), StaleNotice, RunButton, Spinner
+│   │               ├── health/              # Shared Health pieces: HealthOverview (cards + Run all; TestGapsCard for Pro test gaps), useHealth.ts (useHealthSummary, useHealthRuns — keyed mutations shared across views), healthStatus.ts (badge/nav-dot logic), StaleNotice, RunButton, Spinner; TestGapsPanel.tsx + useTestGaps.ts + testGapsView.ts (Test Gaps tab, Pro)
 │   │               ├── SidePane/
 │   │               │   ├── index.tsx        # Right-side collapsible panel (drag/collapse); tabs: Properties, Profile
 │   │               │   ├── PropertiesTab.tsx # Model metadata; Refs/Sources + Referenced By as cmd+clickable chips; run controls; action buttons
@@ -309,9 +310,21 @@ column_lineage_snapshots
   row_dependencies_json TEXT -- JSON {uid: [{node, column}, ...]}: upstream columns each model filters / joins /
                              -- groups on (WHERE, JOIN ON/USING, GROUP BY, HAVING, QUALIFY), i.e. which rows it has
   lineage_version INTEGER    -- 1 = projection lineage only; 2 = also row dependencies; 3 = also a transform `kind`
-                             -- (identity | rename | cast | derived) on each results_json ref. The short-circuit
-                             -- only reuses a snapshot whose version matches what a scan would produce now
+                             -- (identity | rename | cast | derived) on each results_json ref; 4 = also join_keys_json.
+                             -- The short-circuit only reuses a snapshot whose version matches what a scan would produce now
+  join_keys_json  TEXT       -- JSON {uid: {join_pairs: [{left: {node, column}, right: {node, column}, type}],
+                             -- grain: {columns, via: group_by | distinct | dedupe} | null}} (lineage_version 4; test suggestions)
   -- Interrupted snapshots (status='running') are reset to 'error' on server restart
+
+test_gap_ignores
+  id              INTEGER PK
+  project_id      INTEGER FK→projects (CASCADE)
+  key             TEXT        -- Test gaps row key: "<unique_id>::<column>" or "<unique_id>::(a, b)"; UNIQUE(project_id, key)
+  unique_id       TEXT
+  name            TEXT        -- model name and column label, kept to list the row after the gap itself is gone
+  label           TEXT
+  created_at      DATETIME
+  -- ignored rows are left out of GET /test-gaps (and its count) until unignored
 
 license_state
   id              INTEGER PK  -- always 1, single-row cache for this installation
@@ -430,12 +443,17 @@ GET    /api/projects/{id}/ai/conversations                Ask chats, most recent
 POST   /api/projects/{id}/ai/conversations                new chat
 GET    /api/projects/{id}/ai/conversations/{cid}          chat + messages (action messages embed their proposal)
 DELETE /api/projects/{id}/ai/conversations/{cid}          delete a chat
-POST   /api/projects/{id}/ai/conversations/{cid}/messages body {content, unique_id?, mode: ask | explain_failure}; streams the answer as text/event-stream (`delta` × N, then `done` or `error`); both turns are saved
+POST   /api/projects/{id}/ai/conversations/{cid}/messages body {content, unique_id?, mode: ask | explain_failure | explain_slow}; streams the answer as text/event-stream (`delta` × N, then `done` or `error`); both turns are saved
 POST   /api/projects/{id}/ai/document                     body {unique_id, overwrite, conversation_id?}; records an `action` message in that chat; 202 AiProposal (status generating); generates in the background, 409 if already generating for that node
 POST   /api/projects/{id}/ai/conversations/{cid}/query    body {content, unique_id?}; Wicky writes ONE read-only SELECT (not run); returns [user message, `query` message] — status proposed, or invalid if it fails app/ai/sql_guard.py
 POST   /api/projects/{id}/ai/messages/{mid}/run           body {sql} (may be edited); re-validated, then `dbt show --inline --limit 101` behind the project's dbt lock (202; waiting → running → done/error via `ai_query_updated`; 120s timeout; 100 rows kept)
 POST   /api/projects/{id}/ai/messages/{mid}/answer        streams an answer from a finished query's rows (text/event-stream, saved as an assistant message)
-POST   /api/projects/{id}/ai/tests                        body {unique_id, conversation_id?}; 202 AiProposal (kind tests); suggests + pre-checks generic tests in the background
+POST   /api/projects/{id}/ai/tests                        body {unique_id, conversation_id?}; 202 AiProposal (kind tests); suggests + pre-checks generic tests in the background — lineage-backed ones (join keys, grain; `source: lineage`, `evidence`) first when a lineage_version 4 snapshot exists, then the AI model's; without an AI model only the lineage-backed ones (`result.note` says so)
+GET    /api/projects/{id}/test-gaps?limit=50              Pro: untested columns with evidence-backed tests, ranked by downstream reach, ignored rows left out `{snapshot_id, total, ignored, rows: [{key, unique_id, name, column, columns?, score, reach, row_uses, exposures, in_grain, existing, candidates}]}`; 409 lineage_not_ready until a lineage_version 4 snapshot exists; cached per snapshot + manifest mtime
+GET    /api/projects/{id}/test-gaps/ignored               Pro: ignored rows, newest first `{rows: [{key, unique_id, name, label, ignored_at, still_a_gap (null when lineage isn't ready), candidates}]}`
+POST   /api/projects/{id}/test-gaps/ignore                Pro: body {keys}; hide these rows from /test-gaps until unignored; `{changed}`; 422 when none is a current gap
+POST   /api/projects/{id}/test-gaps/unignore              Pro: body {keys}; `{changed}`
+POST   /api/projects/{id}/ai/tests/batch                  Pro: body {keys} (row keys from /test-gaps); 202 AiProposal kind tests with `result.batch` — one file per schema YAML, each model pre-checked through the runner (`ai_proposal_progress` with done/total/current per model); no AI model needed
 GET    /api/projects/{id}/ai/proposals?unique_id=         proposals needing attention (generating | ready | error | empty)
 GET    /api/projects/{id}/ai/proposals/{pid}              one proposal with its files
 DELETE /api/projects/{id}/ai/proposals/{pid}              dismiss (status → dismissed; the row is kept for chat history)
@@ -808,6 +826,15 @@ Builds on column lineage (section 10). Since `lineage_version` 3 the scan record
 - **Writing (public):** `app/propagation/proposals.py` turns results into one `ai_proposals` row of kind `propagate` with one `ai_proposal_files` row per schema YAML touched (the file `plan_document_node()` picks). Copied descriptions are the source column's raw YAML text (`raw_descriptions()` / `raw_source_descriptions()`), so `{{ doc() }}` blocks stay doc blocks. Tags are spliced by `app/dbt/schema_column_tags.py` `add_column_tags()` (block list, one-line list, single string, or `config: tags:`; re-parse verified). Each item names its file; partial accept (`PUT .../selection` with `file_id`) rebuilds only that file through `render_file()`, and accepting a file compiles the nodes it documents.
 - **UI:** Docs project overview "Fill descriptions from lineage (N)", the side pane's "Inherit descriptions from upstream (N)" (only when the model has something to fill), and the Docs **Tags** browse tab (`?browse=tags&tag=`: `TagFlowPanel` with a DataTable, exposures, "Write inherited tags to YAML", and "Show in DAG", which seeds the DAG's `dag-column-sels-{id}` / `dag-expanded-nodes-{id}` session keys). Review uses `ProposalReviewModal`, which lists the active file's items for multi-file proposals. Lineage not ready → `LineageNotReadyNotice` with "Refresh column lineage". No new SSE events: `['propagate-preview', id]` and `['tag-flow', id]` are invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
 
+### 10d-2. Smarter test suggestions (wickd Pro)
+
+Builds on column lineage (section 10). Since `lineage_version` 4 the scan also records, per model, its **join pairs** (each equality in a JOIN `ON`/`USING`, resolved through CTEs and pass-through renames to two upstream columns, with the join type) and its **grain** (the final SELECT's GROUP BY, SELECT DISTINCT, or a `row_number() … = 1` dedupe in QUALIFY or a WHERE on a CTE, followed through `select … from <cte>` layers) in `join_keys_json` — `wickd_pro.structure.trace_structure()`, via `trace_job_structure()` behind the shim's `supports_structure()` probe.
+
+- **Ranking (private):** `wickd_pro.test_targets.rank_test_targets()` turns that into candidate tests per `(model, column)` with evidence: grain → `unique` + `not_null` (one column) or `not_null` each + `dbt_utils.unique_combination_of_columns` (several, only when dbt_utils is installed); inner-join keys → `not_null`; `relationships` from the many side to the one side only when the one side is known unique (single-column grain or an existing `unique` test). Existing tests are skipped. Score = (downstream columns + 3 × row-dependency uses + 5 × exposures reached) × 2 in the grain. Public shim `app/test_targets/pro.py`; snapshot loading and the per-snapshot cache in `app/test_targets/service.py`.
+- **Add tests:** `ai/test_generation.py` gets the model's ranking (`targets_for_model()`), adds the evidence-backed tests directly (`app/test_targets/items.py` `structural_tests()`), then prompts the AI model with the ranked columns and those tests as already present. Without an AI model (`llm_ready()`), or if it fails, only the lineage-backed tests are proposed. Everything is pre-checked in one `dbt show`; YAML via `render_tests()` (`add_column_tests()` + model-level `add_model_tests()`).
+- **Test gaps:** `api/test_gaps.py`; the batch proposal (`app/test_targets/batch.py`) is kind `tests` with `batch: true` and file/node on each item, so partial accept rebuilds one file (`app/ai/selection.py`).
+- **UI:** a Test Gaps card on the Health overview (count + top 3, Refresh lineage; it doesn't fetch the lineage snapshot and isn't part of Run all), and Health → **Test Gaps** tab (`?tab=test-gaps`, `TestGapsPanel`; its label carries the gap count as a badge, a dot while lineage is computing; Gaps / Ignored sub-tabs in `?gaps=`, Ignore selected / Unignore selected, and a Refresh button that re-traces lineage (a no-op when the manifest is unchanged) and re-ranks): a `RichTable` (search, a Test dropdown, checkboxes with shift-click ranges, per-row Ignore / Generate, expand for the evidence and the models that join on it, ⌘-click a model to open it), "Generate tests" → `ProposalReviewModal`, which shows each test's evidence ("From lineage: …"). `['test-gaps', id]` is invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
+
 ### 10e. Refactors (wickd Pro)
 
 Rename a model, rename a column, or extract a CTE into its own model, proposed as one reviewable multi-file diff. The engine is deterministic; an LLM is only used (optionally) to turn a Wicky chat request into the operation.
@@ -828,7 +855,7 @@ Same open-core split as column lineage: prompts, dbt context building and output
 
 - **Ask** — `POST .../ai/conversations/{cid}/messages` builds messages from the manifest (selected node's SQL, columns, tests, upstream descriptions, project overview with exact documentation-coverage counts computed up front, since the node list is truncated on large projects; budgeted to fit a small context window) and streams the reply on the response itself, not the bus.
 - **Query data** — `api/ai_query.py`, a fixed two-step flow (no agent loop): the model writes one SELECT using `{{ ref() }}`/`{{ source() }}` from a relations list (`wickd_pro.ai.query`); the user reviews/edits and clicks Run. `app/ai/sql_guard.py` is the backstop: only literal `ref`/`source` Jinja (no `{% %}`, no other macros — they can run SQL at compile time), and sqlglot (adapter dialect) must see exactly one query with no write/DDL/session statements anywhere. Queries with their own LIMIT are wrapped in a subquery, since `dbt show --limit` appends one. Runs behind the project's dbt lock (`runner.is_project_busy()` → `waiting`); `runner.run()` now kills dbt if its caller is cancelled (timeouts). Answering sends the result rows to the model — automatic with the bundled model, a button (with a warning) when a remote endpoint is set.
-- **Run results in context** — `app/ai/run_context.py` adds the node's latest status/message and its tests' results (from `model_statuses` + the manifest's `attached_node` links) to Ask. **Explain failure** (`mode: explain_failure`) also re-runs up to 2 failing tests with `dbt show --limit 10` and sends those rows.
+- **Run results in context** — `app/ai/run_context.py` adds the node's latest status/message and its tests' results (from `model_statuses` + the manifest's `attached_node` links) to Ask. **Explain failure** (`mode: explain_failure`) also re-runs up to 2 failing tests with `dbt show --limit 10` and sends those rows. **Why is it slow** (`mode: explain_slow`, Run History → Performance) sends `app/ai/perf_context.py` `node_performance_info()` instead: the node's last 20 `invocation_model_results` rows with their invocation, upstream medians, and `git log -p` / `git diff HEAD` (via `git_runner`) for its SQL and schema YAML since the oldest of those runs; prompt in `wickd_pro.ai.performance`, falling back to Ask on older Pro builds.
 - **Add tests** — `app/ai/test_generation.py`: warehouse columns, a 500-row `dbt show` sample summarised per column (nulls, distinct, values when few), then a schema-constrained answer limited to real columns, the 4 generic tests and parent/grandparent relationship targets (validated again in `wickd_pro.ai.tests`). Every suggestion is pre-checked in ONE `dbt show --inline` union query (failing-row counts shown in review), then spliced in by `app/dbt/schema_tests.py` (uses the column's/entry's `data_tests:`/`tests:` key, else by dbt version; `arguments:` block on dbt 1.10+).
 - **Document with AI** — `POST .../ai/document` creates an `ai_proposals` row and generates in the background: warehouse columns via `probe_warehouse_columns()` (falls back to manifest + catalog columns), the node's entry planned with `schema_yaml.plan_document_node()`, descriptions from a JSON-schema-constrained streamed completion (partial output published as `ai_proposal_progress` so the chat shows them being written), spliced in by `schema_descriptions.set_descriptions()` (only columns without a description are sent to the model unless `overwrite`; if nothing is missing it returns `empty` without calling the model). Nothing is written until the user accepts the file in the review modal (Monaco diff, with the proposal's items listed beside it — click one to reveal it in the diff, accept or reject each; rejecting re-derives the file from the original without that item, through the same splicers and checks, never by patching the diff); accepting refuses with 409 if the file changed meanwhile.
 
@@ -989,6 +1016,7 @@ Behavior:
 - `/health?tab=connection` activates the Connection (dbt debug) tab
 - `/health?tab=source-freshness` activates the Source Freshness tab
 - `/health?tab=schema-drift` activates the Schema Drift tab
+- `/health?tab=test-gaps` activates the Test Gaps tab (Pro)
 - Links from the command palette use these params to pre-select the tab even if the page is already mounted
 
 ---

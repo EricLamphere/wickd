@@ -81,8 +81,8 @@ def _project(tmp_path: Path) -> Path:
 def fake_model(monkeypatch):
     state: dict = {"suggested": [], "shows": []}
 
-    def _prompt(manifest, uid, columns, stats, existing):
-        state["prompt"] = {"columns": columns, "stats": stats, "existing": existing}
+    def _prompt(manifest, uid, columns, stats, existing, candidates=None):
+        state["prompt"] = {"columns": columns, "stats": stats, "existing": existing, "candidates": candidates}
         return {"messages": [], "schema": {}, "max_tokens": 10}
 
     async def _stream(provider, messages, max_tokens=None, schema=None):
@@ -101,6 +101,7 @@ def fake_model(monkeypatch):
     monkeypatch.setattr(
         test_generation, "resolve_provider", AsyncMock(return_value=Provider("http://x/v1", "m"))
     )
+    monkeypatch.setattr(test_generation, "llm_ready", lambda config: state.get("llm_ready", True))
     from app.ai import documentation
     monkeypatch.setattr(
         documentation, "probe_warehouse_columns",
@@ -152,3 +153,91 @@ async def test_no_sample_skips_precheck(tmp_path, fake_model, monkeypatch):
     fake_model["suggested"] = [{"column": "id", "test": "not_null", "reason": ""}]
     result = await _generate(_project(tmp_path))
     assert result.summary["tests"][0]["failures"] is None
+
+
+def test_combination_spec_and_check_sql():
+    test = {"column": None, "columns": ["day", "status"], "test": "unique_combination_of_columns"}
+    spec = to_spec(test, {}, {})
+    assert spec == DataTestSpec("dbt_utils.unique_combination_of_columns", {"combination_of_columns": ["day", "status"]})
+    sql = check_sql("ref('daily')", [(test, spec)])
+    assert "select day, status from {{ ref('daily') }} group by day, status having count(*) > 1" in sql
+
+
+# ranking rows as app/test_targets/service.targets_for_model returns them
+TARGETS = [
+    {"unique_id": UID, "column": "ID", "score": 9, "candidates": [
+        {"test": "unique", "evidence": "one row per `id` (grouped by)", "source": "grain"},
+        {"test": "not_null", "evidence": "one row per `id` (grouped by)", "source": "grain"},
+    ]},
+    {"unique_id": UID, "column": "status", "score": 3, "candidates": [
+        {"test": "relationships", "to": "model.proj.statuses", "field": "code",
+         "evidence": "joined to `statuses.code` in 2 models", "source": "join"},
+    ]},
+    {"unique_id": UID, "column": None, "columns": ["id", "status"], "score": 9, "candidates": [
+        {"test": "unique_combination_of_columns", "combination": ["id", "status"],
+         "evidence": "one row per (id, status)", "source": "grain"},
+    ]},
+    {"unique_id": UID, "column": "gone", "score": 1, "candidates": [{"test": "not_null", "evidence": "x"}]},
+]
+
+
+def _with_statuses(root: Path) -> Path:
+    path = root / "target" / "manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["nodes"]["model.proj.statuses"] = {"name": "statuses", "resource_type": "model"}
+    path.write_text(json.dumps(manifest))
+    return root
+
+
+async def test_lineage_tests_without_an_ai_model(tmp_path, fake_model):
+    fake_model["llm_ready"] = False
+    phases = []
+
+    async def on_phase(p):
+        phases.append(p)
+
+    result = await _generate(_with_statuses(_project(tmp_path)), targets=TARGETS, on_phase=on_phase)
+    assert "writing" not in phases and "prompt" not in fake_model
+    tests = result.summary["tests"]
+    # `unique` on id already exists; `gone` isn't a real column
+    assert [(t["column"], t["test"]) for t in tests] == [
+        ("id", "not_null"), ("status", "relationships"), (None, "unique_combination_of_columns"),
+    ]
+    assert all(t["source"] == "lineage" for t in tests)
+    assert tests[1]["evidence"] == "joined to `statuses.code` in 2 models"
+    assert tests[1]["to"] == "statuses"
+    assert tests[2]["columns"] == ["id", "status"]
+    assert result.summary["note"] == test_generation.LINEAGE_ONLY_NOTE
+    model = yaml.safe_load(result.change.proposed)["models"][0]
+    assert model["data_tests"] == [
+        {"dbt_utils.unique_combination_of_columns": {"combination_of_columns": ["id", "status"]}},
+    ]
+    assert model["columns"][1]["data_tests"] == [
+        {"relationships": {"to": "ref('statuses')", "field": "code"}},
+    ]
+
+
+async def test_lineage_tests_then_ai_suggestions(tmp_path, fake_model):
+    fake_model["suggested"] = [{"column": "status", "test": "accepted_values", "values": ["placed"], "reason": "s"}]
+    result = await _generate(_with_statuses(_project(tmp_path)), targets=TARGETS)
+    assert fake_model["prompt"]["candidates"] == TARGETS
+    assert {"column": "status", "test": "relationships"} in fake_model["prompt"]["existing"]
+    assert [t["source"] for t in result.summary["tests"]] == ["lineage", "lineage", "lineage", "ai"]
+    assert "note" not in result.summary
+
+
+async def test_ai_failure_keeps_lineage_tests(tmp_path, fake_model, monkeypatch):
+    from app.ai.runtime import RuntimeUnavailable
+
+    monkeypatch.setattr(test_generation, "resolve_provider", AsyncMock(side_effect=RuntimeUnavailable("no server")))
+    result = await _generate(_with_statuses(_project(tmp_path)), targets=TARGETS)
+    assert len(result.summary["tests"]) == 3
+    assert "no server" in result.summary["note"]
+
+
+async def test_ai_failure_without_lineage_tests_still_fails(tmp_path, fake_model, monkeypatch):
+    from app.ai.runtime import RuntimeUnavailable
+
+    monkeypatch.setattr(test_generation, "resolve_provider", AsyncMock(side_effect=RuntimeUnavailable("no server")))
+    with pytest.raises(RuntimeUnavailable):
+        await _generate(_project(tmp_path))

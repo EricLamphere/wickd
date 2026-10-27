@@ -4,6 +4,7 @@ import { relativeTime } from '../../lib/relativeTime';
 import { TONE_DOT, TONE_TEXT, toneFor } from './healthStatus';
 import RunButton from './RunButton';
 import Spinner from './Spinner';
+import TestGapsCard from './TestGapsCard';
 import { type HealthCheckKind, errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from './useHealth';
 
 interface CardSpec {
@@ -21,9 +22,10 @@ const CARDS: CardSpec[] = [
 interface HealthOverviewProps {
   projectId: number;
   onOpen: (kind: HealthCheckKind) => void;
+  onOpenTestGaps: () => void;
 }
 
-export default function HealthOverview({ projectId, onOpen }: HealthOverviewProps) {
+export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: HealthOverviewProps) {
   const { data: summary, isLoading, error } = useHealthSummary(projectId);
   const runs = useHealthRuns(projectId);
   const starting = {
@@ -48,7 +50,7 @@ export default function HealthOverview({ projectId, onOpen }: HealthOverviewProp
       {isLoading && <p className="text-xs text-gray-600">Loading…</p>}
 
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {CARDS.map((card) => (
             <HealthCard
               key={card.kind}
@@ -60,6 +62,7 @@ export default function HealthOverview({ projectId, onOpen }: HealthOverviewProp
               onOpen={() => onOpen(card.kind)}
             />
           ))}
+          <TestGapsCard projectId={projectId} onOpen={onOpenTestGaps} />
         </div>
       )}
     </div>

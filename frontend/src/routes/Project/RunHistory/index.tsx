@@ -30,7 +30,8 @@ export default function RunHistoryPage() {
   const qc = useQueryClient();
 
   const sessionKey = `run-history:${id}`;
-  const [tab, setTab] = useUrlTab<PageTab>('tab', PAGE_TABS, 'runs');
+  // remembered per project, so coming back to Run History reopens Performance
+  const [tab, setTab] = useUrlTab<PageTab>('tab', PAGE_TABS, 'runs', `run-history-tab:${id}`);
   const pane = useResizablePane(sessionKey);
 
   const [failedRowsCache, setFailedRowsCache] = useState<FailedRowsCache>(() => {

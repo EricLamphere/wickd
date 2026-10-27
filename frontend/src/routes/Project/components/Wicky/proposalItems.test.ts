@@ -87,3 +87,42 @@ models:
     expect(findItemLine(MULTI, p, missing)).toBeNull();
   });
 });
+
+describe('test proposals from lineage', () => {
+  const MULTI = `version: 2
+models:
+  - name: stg
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+  - name: daily
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ["day", "status"]
+    columns:
+      - name: id
+        data_tests:
+          - not_null
+`;
+
+  it('labels batch items by node, places them in their file and finds them under their node', () => {
+    const p = proposal('tests', {
+      batch: true,
+      tests: [
+        { key: 't0', column: 'id', test: 'not_null', reason: '', source: 'lineage', evidence: 'inner-joined on in 2 models',
+          file: 'models/schema.yml', name: 'daily', unique_id: 'model.p.daily' },
+        { key: 't1', column: null, columns: ['day', 'status'], test: 'unique_combination_of_columns', reason: '',
+          source: 'lineage', evidence: 'one row per (day, status)', file: 'models/schema.yml', name: 'daily',
+          spec: { name: 'dbt_utils.unique_combination_of_columns', args: {} } },
+      ],
+    });
+    const [notNull, combo] = proposalItems(p);
+    expect(notNull.title).toBe('daily.id');
+    expect(notNull.why).toBe('From lineage: inner-joined on in 2 models');
+    expect(combo.title).toBe('daily.(day, status)');
+    expect(itemsInFile([notNull, combo], 'models/other.yml')).toEqual([]);
+    expect(findItemLine(MULTI, p, notNull)).toBe(15);
+    expect(findItemLine(MULTI, p, combo)).toBe(10);
+  });
+});

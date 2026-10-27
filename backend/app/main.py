@@ -43,6 +43,7 @@ from app.api import settings as settings_api
 from app.api import setup as setup_api
 from app.api import sql as sql_api
 from app.api import terminal as terminal_api
+from app.api import test_gaps as test_gaps_api
 from app.api import workspace as workspace_api
 from app.config import settings
 from app.db.engine import SessionLocal
@@ -113,6 +114,7 @@ app.include_router(drift_api.router)
 app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)
 app.include_router(propagation_api.router)
+app.include_router(test_gaps_api.router)
 app.include_router(refactor_api.router)
 app.include_router(exports_api.router)
 app.include_router(exports_api.global_router)

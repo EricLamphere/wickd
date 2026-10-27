@@ -44,6 +44,7 @@ export function ChangeList({ items, stateOf, focused, disabled, onFocus, onDecid
               {typeof failures === 'number' && failures > 0 && (
                 <span className="ml-1 text-amber-400">✗ {failures} failing</span>
               )}
+              {item.why && <span className="block text-gray-500 break-words">{item.why}</span>}
             </span>
             <span className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
               {state === 'pending' ? (

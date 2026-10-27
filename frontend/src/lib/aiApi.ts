@@ -129,13 +129,24 @@ export interface RefactorVerify {
 /** `empty`: nothing needed changing (error_message holds a note, not a failure). */
 export interface AiSuggestedTest {
   key?: string;
-  column: string;
-  test: 'not_null' | 'unique' | 'accepted_values' | 'relationships';
+  /** null for a model-level test (unique_combination_of_columns; see `columns`). */
+  column: string | null;
+  columns?: string[];
+  test: 'not_null' | 'unique' | 'accepted_values' | 'relationships' | 'unique_combination_of_columns';
   reason: string;
+  /** Why lineage suggests it ("joined to `dim_customers.id` in 4 models"); lineage-backed tests only. */
+  evidence?: string;
+  /** lineage: from join keys / grain in the column lineage scan; ai: chosen by the model. */
+  source?: 'lineage' | 'ai';
   values?: string[];
   to?: string;
   field?: string;
   failures?: number | null;
+  spec?: { name: string; args: Record<string, unknown> };
+  /** Batch proposals (Test gaps) span several files: where each test goes. */
+  file?: string;
+  unique_id?: string;
+  name?: string;
 }
 
 export type AiProposalStatus =
@@ -145,8 +156,12 @@ export type AiProposalStatus =
 export interface AiProposalProgress {
   proposal_id: number;
   unique_id: string | null;
-  phase: 'columns' | 'writing' | '';
+  phase: 'columns' | 'sampling' | 'writing' | 'checking' | '';
   text: string;
+  /** Batch test proposals: models pre-checked so far, of how many, and the current one. */
+  done?: number;
+  total?: number;
+  current?: string;
 }
 
 export interface AiProposalDto {
@@ -164,6 +179,10 @@ export interface AiProposalDto {
     columns: Record<string, string>;
     /** kind "tests"; failures = failing rows when pre-checked against the warehouse, null if not checked */
     tests: AiSuggestedTest[];
+    /** kind "tests" from Test gaps: tests for several models, one file per schema YAML. */
+    batch?: boolean;
+    /** kind "tests": why only some suggestions were made (e.g. lineage-backed only, no AI model). */
+    note?: string | null;
     /** kind "propagate" (lineage propagation; spans several files): one item per column. */
     items?: PropagationItem[];
     conflicts?: PropagationConflict[];
@@ -213,8 +232,9 @@ export interface PropagationConflict {
   candidates: { description: string; source: { node: string; column: string } }[];
 }
 
-/** explain_failure: diagnose the node's latest failed run/tests (needs a unique_id). */
-export type AskMode = 'ask' | 'explain_failure';
+/** explain_failure: diagnose the node's latest failed run/tests; explain_slow: why it's slow,
+ *  from its run timings and recent git changes to its files. Both need a unique_id. */
+export type AskMode = 'ask' | 'explain_failure' | 'explain_slow';
 
 export interface AskHandlers {
   onDelta: (text: string) => void;

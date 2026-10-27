@@ -1,59 +1,40 @@
-/**
- * Pure helpers for the Run History "Performance" tab: table rows (DataTable
- * cells are plain values, so trends are text sparklines) and labels.
- */
-import type { RecommendationDto, RegressionDto, SlowNodeDto } from '../../../lib/api';
+/** Pure helpers for the Run History "Performance" tab (tables in RunHistory/PerformanceTables.tsx). */
+import type { RecommendationDto } from '../../../lib/api';
 import { formatSeconds } from './runTimeline';
 
-const SPARK = '▁▂▃▄▅▆▇█';
+export type ChangeTone = 'slower' | 'faster' | 'same';
 
-/** Unicode block sparkline scaled to the series' own min..max. */
-export function textSparkline(values: number[]): string {
-  if (values.length === 0) return '';
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min;
-  return values
-    .map((v) => SPARK[span === 0 ? 3 : Math.round(((v - min) / span) * (SPARK.length - 1))])
-    .join('');
+/** formatSeconds(), but milliseconds under a second (fast adapters finish most nodes in ms). */
+export function formatDuration(seconds: number): string {
+  if (seconds <= 0) return '0ms';
+  if (seconds < 1) return `${Math.max(1, Math.round(seconds * 1000))}ms`;
+  return formatSeconds(seconds);
 }
 
-export const SLOWEST_COLUMNS = [
-  { key: 'Node' },
-  { key: 'Type' },
-  { key: 'Median', align: 'right' as const },
-  { key: 'Last', align: 'right' as const },
-  { key: 'Runs', align: 'right' as const },
-  { key: 'Trend' },
-];
-
-export function slowestRows(nodes: SlowNodeDto[]): unknown[][] {
-  return nodes.map((n) => [
-    n.name,
-    n.resource_type,
-    formatSeconds(n.median_s),
-    formatSeconds(n.last_s),
-    n.runs,
-    textSparkline(n.recent),
-  ]);
+/** How `now` compares with `usual`: "+20s" / "+200%", within 10% (or 1s) counts as the same. */
+export function changeVsUsual(now: number, usual: number): { delta: string; pct: string; tone: ChangeTone } {
+  const diff = now - usual;
+  const ratio = usual > 0 ? diff / usual : 0;
+  const tone: ChangeTone = Math.abs(ratio) < 0.1 || Math.abs(diff) < 1 ? 'same' : diff > 0 ? 'slower' : 'faster';
+  const sign = diff >= 0 ? '+' : '−';
+  return {
+    delta: `${sign}${formatDuration(Math.abs(diff))}`,
+    pct: usual > 0 ? `${sign}${Math.round(Math.abs(ratio) * 100)}%` : '',
+    tone,
+  };
 }
 
-export const REGRESSION_COLUMNS = [
-  { key: 'Node' },
-  { key: 'Now', align: 'right' as const },
-  { key: 'Usual (median)', align: 'right' as const },
-  { key: 'Slower by', align: 'right' as const },
-  { key: 'Runs compared', align: 'right' as const },
-];
+/** Rows whose name contains `query` (case-insensitive); all rows for an empty query. */
+export function matchesQuery(name: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return !q || name.toLowerCase().includes(q);
+}
 
-export function regressionRows(regressions: RegressionDto[]): unknown[][] {
-  return regressions.map((r) => [
-    r.name,
-    formatSeconds(r.current),
-    formatSeconds(r.baseline_median),
-    `+${formatSeconds(r.current - r.baseline_median)} (${Math.round((r.ratio - 1) * 100)}%)`,
-    r.runs_considered,
-  ]);
+/** Resource types present, most common first (for filter chips). */
+export function typeCounts(rows: { resource_type: string }[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const r of rows) counts.set(r.resource_type, (counts.get(r.resource_type) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
 export function savingLabel(rec: RecommendationDto): string | null {

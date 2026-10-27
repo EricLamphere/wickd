@@ -41,8 +41,13 @@ export function WickyPane({ projectId, graph, selectedNodeId }: WickyPaneProps) 
   const [width, setWidth] = useState(storedWidth);
   const drag = useRef<{ startX: number; startW: number } | null>(null);
   const [request, setRequest] = useState<ChatRequest | null>(null);
+  // Node passed with openWicky() — wins over the page's selection until that changes
+  const [contextNodeId, setContextNodeId] = useState<string | null>(null);
 
-  const model = selectedNodeId ? graph?.nodes.find((n) => n.unique_id === selectedNodeId) ?? null : null;
+  useEffect(() => setContextNodeId(null), [selectedNodeId]);
+
+  const nodeId = contextNodeId ?? selectedNodeId;
+  const model = nodeId ? graph?.nodes.find((n) => n.unique_id === nodeId) ?? null : null;
 
   useEffect(() => writeStored(OPEN_KEY, String(open)), [open]);
 
@@ -51,9 +56,10 @@ export function WickyPane({ projectId, graph, selectedNodeId }: WickyPaneProps) 
 
   useEffect(() => {
     const onOpen = (e: Event) => {
-      const { question = '', chatMode } = (e as CustomEvent<OpenWickyDetail>).detail ?? {};
+      const { question = '', chatMode, uniqueId, mode = 'ask' } = (e as CustomEvent<OpenWickyDetail>).detail ?? {};
       setOpen(true);
-      setRequest({ nonce: Date.now(), text: question, mode: 'ask', chatMode });
+      if (uniqueId) setContextNodeId(uniqueId);
+      setRequest({ nonce: Date.now(), text: question, mode, chatMode });
     };
     window.addEventListener(OPEN_WICKY_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_WICKY_EVENT, onOpen);

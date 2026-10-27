@@ -8,9 +8,10 @@ other's types.
 
     ask_messages(manifest, unique_id, history, question, run_info) -> list[message]
     explain_failure_messages(manifest, unique_id, run_info, history, question) -> list[message]
+    explain_slow_messages(manifest, unique_id, perf_info, history, question) -> list[message]
     documentation_prompt(manifest, unique_id, columns) -> {"messages", "schema", "max_tokens"}
     parse_documentation(raw, columns) -> {"description": str, "columns": {name: str}}
-    suggest_tests_prompt(manifest, unique_id, columns, stats, existing) -> {"messages", "schema", "max_tokens"}
+    suggest_tests_prompt(manifest, unique_id, columns, stats, existing, candidates?) -> {"messages", "schema", "max_tokens"}
     parse_suggested_tests(raw, manifest, unique_id, columns, existing) -> [{column, test, reason, values?, to?, field?}]
     query_prompt(manifest, unique_id, history, question) -> {"messages", "schema", "max_tokens"}
     parse_query(raw) -> {"sql", "explanation"}
@@ -19,9 +20,11 @@ other's types.
     parse_refactor_intent(raw, manifest, unique_id) -> {"op", "unique_id", "model", "new_name",
         "column"? (rename_column), "cte"? (extract_cte)} | {"op": "none", "reason"}
 
-`run_info` is app/ai/run_context.py's node_run_info() output.
+`run_info` is app/ai/run_context.py's node_run_info() output; `perf_info` is
+app/ai/perf_context.py's node_performance_info() output.
 """
 
+import inspect
 from typing import Any
 
 
@@ -63,10 +66,30 @@ def explain_failure_messages(
     return _pro().explain_failure_messages(manifest, unique_id, run_info, history, question)
 
 
+def explain_slow_messages(
+    manifest: dict, unique_id: str, perf_info: dict, history: list[dict], question: str
+) -> list[dict]:
+    """Older wickd_pro builds without it get Ask with the node's context (SQL, upstream)."""
+    pro_ai = _pro()
+    if hasattr(pro_ai, "explain_slow_messages"):
+        return pro_ai.explain_slow_messages(manifest, unique_id, perf_info, history, question)
+    return pro_ai.ask_messages(manifest, unique_id, history, question, None)
+
+
 def suggest_tests_prompt(
-    manifest: dict, unique_id: str, columns: list[str], stats: dict, existing: list[dict]
+    manifest: dict,
+    unique_id: str,
+    columns: list[str],
+    stats: dict,
+    existing: list[dict],
+    candidates: list[dict] | None = None,
 ) -> dict:
-    return _pro().suggest_tests_prompt(manifest, unique_id, columns, stats, existing)
+    """`candidates`: app/test_targets ranking rows for the model (columns that matter
+    most go first). Dropped for older wickd_pro builds that don't take them."""
+    prompt = _pro().suggest_tests_prompt
+    if candidates and "candidates" in inspect.signature(prompt).parameters:
+        return prompt(manifest, unique_id, columns, stats, existing, candidates)
+    return prompt(manifest, unique_id, columns, stats, existing)
 
 
 def parse_suggested_tests(

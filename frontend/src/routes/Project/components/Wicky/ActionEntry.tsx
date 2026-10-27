@@ -5,7 +5,7 @@ import {
   aiApi, type AiProposalDto, type AiProposalProgress, type AiSuggestedTest,
 } from '../../../../lib/aiApi';
 import { parsePartialDocs, type PartialDocs } from '../../../../lib/partialDocs';
-import { describeTest, parsePartialTests, type PartialTest } from '../../../../lib/partialTests';
+import { describeTest, parsePartialTests, testSubject, testWhy, type PartialTest } from '../../../../lib/partialTests';
 import { ProposalReviewModal } from './ProposalReviewModal';
 import { proposalItems, selectedKeys } from './proposalItems';
 import { RefactorOutcome } from './RefactorOutcome';
@@ -52,14 +52,15 @@ function TestList({ tests, live, skipped }: {
       {tests.map((t, i) => {
         const failures = 'failures' in t ? t.failures : undefined;
         const left = 'key' in t && !!t.key && !!skipped?.has(t.key);
+        const why = testWhy(t);
         return (
           <li key={`${t.column}-${t.test}-${i}`} className={`text-gray-400 ${left ? SKIPPED : ''}`} title={left ? 'Not applied' : undefined}>
-            <code className="text-brand-300">{t.column}</code> {describeTest(t)}
+            <code className="text-brand-300">{testSubject(t)}</code> {describeTest(t)}
             {failures === 0 && <span className="ml-1 text-emerald-400">✓ passes</span>}
             {typeof failures === 'number' && failures > 0 && (
               <span className="ml-1 text-amber-400">✗ {failures} failing row{failures === 1 ? '' : 's'}</span>
             )}
-            {t.reason && <span className="block text-gray-500">{t.reason}</span>}
+            {why && <span className="block text-gray-500">{why}</span>}
           </li>
         );
       })}
@@ -75,9 +76,15 @@ function Result({ projectId, p }: { projectId: number; p: AiProposalDto }) {
   const skipped = p.status === 'applied'
     ? new Set(proposalItems(p).map((i) => i.key).filter((k) => !keep.has(k)))
     : undefined;
-  return p.kind === 'tests'
-    ? <TestList tests={p.result.tests ?? []} skipped={skipped} />
-    : <Docs docs={resultDocs(p)} skipped={skipped} />;
+  if (p.kind === 'tests') {
+    return (
+      <>
+        <TestList tests={p.result.tests ?? []} skipped={skipped} />
+        {p.result.note && <p className="mt-1 text-gray-500">{p.result.note}</p>}
+      </>
+    );
+  }
+  return <Docs docs={resultDocs(p)} skipped={skipped} />;
 }
 
 function nodeName(p: AiProposalDto) {

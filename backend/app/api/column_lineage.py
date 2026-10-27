@@ -17,8 +17,9 @@ from app.dbt.column_lineage import (
     LineageJob,
     prepare_lineage_jobs,
     supports_row_dependencies,
+    supports_structure,
     supports_transform_kinds,
-    trace_job_kinds,
+    trace_job_structure,
 )
 from app.events.bus import Event, bus
 from app.licensing.gating import require_pro
@@ -38,14 +39,17 @@ _POOL_SIZE = max(1, min(8, (os.cpu_count() or 2) - 1))
 
 # Bumped whenever snapshots gain data older ones lack, so the unchanged-manifest
 # short-circuit doesn't keep serving them. 2 = row dependencies, 3 = transform
-# kinds on projection refs (identity / rename / cast / derived).
-LINEAGE_VERSION = 3
+# kinds on projection refs (identity / rename / cast / derived), 4 = join pairs
+# and grain per model (join_keys_json, for test suggestions).
+LINEAGE_VERSION = 4
 
 
 def _current_lineage_version() -> int:
-    """What a scan run now would produce (older Pro builds lack kinds / row dependencies)."""
-    if supports_transform_kinds():
+    """What a scan run now would produce (older Pro builds lack structure / kinds / row dependencies)."""
+    if supports_structure():
         return LINEAGE_VERSION
+    if supports_transform_kinds():
+        return 3
     return 2 if supports_row_dependencies() else 1
 
 
@@ -347,12 +351,13 @@ async def _run_column_lineage(
 
     results: dict[str, dict] = {}
     row_results: dict[str, list] = {}
+    structure_results: dict[str, dict] = {}
     checked = 0
     error_message: str | None = None
 
     try:
         future_to_job = {
-            loop.run_in_executor(_pool, trace_job_kinds, job): job
+            loop.run_in_executor(_pool, trace_job_structure, job): job
             for job in jobs
         }
 
@@ -368,7 +373,7 @@ async def _run_column_lineage(
             for fut in done:
                 job = future_to_job[fut]
                 try:
-                    uid, col_lineage, row_refs = fut.result()
+                    uid, col_lineage, row_refs, structure = fut.result()
                     if col_lineage:
                         results[uid] = {
                             col: [_ref_json(ref, kind) for ref, kind in refs]
@@ -376,6 +381,8 @@ async def _run_column_lineage(
                         }
                     if row_refs:
                         row_results[uid] = [{"node": ref.node, "column": ref.column} for ref in row_refs]
+                    if structure.get("join_pairs") or structure.get("grain"):
+                        structure_results[uid] = structure
                 except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("column_lineage_job_failed", uid=job.uid, error=str(exc))
 
@@ -412,6 +419,7 @@ async def _run_column_lineage(
             snap.checked_models = checked
             snap.results_json = json.dumps(results)
             snap.row_dependencies_json = json.dumps(row_results)
+            snap.join_keys_json = json.dumps(structure_results)
             snap.error_message = error_message
             snap.manifest_mtime = manifest_mtime
             await session.commit()

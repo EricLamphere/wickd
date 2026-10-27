@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeTest, parsePartialTests } from './partialTests';
+import { describeTest, parsePartialTests, testSubject, testWhy } from './partialTests';
 
 const FULL = JSON.stringify({ tests: [
   { column: 'id', test: 'unique', values: [], to: '', field: '', reason: 'PK {not} "quoted"' },
@@ -35,5 +35,19 @@ describe('describeTest', () => {
     expect(describeTest({ test: 'unique' })).toBe('unique');
     expect(describeTest({ test: 'accepted_values', values: ['a', 'b'] })).toBe('accepted_values [a, b]');
     expect(describeTest({ test: 'relationships', to: 'customers', field: 'id' })).toBe('relationships → customers.id');
+  });
+});
+
+describe('testSubject / testWhy', () => {
+  it('names the column, or the combination for a model-level test', () => {
+    expect(testSubject({ column: 'id' })).toBe('id');
+    expect(testSubject({ column: null, columns: ['day', 'status'] })).toBe('(day, status)');
+  });
+
+  it('prefers lineage evidence over the model reason', () => {
+    expect(testWhy({ source: 'lineage', evidence: 'joined to `c.id` in 2 models', reason: 'x' }))
+      .toBe('From lineage: joined to `c.id` in 2 models');
+    expect(testWhy({ source: 'ai', reason: 'Primary key.' })).toBe('Primary key.');
+    expect(testWhy({})).toBe('');
   });
 });

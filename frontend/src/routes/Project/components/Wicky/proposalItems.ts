@@ -1,5 +1,5 @@
 import type { AiProposalDto, AiSuggestedTest, PropagationItem } from '../../../../lib/aiApi';
-import { describeTest } from '../../../../lib/partialTests';
+import { describeTest, testSubject, testWhy } from '../../../../lib/partialTests';
 
 /** One separately acceptable piece of a proposal: a test, a description, or inherited tags. */
 export interface ProposalItem {
@@ -7,8 +7,10 @@ export interface ProposalItem {
   /** Column (or "Model description"; "model.column" for lineage propagation). */
   title: string;
   detail: string;
+  /** Shown under the item: why it was suggested (e.g. lineage evidence for a test). */
+  why?: string;
   test?: AiSuggestedTest;
-  /** Lineage propagation: the item's schema file, and the item itself. */
+  /** Lineage propagation / batch tests: the item's schema file. */
   file?: string;
   propagation?: PropagationItem;
 }
@@ -33,7 +35,14 @@ export function proposalItems(p: AiProposalDto): ProposalItem[] {
   if (p.kind === 'tests') {
     return (p.result.tests ?? [])
       .filter((t) => t.key)
-      .map((t) => ({ key: t.key!, title: t.column, detail: describeTest(t), test: t }));
+      .map((t) => ({
+        key: t.key!,
+        title: t.file && t.name ? `${t.name}.${testSubject(t)}` : testSubject(t),
+        detail: describeTest(t),
+        why: testWhy(t) || undefined,
+        test: t,
+        file: t.file,
+      }));
   }
   const items: ProposalItem[] = [];
   if (p.result.description) items.push({ key: 'description', title: 'Model description', detail: p.result.description });
@@ -72,7 +81,13 @@ function locator(p: AiProposalDto, item: ProposalItem): Locator {
     return { parent: item.propagation.name, anchor: item.propagation.column, marker, direct: true };
   }
   if (item.test) {
-    return { anchor: item.test.column, marker: new RegExp(`^\\s*-\\s*${escapeRegExp(item.test.test)}\\b`), direct: false };
+    const testName = item.test.spec?.name ?? item.test.test;
+    const marker = new RegExp(`^\\s*-\\s*${escapeRegExp(testName)}\\b`);
+    if (!item.test.column) {
+      // model-level: under the node's own entry
+      return { anchor: item.test.name ?? p.unique_id?.split('.').pop() ?? '', marker, direct: false };
+    }
+    return { parent: item.test.file ? item.test.name : undefined, anchor: item.test.column, marker, direct: false };
   }
   if (item.key === 'description') {
     return { anchor: p.unique_id?.split('.').pop() ?? '', marker: /^\s*(-\s+)?description:/, direct: true };

@@ -41,7 +41,9 @@ package or git submodule.
   filters, joins or groups on, used by column-level impact analysis. Also
   `wickd_pro/refactor/` (rename model / rename column / extract CTE: span
   edits over Jinja-masked SQL, behind `backend/app/refactor/pro.py`) and
-  `wickd_pro/ai/refactor_intent.py` (Wicky request → operation). Its
+  `wickd_pro/ai/refactor_intent.py` (Wicky request → operation). Also `structure.py` (join pairs + grain per
+  model) and `test_targets.py` (ranked test suggestions with evidence), behind
+  `backend/app/test_targets/pro.py`. Its
   tests run against sqlglot 30.18 in its own venv, but the shipped app uses
   the backend venv's sqlglot (30.20 at time of writing), and sqlglot renames
   internals between minor versions, so run its tests under both.

@@ -48,7 +48,7 @@ multi-file diff. See [Refactor models and columns](how-to/refactor.md).
 |---|---|
 | **Explain failure** | Shown when the node or one of its tests failed in the latest run. Wicky reads the error, the test's SQL and a few failing rows, then explains what failed, the likely cause and how to fix it. |
 | **Document** | Writes the model and column descriptions that are missing (or rewrites all of them, if you choose *Rewrite all*). |
-| **Add tests** | Suggests generic tests (`unique`, `not_null`, `accepted_values`, `relationships`), checks each one against the warehouse, and shows which pass today. |
+| **Add tests** | Suggests generic tests (`unique`, `not_null`, `accepted_values`, `relationships`), checks each one against the warehouse, and shows which pass today. With a column lineage scan, tests backed by the project's structure come first: `relationships` and `not_null` on join keys, `unique` (or `unique_combination_of_columns` with dbt_utils) on the model's grain, each with its evidence ("joined to `dim_customers.customer_id` in 4 models"). These don't need the AI model. |
 | **Refactor…** | Switches the chat to Refactor mode for the selected model. |
 
 Document and Add tests produce a **proposal**: a diff of your schema YAML. In the review window
@@ -92,6 +92,14 @@ About 7,000 tokens: everything above for the node, plus each failing test's comp
 3,000 characters) and **up to 10 failing rows from each of up to 2 failing tests**, fetched by
 re-running those tests with `dbt show`.
 
+### Why is it slow (Run History → Performance)
+About 8,000 tokens: everything above for the node, plus its performance-relevant config
+(materialization, incremental strategy, partitioning/clustering, …), its **last 20 recorded runs**
+(when, command, status, duration, rows, bytes, adapter response), its upstream nodes' median
+durations, and the **git commits since the oldest of those runs that touched its SQL or schema
+YAML** (up to 5, with their diffs, about 6,000 characters) plus any uncommitted edits to them.
+Nothing is sent to the warehouse. Outside a git repo the code-change part is just left out.
+
 ### Document
 About 7,000 tokens of node context, plus the list of columns to describe. Column names come from
 the warehouse (`dbt show --limit 1`; only the names are used) or, if the model isn't built, from
@@ -103,8 +111,14 @@ About 6,000 tokens of node context, plus:
 
 - **A 500-row sample**, summarised per column: null count, distinct count, and the actual values
   when there are 12 or fewer. The summary is sent — not the raw rows.
-- The tests that already exist (so they aren't repeated)
+- The tests that already exist, and the lineage-backed tests already being added (so they aren't repeated)
 - The node's parents and grandparents, as the only allowed `relationships` targets
+- With column lineage: the columns ranked by how much of the project depends on them (downstream
+  columns, models that filter or join on them, exposures, grain), so the important ones come first
+
+Join-key and grain tests are worked out from the column lineage scan, not by the model, and
+nothing about them is sent anywhere. Without a downloaded model, Add tests isn't available in
+Wicky, but Health → **Test Gaps** proposes the same lineage-backed tests for many models at once.
 
 ### Query data
 About 6,000 tokens: the selected node's context, then a list of queryable relations — each with

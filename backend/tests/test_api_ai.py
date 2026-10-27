@@ -234,7 +234,7 @@ async def test_document_from_chat_stays_in_history(client, db_session, entitled,
     proposal = await _wait_status(client, pid, r.json()["id"], "ready")
     assert proposal["result"] == {
         "description": "One row per order.", "columns": {"id": "Order key."}, "tests": [],
-        "selected": None, "accepted": [], "items": [], "conflicts": [], "skipped": [],
+        "batch": False, "note": None, "selected": None, "accepted": [], "items": [], "conflicts": [], "skipped": [],
         "summary": {}, "manual": [], "notes": [], "verify": None,
     }
     fid = proposal["files"][0]["id"]
@@ -559,3 +559,52 @@ async def test_select_subset_of_descriptions(client, db_session, entitled, tmp_p
     model = yaml.safe_load(r.json()["files"][0]["proposed_text"])["models"][0]
     assert "description" not in model
     assert model["columns"] == [{"name": "id"}, {"name": "amount", "description": "Total."}]
+
+
+async def test_explain_slow_sends_performance_info(client, db_session, entitled, tmp_path, monkeypatch):
+    pid, root = await _project(db_session, tmp_path)
+    (root / "target" / "manifest.json").write_text(json.dumps({"nodes": {UID: {"name": "orders", "resource_type": "model"}}}))
+    captured: dict = {}
+
+    def _slow(manifest, unique_id, perf_info, history, question):
+        captured.update(unique_id=unique_id, perf_info=perf_info)
+        return []
+
+    async def _stream(provider, messages, max_tokens=None):
+        yield "It's a table rebuilt every run."
+
+    monkeypatch.setattr(pro, "explain_slow_messages", _slow)
+    monkeypatch.setattr(ai_chat, "node_performance_info", AsyncMock(return_value={"runs": [], "changes": []}))
+    monkeypatch.setattr(ai_chat, "resolve_provider", AsyncMock(return_value=Provider("http://x/v1", "m")))
+    monkeypatch.setattr(ai_chat, "stream_chat", _stream)
+
+    cid = (await client.post(f"/api/projects/{pid}/ai/conversations")).json()["id"]
+    r = await client.post(
+        f"/api/projects/{pid}/ai/conversations/{cid}/messages",
+        json={"content": "Why is orders slow?", "unique_id": UID, "mode": "explain_slow"},
+    )
+    assert _events(r.text)[-1][0] == "done"
+    assert captured == {"unique_id": UID, "perf_info": {"runs": [], "changes": []}}
+
+
+async def test_explain_slow_needs_a_node(client, db_session, entitled, tmp_path):
+    pid, _ = await _project(db_session, tmp_path)
+    cid = (await client.post(f"/api/projects/{pid}/ai/conversations")).json()["id"]
+    r = await client.post(
+        f"/api/projects/{pid}/ai/conversations/{cid}/messages",
+        json={"content": "why", "mode": "explain_slow"},
+    )
+    assert r.status_code == 422
+
+
+def test_explain_slow_shim_falls_back_to_ask_on_older_pro(monkeypatch):
+    calls: list = []
+
+    class OldPro:
+        def ask_messages(self, manifest, unique_id, history, question, run_info):
+            calls.append(unique_id)
+            return [{"role": "user", "content": question}]
+
+    monkeypatch.setattr(pro, "_pro", lambda: OldPro())
+    assert pro.explain_slow_messages({}, UID, {}, [], "why") == [{"role": "user", "content": "why"}]
+    assert calls == [UID]

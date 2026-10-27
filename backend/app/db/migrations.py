@@ -523,6 +523,28 @@ async def run_migrations() -> None:
             await session.execute(text("ALTER TABLE ai_proposal_files ADD COLUMN applied_text TEXT"))
             await session.commit()
 
+        # Smarter test suggestions: join pairs + grain per model (lineage_version 4)
+        if not await _column_exists(session, "column_lineage_snapshots", "join_keys_json"):
+            await session.execute(
+                text("ALTER TABLE column_lineage_snapshots ADD COLUMN join_keys_json TEXT NOT NULL DEFAULT '{}'")
+            )
+            await session.commit()
+
+        # Test gaps the user chose not to test (Health → Test Gaps → Ignored)
+        if not await _table_exists(session, "test_gap_ignores"):
+            await session.execute(text(
+                "CREATE TABLE test_gap_ignores ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "key TEXT NOT NULL, "
+                "unique_id TEXT NOT NULL, "
+                "name TEXT NOT NULL, "
+                "label TEXT NOT NULL, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "UNIQUE(project_id, key))"
+            ))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

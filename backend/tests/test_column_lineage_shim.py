@@ -71,3 +71,32 @@ def test_supports_transform_kinds_without_pro(monkeypatch: pytest.MonkeyPatch) -
 
     monkeypatch.setattr(shim, "_pro", _missing)
     assert shim.supports_transform_kinds() is False
+
+
+def test_trace_job_structure_uses_pro_implementation(monkeypatch: pytest.MonkeyPatch) -> None:
+    structure = {"join_pairs": [], "grain": {"columns": ["a"], "via": "distinct"}}
+    pro = SimpleNamespace(
+        trace_job=_trace_job,
+        trace_job_kinds=lambda job: (job.uid, {"a": [(A, "rename")]}, [B]),
+        trace_job_structure=lambda job: (job.uid, {"a": [(A, "rename")]}, [B], structure),
+    )
+    monkeypatch.setattr(shim, "_pro", lambda: pro)
+    assert shim.supports_structure() is True
+    assert shim.trace_job_structure(JOB) == ("model.p.child", {"a": [(A, "rename")]}, [B], structure)
+
+
+def test_trace_job_structure_falls_back_on_older_pro(monkeypatch: pytest.MonkeyPatch) -> None:
+    pro = SimpleNamespace(trace_job=_trace_job, trace_job_kinds=lambda job: (job.uid, {"a": [(A, "rename")]}, [B]))
+    monkeypatch.setattr(shim, "_pro", lambda: pro)
+    assert shim.supports_structure() is False
+    assert shim.trace_job_structure(JOB) == (
+        "model.p.child", {"a": [(A, "rename")]}, [B], {"join_pairs": [], "grain": None},
+    )
+
+
+def test_supports_structure_without_pro(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _missing():
+        raise ColumnLineageUnavailable("not installed")
+
+    monkeypatch.setattr(shim, "_pro", _missing)
+    assert shim.supports_structure() is False

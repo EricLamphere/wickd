@@ -72,6 +72,7 @@ When handling SSE events, invalidate the relevant query:
 | `ai_model_download` (global stream) | `['ai-status']` once the download settles |
 | `files_changed` | `['file-content', projectId]` (bottom pane Node SQL tab) |
 | `column_lineage_finished`, `graph_changed`, `files_changed`, `ai_proposal_updated` | `['propagate-preview', projectId]`, `['tag-flow', projectId]` (lineage propagation, `components/propagation/`) |
+| `column_lineage_finished`, `graph_changed`, `files_changed`, `ai_proposal_updated` | `['test-gaps', projectId]` (Health Test Gaps, `components/health/useTestGaps.ts`) |
 | `statuses_changed` | `['run-analysis', projectId]`, `['performance', projectId]` (Run History, `RunHistory/index.tsx`), `['node-durations', projectId]` (DAG Durations overlay, `lib/useDurationOverlay.ts`) |
 
 When adding a new event type that signals stale data, add an entry here.
@@ -138,6 +139,8 @@ Rules:
 - Never pass `fontSize="sm"`, `fontSize="2xs"`, or a custom `maxHeight` — the container provides scroll bounds
 - The component already handles: sticky header, row numbers, cell selection, drag-select, copy (Ctrl/Cmd+C), keyboard navigation, select-all (Ctrl/Cmd+A)
 - When adding a new panel or tab that shows tabular data, use `DataTable` — don't inline a `<table>` or reach for a third-party grid
+
+**Exception — designed insight tables:** Pro insight views where each row is a thing to act on (Run History → Performance, Health → Test Gaps) use `RichTable` (`components/RichTable.tsx`) instead: component cells (node names with ⌘-click → Files, pills, charts from `components/charts/`), sortable columns, row selection by key, expandable rows and hover actions. Raw query results, data previews and other grids stay on `DataTable`.
 
 ## Component File Size
 

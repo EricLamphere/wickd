@@ -66,6 +66,11 @@ export function AiSetup({ status, downloads }: AiSetupProps) {
       <p className="text-gray-600">
         Already run Ollama or LM Studio? Set WICKD_AI_ENDPOINT_URL in Global Settings to use it instead.
       </p>
+      {status.entitled && (
+        <p className="text-gray-600">
+          No model yet? Health → Test Gaps still suggests tests from column lineage (join keys and grain).
+        </p>
+      )}
     </div>
   );
 }

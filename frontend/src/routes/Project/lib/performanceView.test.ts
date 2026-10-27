@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecommendationDto } from '../../../lib/api';
-import { incrementalDraftQuestion, regressionRows, savingLabel, slowestRows, textSparkline } from './performanceView';
+import { changeVsUsual, formatDuration, incrementalDraftQuestion, matchesQuery, savingLabel, typeCounts } from './performanceView';
 
 const rec = (over: Partial<RecommendationDto> = {}): RecommendationDto => ({
   kind: 'make_incremental',
@@ -14,28 +14,35 @@ const rec = (over: Partial<RecommendationDto> = {}): RecommendationDto => ({
   ...over,
 });
 
-describe('textSparkline', () => {
-  it('scales between the min and max', () => {
-    expect(textSparkline([1, 5, 9])).toBe('▁▅█');
-  });
-  it('draws a flat series in the middle', () => {
-    expect(textSparkline([3, 3])).toBe('▄▄');
-  });
-  it('is empty for no data', () => {
-    expect(textSparkline([])).toBe('');
+describe('formatDuration', () => {
+  it('uses milliseconds under a second', () => {
+    expect(formatDuration(0)).toBe('0ms');
+    expect(formatDuration(0.0004)).toBe('1ms');
+    expect(formatDuration(0.045)).toBe('45ms');
+    expect(formatDuration(2.5)).toBe('2.5s');
+    expect(formatDuration(90)).toBe('1m 30s');
   });
 });
 
-describe('rows', () => {
-  it('formats slowest nodes', () => {
-    expect(slowestRows([{
-      unique_id: 'model.p.a', name: 'a', resource_type: 'model', median_s: 90, last_s: 2.5, runs: 3, recent: [1, 2, 3],
-    }])).toEqual([['a', 'model', '1m 30s', '2.5s', 3, '▁▅█']]);
+describe('changeVsUsual', () => {
+  it('labels slower, faster and about the same', () => {
+    expect(changeVsUsual(30, 10)).toEqual({ delta: '+20s', pct: '+200%', tone: 'slower' });
+    expect(changeVsUsual(5, 10)).toEqual({ delta: '−5s', pct: '−50%', tone: 'faster' });
+    expect(changeVsUsual(10.5, 10).tone).toBe('same');
+    expect(changeVsUsual(1.6, 1).tone).toBe('same'); // under a second apart
+    expect(changeVsUsual(3, 0).pct).toBe('');
   });
-  it('formats regressions with the slowdown', () => {
-    expect(regressionRows([{
-      unique_id: 'model.p.a', name: 'a', current: 30, baseline_median: 10, ratio: 3, runs_considered: 5,
-    }])).toEqual([['a', '30s', '10s', '+20s (200%)', 5]]);
+});
+
+describe('filters', () => {
+  it('matches names case-insensitively', () => {
+    expect(matchesQuery('stg_Orders', 'ORD')).toBe(true);
+    expect(matchesQuery('stg_orders', '  ')).toBe(true);
+    expect(matchesQuery('stg_orders', 'cust')).toBe(false);
+  });
+  it('counts resource types, most common first', () => {
+    expect(typeCounts([{ resource_type: 'test' }, { resource_type: 'model' }, { resource_type: 'model' }]))
+      .toEqual([['model', 2], ['test', 1]]);
   });
 });
 

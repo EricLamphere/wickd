@@ -1,16 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
-/** Multi-select checkbox dropdown used by the DAG filter bars (main DAG + bottom-pane Node DAG). */
+/** Multi-select checkbox dropdown used by the DAG filter bars (main DAG + bottom-pane Node DAG) and Run History. */
 interface FilterDropdownProps {
   label: string;
   options: string[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
-  closeSignal: number;
+  closeSignal?: number;
+  /** One value at most (radio buttons; picking closes the menu, picking it again clears it). */
+  single?: boolean;
+  /** Label for an option (defaults to the option itself). */
+  optionLabel?: (option: string) => string;
 }
 
-export function FilterDropdown({ label, options, selected, onChange, closeSignal }: FilterDropdownProps) {
+export function FilterDropdown({
+  label, options, selected, onChange, closeSignal = 0, single = false, optionLabel = (o) => o,
+}: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -32,6 +38,11 @@ export function FilterDropdown({ label, options, selected, onChange, closeSignal
   const count = selected.size;
 
   const toggle = (opt: string) => {
+    if (single) {
+      onChange(selected.has(opt) ? new Set() : new Set([opt]));
+      setOpen(false);
+      return;
+    }
     const next = new Set(selected);
     if (next.has(opt)) next.delete(opt);
     else next.add(opt);
@@ -48,8 +59,8 @@ export function FilterDropdown({ label, options, selected, onChange, closeSignal
             : 'bg-surface-elevated border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-300'
         }`}
       >
-        {label}
-        {count > 0 && (
+        {single && count > 0 ? `${label}: ${optionLabel([...selected][0])}` : label}
+        {!single && count > 0 && (
           <span className="ml-0.5 bg-brand-500 text-white rounded-full px-1 text-[10px] leading-none py-0.5">
             {count}
           </span>
@@ -65,12 +76,12 @@ export function FilterDropdown({ label, options, selected, onChange, closeSignal
               className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 cursor-pointer"
             >
               <input
-                type="checkbox"
+                type={single ? 'radio' : 'checkbox'}
                 checked={selected.has(opt)}
                 onChange={() => toggle(opt)}
                 className="accent-brand-500"
               />
-              {opt}
+              {optionLabel(opt)}
             </label>
           ))}
         </div>

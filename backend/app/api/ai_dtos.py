@@ -28,8 +28,13 @@ class AiProposalResultDto(BaseModel):
     # document
     description: str | None = None
     columns: dict[str, str] = {}
-    # tests: [{key, column, test, reason, values?, to?, field?, failures}]
+    # tests: [{key, column (None = model-level), columns?, test, reason, evidence?,
+    # source: lineage | ai, values?, to?, field?, failures}]; batch (Test gaps, several
+    # files) items also carry file / unique_id / name / resource_key
     tests: list[dict] = []
+    batch: bool = False
+    # tests: why only some suggestions were made (e.g. no AI model, lineage-backed only)
+    note: str | None = None
     # propagate (lineage propagation, several files): [{key, field: description | tags,
     # unique_id, column, file, name, value? (description), source?, kind?, path?,
     # tags?, via_kind?}], plus conflicts / nodes skipped because their YAML couldn't be edited

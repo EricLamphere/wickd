@@ -1,20 +1,23 @@
 import { useParams } from 'react-router-dom';
-import type { CheckSummary } from '../../lib/api';
 import { useUrlTab } from '../../lib/useUrlTab';
 import NavRail from './components/NavRail';
 import HealthCheckPanel from './components/HealthCheckPanel';
 import DriftPanel from './components/DriftPanel';
 import FreshnessPanel from './components/FreshnessPanel';
 import HealthOverview from './components/health/HealthOverview';
-import { TONE_BADGE, TONE_DOT, tabBadge } from './components/health/healthStatus';
+import TestGapsPanel from './components/health/TestGapsPanel';
+import { TONE_BADGE, TONE_DOT, type Tone, tabBadge } from './components/health/healthStatus';
+import { testGapsBadge } from './components/health/testGapsView';
+import { useTestGaps } from './components/health/useTestGaps';
 import { type HealthCheckKind, useHealthSummary } from './components/health/useHealth';
 
-type HealthTab = 'overview' | 'connection' | 'schema-drift' | 'source-freshness';
+type HealthTab = 'overview' | 'connection' | 'schema-drift' | 'test-gaps' | 'source-freshness';
 
 const TABS: { id: HealthTab; label: string; kind?: HealthCheckKind }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'connection', label: 'Connection', kind: 'connection' },
   { id: 'schema-drift', label: 'Schema Drift', kind: 'drift' },
+  { id: 'test-gaps', label: 'Test Gaps' },
   { id: 'source-freshness', label: 'Source Freshness', kind: 'freshness' },
 ];
 
@@ -33,6 +36,9 @@ export default function HealthPage() {
   // remembered per project for visits without one (e.g. clicking Health in the nav rail)
   const [activeTab, handleTabChange] = useUrlTab<HealthTab>('tab', TAB_IDS, 'overview', `health-tab:${id}`);
   const { data: summary } = useHealthSummary(id);
+  // same query as the Test Gaps tab and overview card (limit 50); disabled without Pro
+  const gaps = useTestGaps(id, 50);
+  const gapsBadge = testGapsBadge(gaps.data?.total ?? null, gaps.notReady);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -67,7 +73,8 @@ export default function HealthPage() {
                 }`}
               >
                 {tab.label}
-                {tab.kind && summary && <TabBadge check={summary[tab.kind]} />}
+                {tab.kind && summary && <TabBadge badge={tabBadge(summary[tab.kind])} />}
+                {tab.id === 'test-gaps' && <TabBadge badge={gapsBadge} />}
               </button>
             ))}
           </div>
@@ -76,7 +83,11 @@ export default function HealthPage() {
         {/* Tab content */}
         <div className="flex-1 overflow-auto">
           {activeTab === 'overview' && (
-            <HealthOverview projectId={id} onOpen={(kind) => handleTabChange(TAB_FOR_KIND[kind])} />
+            <HealthOverview
+              projectId={id}
+              onOpen={(kind) => handleTabChange(TAB_FOR_KIND[kind])}
+              onOpenTestGaps={() => handleTabChange('test-gaps')}
+            />
           )}
           {activeTab === 'connection' && (
             <div className="p-6 pb-12 max-w-[62rem] mx-auto w-full">
@@ -84,6 +95,7 @@ export default function HealthPage() {
             </div>
           )}
           {activeTab === 'schema-drift' && <DriftPanel projectId={id} />}
+          {activeTab === 'test-gaps' && <TestGapsPanel projectId={id} />}
           {activeTab === 'source-freshness' && <FreshnessPanel projectId={id} />}
         </div>
       </div>
@@ -91,8 +103,7 @@ export default function HealthPage() {
   );
 }
 
-function TabBadge({ check }: { check: CheckSummary }) {
-  const badge = tabBadge(check);
+function TabBadge({ badge }: { badge: { label: string | null; tone: Tone } | null }) {
   if (!badge) return null;
   if (badge.label === null) {
     return <span title="Running" className={`w-1.5 h-1.5 rounded-full ${TONE_DOT[badge.tone]}`} />;

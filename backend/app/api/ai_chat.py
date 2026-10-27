@@ -24,6 +24,7 @@ from app.ai.client import LlmError, stream_chat
 from app.ai.config import load_ai_config
 from app.ai.documentation import DocumentationError, load_manifest_dict
 from app.ai.gating import require_ai
+from app.ai.perf_context import node_performance_info
 from app.ai.provider import resolve_provider
 from app.ai.run_context import failing_rows, node_run_info
 from app.ai.runtime import RuntimeUnavailable, llama_server
@@ -57,7 +58,8 @@ class AskDto(BaseModel):
     content: Question
     unique_id: str | None = Field(default=None, max_length=512)
     # explain_failure: diagnose the node's latest failed run/tests (needs unique_id)
-    mode: Literal["ask", "explain_failure"] = "ask"
+    # explain_slow: why the node is slow, from its run timings and recent changes (needs unique_id)
+    mode: Literal["ask", "explain_failure", "explain_slow"] = "ask"
 
 
 def _conversation_dto(c: AiConversation) -> AiConversationDto:
@@ -185,9 +187,12 @@ async def _build_messages(
     session: AsyncSession, project: Project, manifest: dict, dto: AskDto, history: list[dict]
 ) -> list[dict]:
     if dto.unique_id is None:
-        if dto.mode == "explain_failure":
+        if dto.mode != "ask":
             raise HTTPException(status_code=422, detail="select a model or test to explain")
         return pro.ask_messages(manifest, None, history, dto.content)
+    if dto.mode == "explain_slow":
+        perf = await node_performance_info(session, project.id, Path(project.path), manifest, dto.unique_id)
+        return pro.explain_slow_messages(manifest, dto.unique_id, perf, history, dto.content)
     run_info = await node_run_info(session, project.id, manifest, dto.unique_id)
     if dto.mode == "ask":
         return pro.ask_messages(manifest, dto.unique_id, history, dto.content, run_info)

@@ -9,11 +9,13 @@ const COPY: Record<LineageNotReadyReason, string> = {
   error: 'The last column lineage scan failed.',
 };
 
-/** Why propagation can't run yet, with a button to (re)compute column lineage. */
-export function LineageNotReadyNotice({ projectId, reason, compact = false }: {
+/** Why a lineage feature can't run yet, with a button to (re)compute column lineage. */
+export function LineageNotReadyNotice({ projectId, reason, compact = false, outdated }: {
   projectId: number;
   reason: LineageNotReadyReason;
   compact?: boolean;
+  /** What an older scan lacks, for this feature (defaults to propagation's transform kinds). */
+  outdated?: string;
 }) {
   const lineage = useColumnLineageData(projectId, true);
   const busy = lineage.running || reason === 'running';
@@ -23,7 +25,7 @@ export function LineageNotReadyNotice({ projectId, reason, compact = false }: {
 
   return (
     <div className={`flex flex-wrap items-center gap-2 ${compact ? 'text-[11px]' : 'text-xs'} text-gray-500`}>
-      <span>{busy ? COPY.running : COPY[reason]}</span>
+      <span>{busy ? COPY.running : reason === 'outdated' && outdated ? outdated : COPY[reason]}</span>
       {busy && progress && <span className="text-gray-600">{progress}</span>}
       {!busy && (
         <button

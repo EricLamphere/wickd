@@ -182,6 +182,23 @@ class FreshnessSnapshot(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class TestGapIgnore(Base):
+    """A Test gaps row the user doesn't want tests for (hidden from the list until unignored)."""
+
+    __tablename__ = "test_gap_ignores"
+    __test__ = False  # not a pytest test class
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    # the row's key ("<unique_id>::<column>" or "<unique_id>::(a, b)"; app/test_targets/batch.py row_key)
+    key: Mapped[str] = mapped_column(String(1024))
+    unique_id: Mapped[str] = mapped_column(String(512))
+    name: Mapped[str] = mapped_column(String(255))  # model name, kept for display once the gap is gone
+    label: Mapped[str] = mapped_column(String(1024))  # column, or "(a, b)" for a combination
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (UniqueConstraint("project_id", "key", name="uq_test_gap_ignore_key"),)
+
+
 class ColumnLineageSnapshot(Base):
     __tablename__ = "column_lineage_snapshots"
 
@@ -201,8 +218,11 @@ class ColumnLineageSnapshot(Base):
     manifest_mtime: Mapped[float] = mapped_column(Float, default=0.0)
     # {downstream uid: [{node, column}]} — upstream columns each model filters/joins/groups on
     row_dependencies_json: Mapped[str] = mapped_column(Text, default="{}")
-    # 1 = projection lineage only; 2 = also row dependencies (see api/column_lineage.py)
+    # 1 = projection lineage only; 2 = + row dependencies; 3 = + transform kinds;
+    # 4 = + join pairs and grain (see api/column_lineage.py)
     lineage_version: Mapped[int] = mapped_column(Integer, default=1)
+    # {uid: {"join_pairs": [{left, right, type}], "grain": {columns, via} | null}} (lineage_version 4)
+    join_keys_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class RunInvocation(Base):

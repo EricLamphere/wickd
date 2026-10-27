@@ -127,5 +127,26 @@ def supports_transform_kinds() -> bool:
         return False
 
 
+def trace_job_structure(job) -> tuple:
+    """trace_job_kinds() plus the model's join pairs and grain, used by test
+    suggestions: (uid, {column: [(ColumnRef, kind | None)]}, [ColumnRef],
+    {"join_pairs": [{left, right, type}], "grain": {columns, via} | None}).
+    Older wickd_pro builds get no structure — see supports_structure()."""
+    pro = _pro()
+    with_structure = getattr(pro, "trace_job_structure", None)
+    if with_structure is not None:
+        return with_structure(job)
+    uid, col_lineage, row_refs = trace_job_kinds(job)
+    return uid, col_lineage, row_refs, {"join_pairs": [], "grain": None}
+
+
+def supports_structure() -> bool:
+    """Whether the installed wickd_pro traces join pairs and grain."""
+    try:
+        return hasattr(_pro(), "trace_job_structure")
+    except ColumnLineageUnavailable:
+        return False
+
+
 def build_column_lineage(manifest_path: Path) -> dict:
     return _pro().build_column_lineage(manifest_path)

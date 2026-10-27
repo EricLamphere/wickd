@@ -1,7 +1,13 @@
 import pytest
 from ruamel.yaml import YAML
 
-from app.dbt.schema_tests import DataTestSpec, add_column_tests, default_test_key, render_test
+from app.dbt.schema_tests import (
+    DataTestSpec,
+    add_column_tests,
+    add_model_tests,
+    default_test_key,
+    render_test,
+)
 from app.dbt.schema_yaml import SchemaYamlError
 
 
@@ -81,3 +87,33 @@ def test_default_key_by_version():
 def test_render_test_quotes_strings():
     lines = render_test(DataTestSpec("accepted_values", {"values": ["it's", "a: b"]}), 4, False)
     assert lines == ["    - accepted_values:\n", '        values: ["it\'s", "a: b"]\n']
+
+
+COMBO = DataTestSpec("dbt_utils.unique_combination_of_columns", {"combination_of_columns": ["day", "status"]})
+
+
+def test_model_tests_add_a_key_under_the_entry_using_the_columns_key():
+    text = add_model_tests(BASE, "s.yml", "models", "orders", [COMBO], "1.9.0")
+    orders = _load(text)["models"][0]
+    assert orders["data_tests"] == [
+        {"dbt_utils.unique_combination_of_columns": {"combination_of_columns": ["day", "status"]}},
+    ]
+    assert orders["columns"][0]["data_tests"] == ["unique"]
+    assert "  - name: orders  # orders model\n    data_tests:\n" in text
+
+
+def test_model_tests_append_to_an_existing_list_with_arguments_on_1_10():
+    base = "version: 2\nmodels:\n  - name: daily\n    tests:\n      - x\n    columns:\n      - name: day\n"
+    text = add_model_tests(base, "s.yml", "models", "daily", [COMBO], "1.10.2")
+    daily = _load(text)["models"][0]
+    assert daily["tests"] == [
+        "x", {"dbt_utils.unique_combination_of_columns": {"arguments": {"combination_of_columns": ["day", "status"]}}},
+    ]
+
+
+def test_model_tests_on_last_entry_and_unknown_node():
+    text = add_model_tests(BASE, "s.yml", "models", "customers", [COMBO], "1.9.0")
+    assert "data_tests" in _load(text)["models"][1]
+    with pytest.raises(SchemaYamlError):
+        add_model_tests(BASE, "s.yml", "models", "nope", [COMBO], "1.9.0")
+    assert add_model_tests(BASE, "s.yml", "models", "orders", [], "1.9.0") == BASE

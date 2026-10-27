@@ -1,29 +1,48 @@
 import { useState } from 'react';
 import { Gauge, Sparkles } from 'lucide-react';
 import { isProFeatureRequiredError, type RecommendationDto } from '../../../lib/api';
-import { DataTable } from '../../../components/DataTable';
 import { ProFeatureButton } from '../../../components/ProFeatureButton';
 import { UpgradeModal } from '../components/UpgradeModal';
 import { useOpenInFiles } from '../lib/openInFiles';
 import { openWicky } from '../lib/wickyEvents';
-import {
-  REGRESSION_COLUMNS,
-  SLOWEST_COLUMNS,
-  incrementalDraftQuestion,
-  regressionRows,
-  savingLabel,
-  slowestRows,
-} from '../lib/performanceView';
+import { incrementalDraftQuestion, matchesQuery, savingLabel, typeCounts } from '../lib/performanceView';
+import { FilterDropdown } from '../components/FilterDropdown';
+import { TableSearch } from '../../../components/RichTableControls';
+import { RegressionsTable, SlowestTable } from './PerformanceTables';
 import { useProEntitled, useProjectPerformance } from './usePerformance';
 
 const FEATURE = 'Run performance insights';
+const COMMANDS = ['build', 'run', 'test', 'seed'];
+
 
 /** Pro: recommendations, regressions and slowest nodes across recent runs. */
 export function PerformanceTab({ projectId }: { projectId: number }) {
   const { entitled, loading: licenseLoading } = useProEntitled();
   const [command, setCommand] = useState('');
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [types, setTypes] = useState<Set<string>>(new Set());
   const { data, isLoading, error } = useProjectPerformance(projectId, command, entitled);
+  const matchesNode = (name: string, type: string) => matchesQuery(name, query) && (types.size === 0 || types.has(type));
+  // search + Type filter the Slowest nodes table; Command scopes the whole tab
+  const filters = (
+    <div className="flex flex-wrap items-center gap-2">
+      <TableSearch value={query} onChange={setQuery} placeholder="Filter nodes…" />
+      <FilterDropdown
+        label="Type"
+        options={typeCounts(data?.slowest ?? []).map(([t]) => t)}
+        selected={types}
+        onChange={setTypes}
+      />
+      <FilterDropdown
+        label="Command"
+        options={COMMANDS}
+        selected={command ? new Set([command]) : new Set()}
+        onChange={(next) => setCommand([...next][0] ?? '')}
+        single
+      />
+    </div>
+  );
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const locked = (!licenseLoading && !entitled) || isProFeatureRequiredError(error);
   if (locked) {
@@ -37,32 +56,24 @@ export function PerformanceTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="flex-1 overflow-auto px-6 py-4 space-y-6">
-      <div className="flex items-center gap-3 text-xs text-gray-500">
-        <select
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          className="form-select border rounded px-2 py-1 text-xs"
-        >
-          <option value="">All commands</option>
-          <option value="build">build</option>
-          <option value="run">run</option>
-          <option value="test">test</option>
-          <option value="seed">seed</option>
-        </select>
-        {data && (
-          <span>
-            Based on the last {data.runs_considered} run{data.runs_considered === 1 ? '' : 's'}
-            {' '}({data.runs_with_timing} with timing details)
-          </span>
-        )}
-      </div>
+      {data && (
+        <p className="text-xs text-gray-500">
+          Based on the last {data.runs_considered} run{data.runs_considered === 1 ? '' : 's'}
+          {command ? ` of dbt ${command}` : ''} ({data.runs_with_timing} with timing details)
+        </p>
+      )}
 
       {isLoading || licenseLoading ? (
         <p className="text-sm text-gray-500">Analyzing runs…</p>
       ) : error ? (
         <p className="text-sm text-red-400">{error instanceof Error ? error.message : String(error)}</p>
       ) : !data || data.runs_considered === 0 ? (
-        <p className="text-sm text-gray-500">No finished runs yet. Run or build some models, then come back.</p>
+        <div className="space-y-3">
+          {command && filters}
+          <p className="text-sm text-gray-500">
+            {command ? `No finished dbt ${command} runs yet.` : 'No finished runs yet. Run or build some models, then come back.'}
+          </p>
+        </div>
       ) : (
         <>
           <Section title="Recommendations" count={data.recommendations.length}>
@@ -87,14 +98,15 @@ export function PerformanceTab({ projectId }: { projectId: number }) {
                 No node is meaningfully slower than usual (at least 50% and 5s slower than its median, with 3+ earlier runs).
               </p>
             ) : (
-              <DataTable columns={REGRESSION_COLUMNS} rows={regressionRows(data.regressions)} />
+              <RegressionsTable projectId={projectId} regressions={data.regressions} />
             )}
           </Section>
 
           <Section title="Slowest nodes" count={data.slowest.length}>
+            <div className="mb-2.5">{filters}</div>
             {data.slowest.length === 0
               ? <p className="text-xs text-gray-500">No successful runs to compare yet.</p>
-              : <DataTable columns={SLOWEST_COLUMNS} rows={slowestRows(data.slowest)} />}
+              : <SlowestTable projectId={projectId} nodes={data.slowest.filter((n) => matchesNode(n.name, n.resource_type))} filtered={!!query || types.size > 0} />}
           </Section>
         </>
       )}
@@ -143,7 +155,7 @@ function RecommendationCard({ projectId, rec }: { projectId: number; rec: Recomm
         )}
         {rec.kind === 'make_incremental' && (
           <button
-            onClick={() => openWicky({ question: incrementalDraftQuestion(rec) })}
+            onClick={() => openWicky({ question: incrementalDraftQuestion(rec), uniqueId: rec.unique_id ?? undefined })}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs text-brand-300 bg-brand-900/20 hover:bg-brand-900/40 transition-colors"
           >
             <Sparkles size={11} />

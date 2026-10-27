@@ -43,7 +43,7 @@ It looks at the last 20 finished runs:
   - *Make a model incremental*: a table on the critical path (or among the slowest
     nodes) that has been slow for at least 3 runs. Rated *high* confidence when it
     has a timestamp-like column (`updated_at`, `order_date`, …) to filter on.
-    **Ask Wicky to draft it** opens Wicky with a request for an incremental version.
+    **Ask Wicky to draft it** opens Wicky on that model with a request for an incremental version.
   - *Materialize a view as a table*: a view read by 3+ nodes in the run that took
     30s+ combined (a view's query runs again inside every model that selects from it).
   - *Raise threads*: threads were busy less than 60% of the run and the critical
@@ -52,6 +52,15 @@ It looks at the last 20 finished runs:
 - **Regressions**: nodes at least 50% **and** at least 5 seconds slower than the
   median of their last 10 successful runs (3 earlier runs needed).
 - **Slowest nodes**: median time over recent successful runs, with a trend.
+
+Both tables sort by any column, and the filters above Slowest nodes narrow that table by node name and node **Type**; **Command** limits the whole tab (recommendations, regressions and slowest nodes) to one dbt command. Hover a
+sparkline to read each run's time. Click a row to chart every recorded run of that node (bars coloured
+by status, with the median), with **Open in Files**, **Show in DAG** and **Ask Wicky**; ⌘-click a node
+name to open it in Files directly. **Ask Wicky** asks about that node (it becomes Wicky's context)
+and sends its SQL, config, recorded run timings and the git commits that changed its SQL or YAML
+over those runs, so Wicky can point at a materialization, a growing table or the commit that
+slowed it down. Regressions show usual → now on a shared scale, so the biggest
+jumps stand out.
 
 Runs selected with `+model` only cover part of the DAG, so nodes are compared with
 their own history, never one invocation with another.

@@ -99,6 +99,14 @@ def _fake_trace_job_kinds(job: LineageJob) -> tuple:
     return uid, {col: [(ref, "identity") for ref in refs] for col, refs in columns.items()}, rows
 
 
+STRUCTURE = {"join_pairs": [], "grain": {"columns": ["order_id"], "via": "group_by"}}
+
+
+def _fake_trace_job_structure(job: LineageJob) -> tuple:
+    """_fake_trace_job_kinds plus join pairs and grain."""
+    return (*_fake_trace_job_kinds(job), STRUCTURE)
+
+
 def _supports_rows() -> bool:
     return True
 
@@ -113,11 +121,14 @@ def _fake_algorithm(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(column_lineage_module, "supports_row_dependencies", _supports_rows)
     monkeypatch.setattr(column_lineage_module, "trace_job_kinds", _fake_trace_job_kinds)
     monkeypatch.setattr(column_lineage_module, "supports_transform_kinds", _supports_rows)
+    monkeypatch.setattr(column_lineage_module, "trace_job_structure", _fake_trace_job_structure)
+    monkeypatch.setattr(column_lineage_module, "supports_structure", _supports_rows)
     import app.api.column_lineage as api_module
     monkeypatch.setattr(api_module, "prepare_lineage_jobs", _fake_prepare_lineage_jobs)
     monkeypatch.setattr(api_module, "supports_row_dependencies", _supports_rows)
-    monkeypatch.setattr(api_module, "trace_job_kinds", _fake_trace_job_kinds)
+    monkeypatch.setattr(api_module, "trace_job_structure", _fake_trace_job_structure)
     monkeypatch.setattr(api_module, "supports_transform_kinds", _supports_rows)
+    monkeypatch.setattr(api_module, "supports_structure", _supports_rows)
 
 
 @pytest.fixture(autouse=True)
@@ -266,7 +277,10 @@ async def test_start_and_poll_end_to_end(
     assert final["row_dependencies"] == {
         "model.proj.orders": [{"node": "model.proj.stg_orders", "column": "status", "kind": None}],
     }
-    assert final["lineage_version"] == 3
+    assert final["lineage_version"] == 4
+    snap = await db_session.get(ColumnLineageSnapshot, final["id"])
+    await db_session.refresh(snap)
+    assert json.loads(snap.join_keys_json) == {"model.proj.orders": STRUCTURE}
 
 
 async def test_rerun_recomputes_snapshots_from_an_older_lineage_version(
@@ -291,7 +305,7 @@ async def test_rerun_recomputes_snapshots_from_an_older_lineage_version(
     assert resp.status_code == 202
     final = await _wait_for_done(client, pid)
     assert final["id"] != old.id
-    assert final["lineage_version"] == 3
+    assert final["lineage_version"] == 4
 
 
 async def test_start_auto_compiles_stale_manifest(

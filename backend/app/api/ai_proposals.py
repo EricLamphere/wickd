@@ -45,6 +45,7 @@ from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.propagation import proposals as propagation
 from app.refactor.verify import start_verify
+from app.test_targets.service import targets_for_model
 
 log = get_logger(__name__)
 
@@ -214,6 +215,8 @@ async def _generate(
         async with db_engine.SessionLocal() as session:
             config = await load_ai_config(session)
         env = await load_project_env(project_id)
+        if kind == "tests":  # lineage-backed suggestions (join keys, grain), when a scan has them
+            options = {**options, "targets": await targets_for_model(project_id, project_path, unique_id)}
         # looked up per call (not a module-level dict) so tests can patch either generator
         generator = {"document": generate_documentation, "tests": generate_tests}[kind]
         result = await generator(
@@ -404,8 +407,13 @@ def _compile_selector(proposal: AiProposal, result: dict, path: str) -> str | No
     propagation) every node with items in that file. Refactors run `dbt parse` instead."""
     if proposal.kind == REFACTOR_KIND:
         return None
-    if proposal.kind == propagation.KIND:
-        names = {i["name"] for i in result.get("items") or [] if i.get("file") == path and i.get("name")}
+    multi_file_items = (
+        result.get("items") if proposal.kind == propagation.KIND
+        else result.get("tests") if result.get("batch")  # Test gaps: tests for many models
+        else None
+    )
+    if multi_file_items is not None:
+        names = {i["name"] for i in multi_file_items if i.get("file") == path and i.get("name")}
         return " ".join(sorted(names)) or None
     return proposal.unique_id.split(".")[-1] if proposal.unique_id else None
 

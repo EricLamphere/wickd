@@ -40,13 +40,37 @@ export interface AiMessageDto {
   /**
    * `action`: a quick action (e.g. Document) run from this chat; `proposal` holds its outcome.
    * `query`: SQL Wicky wrote (content = its explanation); `payload` holds it and its results.
+   * `refactor`: a refactor Wicky parsed from a request, waiting for confirmation (payload: RefactorPayload).
    */
-  role: 'user' | 'assistant' | 'action' | 'query';
+  role: 'user' | 'assistant' | 'action' | 'query' | 'refactor';
   content: string;
   unique_id: string | null;
   created_at: string;
   proposal: AiProposalDto | null;
-  payload: AiQueryPayload | null;
+  payload: AiQueryPayload | RefactorPayload | null;
+}
+
+export type RefactorOp = 'rename_model' | 'rename_column' | 'extract_cte';
+
+export interface RefactorOperation {
+  op: RefactorOp;
+  unique_id: string;
+  new_name: string;
+  /** rename_column */
+  column?: string;
+  /** extract_cte */
+  cte?: string;
+  model?: string;
+}
+
+/** A `refactor` message: the operation Wicky understood, until the user confirms or cancels it. */
+export interface RefactorPayload {
+  request: string;
+  operation: RefactorOperation | null;
+  description: string;
+  reason?: string;
+  status: 'proposed' | 'none' | 'confirmed' | 'cancelled';
+  proposal_id?: number;
 }
 
 export type AiQueryStatus = 'proposed' | 'invalid' | 'waiting' | 'running' | 'done' | 'error';
@@ -73,13 +97,33 @@ export interface AiConversationDetailDto extends AiConversationDto {
   messages: AiMessageDto[];
 }
 
+export type ProposalFileOp = 'modify' | 'create' | 'delete' | 'rename';
+
 export interface AiProposalFileDto {
   id: number;
   path: string;
   /** null when the file doesn't exist yet */
   original_text: string | null;
+  /** rename: the text written at new_path */
   proposed_text: string;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected' | 'undone';
+  op: ProposalFileOp;
+  /** rename target */
+  new_path: string | null;
+}
+
+/** An edit a refactor didn't make because it couldn't be sure; the user checks it by hand. */
+export interface ManualReviewItem {
+  path: string;
+  line: number;
+  text: string;
+  reason: string;
+}
+
+/** `dbt parse` after a refactor is applied. */
+export interface RefactorVerify {
+  status: 'running' | 'ok' | 'error';
+  output?: string;
 }
 
 /** `empty`: nothing needed changing (error_message holds a note, not a failure). */
@@ -94,7 +138,8 @@ export interface AiSuggestedTest {
   failures?: number | null;
 }
 
-export type AiProposalStatus = 'generating' | 'ready' | 'applied' | 'rejected' | 'dismissed' | 'error' | 'empty';
+export type AiProposalStatus =
+  | 'generating' | 'ready' | 'applied' | 'rejected' | 'dismissed' | 'error' | 'empty' | 'undone';
 
 /** `ai_proposal_progress` event: what generation is doing, and the model's answer so far. */
 export interface AiProposalProgress {
@@ -127,6 +172,11 @@ export interface AiProposalDto {
     selected: string[] | null;
     /** Items already accepted in review (applied when the file is). */
     accepted: string[];
+    /** kind "refactor": the operation and what the engine did ({op, unique_id, new_name, files, downstream?, …}). */
+    summary?: Record<string, unknown>;
+    manual?: ManualReviewItem[];
+    notes?: string[];
+    verify?: RefactorVerify | null;
   };
   files: AiProposalFileDto[];
 }
@@ -283,11 +333,22 @@ export const aiApi = {
     post<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/files/${fileId}/accept`),
   rejectFile: (projectId: number, proposalId: number, fileId: number) =>
     post<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/files/${fileId}/reject`),
+  /** Every pending file at once: all are written, or none (409 lists the conflicts). */
+  acceptAll: (projectId: number, proposalId: number) =>
+    post<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/accept`),
+  /** Reject every pending file; nothing is written. */
+  rejectAll: (projectId: number, proposalId: number) =>
+    post<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/reject`),
+  /** Restore every applied file, while none has changed since (409 lists the ones that did). */
+  undo: (projectId: number, proposalId: number) =>
+    post<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/undo`),
 };
 
 export function aiErrorMessage(err: unknown, fallback = 'Something went wrong'): string {
   if (err instanceof ApiError) {
     if (typeof err.body === 'string') return err.body;
+    const files = (err.body as { files?: unknown } | null)?.files;
+    if (Array.isArray(files) && files.length > 0) return files.join('\n');
     if (err.status === 503) return 'AI features aren’t available in this build (the wickd Pro package is not installed).';
   }
   return err instanceof Error ? err.message : fallback;

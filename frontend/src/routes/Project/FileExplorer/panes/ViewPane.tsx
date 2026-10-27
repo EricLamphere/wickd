@@ -5,6 +5,7 @@ import { RotateCw, WrapText, Save, Trash2 } from 'lucide-react';
 import { format as sqlFormat } from 'sql-formatter';
 import { api, type FileContentDto, type GraphDto, type ModelNode } from '../../../../lib/api';
 import { useTheme } from '../../../../lib/useTheme';
+import { registerExtractCteAction } from './extractCteAction';
 
 type ViewTab = 'code' | 'compiled';
 
@@ -174,6 +175,12 @@ export function ViewPane({
 
   const targetTestNodeRef = useRef(targetTestNode);
   useEffect(() => { targetTestNodeRef.current = targetTestNode; }, [targetTestNode]);
+
+  const modelUidRef = useRef(modelUid);
+  useEffect(() => { modelUidRef.current = modelUid; }, [modelUid]);
+
+  const isDirtyRef = useRef(isDirty);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
 
   // ref to the Monaco editor instance for imperative scroll/reveal
   const editorRef = useRef<MonacoEditor.editor.IStandaloneCodeEditor | null>(null);
@@ -371,6 +378,14 @@ export function ViewPane({
                   }, 50);
                 }
               }
+
+              // "Extract CTE to model…" (refactor) for SQL model files
+              const extractAction = isSqlFile(openFile.path)
+                ? registerExtractCteAction(editor, () => {
+                  const node = graphRef.current?.nodes.find((n) => n.unique_id === modelUidRef.current);
+                  return node && node.resource_type === 'model' ? { uniqueId: node.unique_id, model: node.name } : null;
+                }, () => isDirtyRef.current)
+                : null;
 
               // YAML cursor tracking: when cursor moves, find which test block it's in
               const isYamlFile = openFile.path.endsWith('.yml') || openFile.path.endsWith('.yaml');
@@ -719,6 +734,7 @@ export function ViewPane({
                 editorKeyListenersRef.current = null;
                 onMouseDown.dispose();
                 cursorDisposable.dispose();
+                extractAction?.dispose();
                 decorations.clear();
                 editorRef.current = null;
               };

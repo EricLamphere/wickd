@@ -357,3 +357,31 @@ async def test_tag_proposal_writes_inherited_tags(client, db_session, calls, com
     r = await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/files/{file['id']}/accept")
     assert r.json()["status"] == "applied"
     compiled.assert_awaited_with(pid, str(root), "mart_users")
+
+
+async def test_accept_all_skips_files_with_every_item_rejected(client, db_session, calls, compiled, tmp_path):
+    pid, root = await _project(db_session, tmp_path)
+    r = await client.post(f"/api/projects/{pid}/propagate/descriptions", json={})
+    proposal = await _wait_status(client, pid, r.json()["id"], "ready")
+    base = f"/api/projects/{pid}/ai/proposals/{proposal['id']}"
+    mart = next(f for f in proposal["files"] if f["path"] == "models/marts/schema.yml")
+    await client.put(f"{base}/selection", json={"keys": [], "file_id": mart["id"]})
+
+    r = await client.post(f"{base}/accept")
+    assert r.status_code == 200 and r.json()["status"] == "applied"
+    statuses = {f["path"]: f["status"] for f in r.json()["files"]}
+    assert statuses == {"models/staging/schema.yml": "accepted", "models/marts/schema.yml": "rejected"}
+    assert not (root / "models" / "marts" / "schema.yml").exists()
+    compiled.assert_awaited_with(pid, str(root), "stg_users")
+
+
+async def test_reject_all_writes_nothing(client, db_session, calls, compiled, tmp_path):
+    pid, root = await _project(db_session, tmp_path)
+    r = await client.post(f"/api/projects/{pid}/propagate/descriptions", json={})
+    proposal = await _wait_status(client, pid, r.json()["id"], "ready")
+    before = (root / "models" / "staging" / "schema.yml").read_text()
+    r = await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/reject")
+    assert r.json()["status"] == "rejected"
+    assert {f["status"] for f in r.json()["files"]} == {"rejected"}
+    assert (root / "models" / "staging" / "schema.yml").read_text() == before
+    assert (await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/reject")).status_code == 409

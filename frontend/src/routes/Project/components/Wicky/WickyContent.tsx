@@ -90,6 +90,7 @@ function WickyReady({ projectId, model, graph, request: external, onRequestTaken
             text: `Explain why ${model.name} is failing`,
             mode: 'explain_failure',
           })}
+          onRefactor={() => setRequest({ nonce: Date.now(), text: '', mode: 'ask', chatMode: 'refactor' })}
         />
       )}
       <AiChat

@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { DiffEditor, type DiffOnMount } from '@monaco-editor/react';
-import { Check, ChevronRight, FileText, Loader2, X } from 'lucide-react';
+import { Check, CheckCheck, ChevronRight, Loader2, X } from 'lucide-react';
 import { useTheme } from '../../../../lib/useTheme';
-import { aiApi, aiErrorMessage, type AiProposalDto, type AiProposalFileDto } from '../../../../lib/aiApi';
+import { aiApi, aiErrorMessage, type AiProposalDto, type ManualReviewItem } from '../../../../lib/aiApi';
 import { ChangeList, type ItemState } from './ChangeList';
+import { InlineCode } from './InlineCode';
+import { FILE_STATUS_STYLES, OpBadge, ProposalFileList } from './ProposalFileList';
+import { diffTexts, fileForItem, fileTitle, languageFor, showsFileList } from './proposalFiles';
 import { findItemLine, itemsInFile, proposalItems, selectedKeys, type ProposalItem } from './proposalItems';
 
 interface ProposalReviewModalProps {
@@ -16,26 +19,21 @@ interface ProposalReviewModalProps {
 
 type DiffEditorInstance = Parameters<DiffOnMount>[0];
 
-function languageFor(path: string): string {
-  if (path.endsWith('.sql')) return 'sql';
-  if (path.endsWith('.yml') || path.endsWith('.yaml')) return 'yaml';
-  return 'plaintext';
-}
-
-const FILE_STATUS_STYLES: Record<AiProposalFileDto['status'], string> = {
-  pending: 'text-gray-400',
-  accepted: 'text-emerald-400',
-  rejected: 'text-gray-600 line-through',
-};
+const REVEAL_DELAY_MS = 50;
+const SECONDARY = 'bg-surface-elevated border border-gray-700 text-gray-300 hover:bg-gray-700';
+const FOOTER_BUTTON = 'flex items-center gap-1 px-3 py-1.5 text-xs rounded disabled:opacity-40';
 
 /**
  * Review AI-proposed changes. Proposals made of separate items (tests,
  * descriptions) list them on the left: click one to jump to it in the diff,
  * ✓ / ✗ to decide it — rejecting rebuilds the file without it. Once every
  * item is decided the file is applied (or rejected, if nothing was kept).
- * Accept all / Reject all decide the whole file at once. Proposals spanning
- * several files (lineage propagation) list the active file's items, and each
- * file is decided on its own.
+ * Proposals spanning several files (lineage propagation, refactors) list their
+ * files on the left — with New / Deleted / Renamed badges — and each file can be
+ * decided on its own (Accept file / Reject file). Every proposal always has
+ * Reject all and Accept all, which decide the whole proposal at once (POST
+ * .../reject, .../accept; items rejected in review stay out). Refactors also list
+ * the edits they didn't make under "Needs manual review".
  */
 export function ProposalReviewModal({ projectId, proposal: initial, onClose }: ProposalReviewModalProps) {
   const qc = useQueryClient();
@@ -49,6 +47,8 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const highlight = useRef<{ clear: () => void } | null>(null);
 
   const files = proposal.files;
+  const refactor = proposal.kind === 'refactor';
+  const manual = proposal.result.manual ?? [];
   const kept = selectedKeys(proposal);
   const active = files.find((f) => f.id === activeId) ?? files[0];
   const allItems = proposalItems(proposal);
@@ -90,6 +90,23 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const focus = (item: ProposalItem) => {
     setFocused(item.key);
     reveal(item);
+  };
+
+  /** Open the manual item's file and highlight its line (on the original side: lines refer to it). */
+  const revealManual = (item: ManualReviewItem) => {
+    const file = fileForItem(files, item);
+    if (!file) return;
+    setActiveId(file.id);
+    window.setTimeout(() => {
+      const editor = editorRef.current?.getOriginalEditor();
+      if (!editor) return;
+      highlight.current?.clear();
+      editor.revealLineInCenter(item.line);
+      highlight.current = editor.createDecorationsCollection([{
+        range: { startLineNumber: item.line, startColumn: 1, endLineNumber: item.line, endColumn: 1 },
+        options: { isWholeLine: true, className: 'wicky-focus-line' },
+      }]);
+    }, REVEAL_DELAY_MS);
   };
 
   const decideFile = async (accept: boolean, current: AiProposalDto = proposal) => {
@@ -140,16 +157,32 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
     }
   });
 
-  const acceptAll = () => run(async () => {
+  /** Multi-file proposals: decide just the open file (with what's kept of its items). */
+  const acceptThisFile = () => run(async () => {
     const current = items.length > 0 ? await save(kept, kept) : proposal;
     await decideFile(true, current);
   });
 
-  const rejectAll = () => run(() => decideFile(false));
+  const rejectThisFile = () => run(() => decideFile(false));
+
+  /** The whole proposal at once: every pending file (items rejected in review stay out). */
+  const decideEverything = (accept: boolean) => run(async () => {
+    const updated = accept
+      ? await aiApi.acceptAll(projectId, proposal.id)
+      : await aiApi.rejectAll(projectId, proposal.id);
+    setProposal(updated);
+    qc.invalidateQueries({ queryKey: ['ai-proposals', projectId] });
+    qc.invalidateQueries({ queryKey: ['ai-conversation', projectId] });
+    onClose();
+  });
 
   if (!active) return null;
   const pending = active.status === 'pending';
   const someRejected = items.some((i) => stateOf(i.key) === 'rejected');
+  const pendingFiles = files.filter((f) => f.status === 'pending').length;
+  // single-file proposals made of items: nothing left to accept once every item is rejected
+  const nothingKept = !multiFile && items.length > 0 && keptInFile === 0;
+  const diff = diffTexts(active);
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
@@ -159,11 +192,13 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
       >
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800 shrink-0">
           <div className="min-w-0">
-            <h2 className="text-sm font-medium text-gray-200 truncate">{proposal.title}</h2>
+            <h2 className="text-sm font-medium text-gray-200 truncate"><InlineCode text={proposal.title} /></h2>
             <p className="text-[11px] text-gray-500">
-              {items.length > 0
-                ? 'Click a change to find it in the diff; accept or reject each one. Nothing is written until every change is decided.'
-                : 'Review each change. Nothing is written until you accept it.'}
+              {refactor
+                ? 'Review each file. Accept all writes them all at once, then runs dbt parse; you can undo it afterwards.'
+                : items.length > 0
+                  ? 'Click a change to find it in the diff; accept or reject each one. Nothing is written until every change is decided.'
+                  : 'Review each change. Nothing is written until you accept it.'}
             </p>
           </div>
           <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-300" title="Close (Esc)">
@@ -172,21 +207,14 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
         </div>
 
         <div className="flex flex-1 min-h-0">
-          {files.length > 1 && (
-            <div className="w-56 shrink-0 border-r border-gray-800 overflow-auto py-1">
-              {files.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => setActiveId(f.id)}
-                  className={`flex items-center gap-1.5 w-full px-3 py-1.5 text-left text-xs font-mono ${
-                    f.id === active.id ? 'bg-surface-elevated' : 'hover:bg-surface-elevated/60'
-                  } ${FILE_STATUS_STYLES[f.status]}`}
-                >
-                  <FileText size={12} className="shrink-0" />
-                  <span className="truncate">{f.path}</span>
-                </button>
-              ))}
-            </div>
+          {showsFileList(proposal) && (
+            <ProposalFileList
+              files={files}
+              activeId={active.id}
+              onSelect={setActiveId}
+              manual={manual}
+              onReveal={revealManual}
+            />
           )}
           {items.length > 0 && pending && (
             <ChangeList
@@ -200,19 +228,15 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
           )}
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-xs shrink-0">
-              <span className="font-mono text-gray-400 truncate">{active.path}</span>
-              {active.original_text === null && (
-                <span className="px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/50 text-[10px] uppercase tracking-wide text-emerald-400">
-                  new file
-                </span>
-              )}
+              <span className="font-mono text-gray-400 truncate">{fileTitle(active)}</span>
+              <OpBadge file={active} />
               {!pending && <span className={`ml-auto ${FILE_STATUS_STYLES[active.status]}`}>{active.status}</span>}
             </div>
             <div className="flex-1 min-h-0">
               <DiffEditor
-                original={active.original_text ?? ''}
-                modified={active.proposed_text}
-                language={languageFor(active.path)}
+                original={diff.original}
+                modified={diff.modified}
+                language={languageFor(active.new_path ?? active.path)}
                 theme={theme === 'light' ? 'vs-light' : 'vs-dark'}
                 onMount={(editor) => { editorRef.current = editor; }}
                 options={{
@@ -239,22 +263,37 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
               Next file <ChevronRight size={12} />
             </button>
           )}
+          {multiFile && (
+            <>
+              <button onClick={rejectThisFile} disabled={busy || !pending} className={`${FOOTER_BUTTON} ${SECONDARY}`}>
+                <X size={12} /> Reject file
+              </button>
+              <button
+                onClick={acceptThisFile}
+                disabled={busy || !pending || (items.length > 0 && keptInFile === 0)}
+                className={`${FOOTER_BUTTON} ${SECONDARY}`}
+              >
+                <Check size={12} /> {someRejected ? 'Accept the rest of this file' : 'Accept file'}
+              </button>
+            </>
+          )}
           <button
-            onClick={rejectAll}
-            disabled={busy || !pending}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-surface-elevated border border-gray-700 text-gray-300 hover:bg-gray-700 disabled:opacity-40"
+            onClick={() => decideEverything(false)}
+            disabled={busy || pendingFiles === 0}
+            title="Reject every change; nothing is written"
+            className={`${FOOTER_BUTTON} ${SECONDARY}`}
           >
-            <X size={12} /> {multiFile ? 'Reject file' : items.length > 0 ? 'Reject all' : 'Reject'}
+            <X size={12} /> Reject all
           </button>
           <button
-            onClick={acceptAll}
-            disabled={busy || !pending || (items.length > 0 && keptInFile === 0)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40"
+            onClick={() => decideEverything(true)}
+            disabled={busy || pendingFiles === 0 || nothingKept}
+            title={refactor
+              ? 'Write every file at once (or none, if any changed since this was made), then check with dbt parse'
+              : 'Write every remaining change (anything you rejected stays out); nothing is written if a file changed since this was made'}
+            className={`${FOOTER_BUTTON} bg-brand-600 text-white hover:bg-brand-500`}
           >
-            {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-            {multiFile
-              ? (someRejected ? 'Accept the rest of this file' : 'Accept file')
-              : items.length === 0 ? 'Accept' : someRejected ? 'Accept the rest' : 'Accept all'}
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />} Accept all
           </button>
         </div>
       </div>

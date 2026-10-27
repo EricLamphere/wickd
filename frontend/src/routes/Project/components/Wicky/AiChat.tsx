@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
-import { Database, Loader2, MessageCircle, Plus, Send, Square, Trash2 } from 'lucide-react';
+import { Database, Loader2, MessageCircle, Plus, Send, Square, Trash2, Wand2 } from 'lucide-react';
 import type { ModelNode } from '../../../../lib/api';
 import {
   aiApi, aiErrorMessage, type AiConversationDto, type AiMessageDto, type AiProposalProgress, type AskHandlers,
   type AskMode, type AskResult,
 } from '../../../../lib/aiApi';
+import { refactorApi } from '../../../../lib/refactorApi';
 import { ActionEntry } from './ActionEntry';
 import { QueryEntry } from './QueryEntry';
+import { RefactorCard } from './RefactorCard';
 import type { WickyChatMode } from '../../lib/wickyEvents';
 
 interface AiChatProps {
@@ -47,6 +49,17 @@ interface Pending {
 type ChatMode = WickyChatMode;
 
 const QUERY_SUGGESTIONS = ['How many rows are there, and how many per day recently?', 'Show the most common values of each category column'];
+
+/** Refactor suggestions are sentence starts: they fill the input (to finish typing) instead of sending. */
+const refactorSuggestions = (model: string | null) => model
+  ? [`Rename ${model} to `, `In ${model}, rename the column `, `From ${model}, extract the CTE `]
+  : ['Rename the model ', 'Rename the column ', 'Extract the CTE '];
+
+const MODES = [
+  ['ask', 'Ask', MessageCircle, 'Answers from the project\u2019s SQL and docs'],
+  ['query', 'Query data', Database, 'Wicky writes a read-only SQL query for you to review and run against the warehouse'],
+  ['refactor', 'Refactor', Wand2, 'Rename a model or column everywhere, or extract a CTE into a model; you review every edit'],
+] as const;
 
 const NODE_SUGGESTIONS = ['What does this model do?', 'How is each column derived?', 'What would break if I changed it?'];
 const PROJECT_SUGGESTIONS = ['Give me an overview of this project', 'Which models are the main marts?', 'Which models have no description?'];
@@ -138,11 +151,30 @@ export function AiChat({
     }
   };
 
+  /** Refactor mode: Wicky works out the operation; it shows up as a card to confirm. */
+  const parseRefactor = async (request: string) => {
+    setError(null);
+    setPending({ question: request, answer: '', waiting: 'Working out the refactor…', stoppable: false });
+    try {
+      const id = await ensureConversation();
+      await refactorApi.parseRequest(projectId, id, { content: request, unique_id: model?.unique_id ?? null });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['ai-conversation', projectId, id] }),
+        qc.invalidateQueries({ queryKey: ['ai-conversations', projectId] }),
+      ]);
+    } catch (err) {
+      setError(aiErrorMessage(err));
+    } finally {
+      setPending(null);
+    }
+  };
+
   const send = async (text: string, mode: AskMode = 'ask', as: ChatMode = chatMode) => {
     const question = text.trim();
     if (!question || pending) return;
     setInput('');
     if (as === 'query' && mode === 'ask') return writeQuery(question);
+    if (as === 'refactor' && mode === 'ask') return parseRefactor(question);
     return stream(question, (id, handlers) => aiApi.ask(
       projectId, id, { content: question, unique_id: model?.unique_id ?? null, mode }, handlers,
     ));
@@ -204,12 +236,24 @@ export function AiChat({
           <div className="flex flex-col gap-1.5 text-gray-500">
             {chatMode === 'ask'
               ? <p>Ask Wicky about {model ? <code>{model.name}</code> : 'this project'}. Answers come from the project&rsquo;s SQL and docs, not the data.</p>
-              : <p>Ask a question about your data. Wicky writes a read-only query{model ? <> around <code>{model.name}</code></> : ''} for you to review and run.</p>}
-            {(chatMode === 'query' ? QUERY_SUGGESTIONS : model ? NODE_SUGGESTIONS : PROJECT_SUGGESTIONS).map((s) => (
-              <button key={s} onClick={() => send(s)} className="self-start px-2 py-1 rounded border border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-200">
-                {s}
-              </button>
-            ))}
+              : chatMode === 'query'
+                ? <p>Ask a question about your data. Wicky writes a read-only query{model ? <> around <code>{model.name}</code></> : ''} for you to review and run.</p>
+                : <p>Describe a refactor: rename a model or a column everywhere, or extract a CTE into its own model. You confirm it, then review every edit before anything is written.</p>}
+            {chatMode === 'refactor'
+              ? refactorSuggestions(model?.name ?? null).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setInput(s); inputRef.current?.focus(); }}
+                  className="self-start px-2 py-1 rounded border border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                >
+                  {s.trimEnd()}…
+                </button>
+              ))
+              : (chatMode === 'query' ? QUERY_SUGGESTIONS : model ? NODE_SUGGESTIONS : PROJECT_SUGGESTIONS).map((s) => (
+                <button key={s} onClick={() => send(s)} className="self-start px-2 py-1 rounded border border-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-200">
+                  {s}
+                </button>
+              ))}
           </div>
         )}
         {messages.map((m) => m.role === 'action' ? (
@@ -218,6 +262,10 @@ export function AiChat({
             {m.proposal && (
               <ActionEntry projectId={projectId} proposal={m.proposal} progress={progress[m.proposal.id]} />
             )}
+          </div>
+        ) : m.role === 'refactor' && m.payload && activeId !== null ? (
+          <div key={m.id} className="flex flex-col gap-2">
+            <RefactorCard projectId={projectId} conversationId={activeId} message={m} />
           </div>
         ) : m.role === 'query' && m.payload ? (
           <QueryEntry
@@ -246,13 +294,11 @@ export function AiChat({
       <div className="flex flex-col gap-1 px-3 py-2 border-t border-gray-800 shrink-0">
         <div className="flex items-center gap-2">
           <div className="flex rounded border border-gray-800 overflow-hidden" role="tablist">
-            {([['ask', 'Ask', MessageCircle], ['query', 'Query data', Database]] as const).map(([value, label, Icon]) => (
+            {MODES.map(([value, label, Icon, title]) => (
               <button
                 key={value}
                 onClick={() => setChatMode(value)}
-                title={value === 'ask'
-                  ? 'Answers from the project\u2019s SQL and docs'
-                  : 'Wicky writes a read-only SQL query for you to review and run against the warehouse'}
+                title={title}
                 className={`flex items-center gap-1 px-2 py-0.5 text-[11px] ${
                   chatMode === value ? 'bg-surface-elevated text-gray-200' : 'text-gray-500 hover:text-gray-300'
                 }`}
@@ -272,7 +318,9 @@ export function AiChat({
               if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); }
             }}
             rows={2}
-            placeholder={chatMode === 'query' ? 'Ask a question about your data…' : 'Ask Wicky…'}
+            placeholder={chatMode === 'query'
+              ? 'Ask a question about your data…'
+              : chatMode === 'refactor' ? 'e.g. rename customer_id to customer_key' : 'Ask Wicky…'}
             className="flex-1 resize-none px-2 py-1.5 rounded bg-surface-elevated border border-gray-700 text-gray-200 placeholder-gray-600 focus:outline-none focus:border-brand-500"
           />
           {pending?.stoppable ? (

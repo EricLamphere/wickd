@@ -1,3 +1,5 @@
+import type { AiProposalDto } from './aiApi';
+
 const BASE = '/api';
 
 export class ApiError extends Error {
@@ -919,9 +921,10 @@ export const api = {
       post<ProfileResponse>(`/projects/${projectId}/models/${encodeURIComponent(uniqueId)}/profile`),
     patchDescription: (projectId: number, uniqueId: string, description: string) =>
       patch<{ ok: boolean }>(`/projects/${projectId}/models/${encodeURIComponent(uniqueId)}/description`, { description }),
-    /** Add stub `- name:` docs entries; omit `columns` to use the node's warehouse columns. */
-    document: (projectId: number, uniqueId: string, columns?: string[]) =>
-      post<DocumentResultDto>(`/projects/${projectId}/models/${encodeURIComponent(uniqueId)}/document`, { columns: columns ?? null }),
+    /** Stub `- name:` docs entries as a proposal (kind `document_stub`) to review before anything is written;
+     *  omit `columns` to use the node's warehouse columns. */
+    proposeDocument: (projectId: number, uniqueId: string, columns?: string[]) =>
+      post<AiProposalDto>(`/projects/${projectId}/models/${encodeURIComponent(uniqueId)}/document/propose`, { columns: columns ?? null }),
   },
   runs: {
     run: (projectId: number, model: string, mode: string, opts?: RunOpts, select?: string) =>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Loader2, MessageSquareText, Play } from 'lucide-react';
 import { DataTable } from '../../../../components/DataTable';
-import { aiApi, aiErrorMessage, type AiMessageDto } from '../../../../lib/aiApi';
+import { aiApi, aiErrorMessage, type AiMessageDto, type AiQueryPayload } from '../../../../lib/aiApi';
 
 interface QueryEntryProps {
   projectId: number;
@@ -21,7 +21,7 @@ const RUNNING = new Set(['waiting', 'running']);
  */
 export function QueryEntry({ projectId, message, onAnswer, busy }: QueryEntryProps) {
   const qc = useQueryClient();
-  const payload = message.payload!;
+  const payload = message.payload as AiQueryPayload;
   const [sql, setSql] = useState(payload.sql);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);

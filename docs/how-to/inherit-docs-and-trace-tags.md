@@ -29,8 +29,9 @@ compiled first if needed.
    list shows every column it would fill: the description, where it comes from,
    and how (same column, renamed, or cast). Click one to find it in the diff;
    ✓ / ✗ to keep or drop it. Use **Next file** to move on.
-4. **Accept file** writes that file; the models in it are recompiled so the docs
-   pick up the new descriptions.
+4. **Accept file** writes that file, or **Accept all** writes every file at once
+   (anything you rejected stays out); the models in them are recompiled so the
+   docs pick up the new descriptions. **Reject all** writes nothing.
 
 What gets filled:
 

@@ -38,7 +38,10 @@ package or git submodule.
   manifest → context building, documentation response schema + validation)
   behind the public `backend/app/ai/pro.py` shim. Also `row_dependencies.py`
   (`trace_row_dependencies()` / `trace_job_full()`): the columns each model
-  filters, joins or groups on, used by column-level impact analysis. Its
+  filters, joins or groups on, used by column-level impact analysis. Also
+  `wickd_pro/refactor/` (rename model / rename column / extract CTE: span
+  edits over Jinja-masked SQL, behind `backend/app/refactor/pro.py`) and
+  `wickd_pro/ai/refactor_intent.py` (Wicky request → operation). Its
   tests run against sqlglot 30.18 in its own venv, but the shipped app uses
   the backend venv's sqlglot (30.20 at time of writing), and sqlglot renames
   internals between minor versions, so run its tests under both.

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Ban, CheckCircle2, Eye, Info, Loader2, X } from 'lucide-react';
+import { Ban, CheckCircle2, Eye, Info, Loader2, RotateCcw, X } from 'lucide-react';
 import {
   aiApi, type AiProposalDto, type AiProposalProgress, type AiSuggestedTest,
 } from '../../../../lib/aiApi';
@@ -8,6 +8,8 @@ import { parsePartialDocs, type PartialDocs } from '../../../../lib/partialDocs'
 import { describeTest, parsePartialTests, type PartialTest } from '../../../../lib/partialTests';
 import { ProposalReviewModal } from './ProposalReviewModal';
 import { proposalItems, selectedKeys } from './proposalItems';
+import { RefactorOutcome } from './RefactorOutcome';
+import { InlineCode } from './InlineCode';
 
 interface ActionEntryProps {
   projectId: number;
@@ -33,6 +35,7 @@ const PHASE_COPY: Record<string, Record<string, string>> = {
 const COPY: Record<string, [string, string, string]> = {
   document: ['Documenting', 'Docs for', 'Couldn’t document'],
   tests: ['Adding tests to', 'Tests for', 'Couldn’t add tests to'],
+  refactor: ['Preparing the refactor of', 'The refactor of', 'Couldn’t refactor'],
 };
 
 const SKIPPED = 'line-through opacity-60';
@@ -65,7 +68,8 @@ function TestList({ tests, live, skipped }: {
   );
 }
 
-function Result({ p }: { p: AiProposalDto }) {
+function Result({ projectId, p }: { projectId: number; p: AiProposalDto }) {
+  if (p.kind === 'refactor') return <RefactorOutcome projectId={projectId} proposal={p} />;
   // once applied, items the user unticked are shown struck through
   const keep = selectedKeys(p);
   const skipped = p.status === 'applied'
@@ -112,6 +116,7 @@ const OUTCOME: Partial<Record<AiProposalDto['status'], { icon: JSX.Element; text
   applied: { icon: <CheckCircle2 size={12} className="text-emerald-400" />, text: 'Applied' },
   rejected: { icon: <Ban size={12} className="text-gray-500" />, text: 'Rejected' },
   dismissed: { icon: <Ban size={12} className="text-gray-500" />, text: 'Discarded' },
+  undone: { icon: <RotateCcw size={12} className="text-gray-500" />, text: 'Undone' },
 };
 
 /** A quick action's result in the chat: live while generating, then kept as history. */
@@ -133,7 +138,8 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
   const total = proposalItems(p).length;
   const kept = selectedKeys(p).size;
   const outcomeText = p.status === 'applied' && kept < total ? `Applied ${kept} of ${total}` : outcome?.text;
-  const paths = p.files.map((f) => f.path).join(', ');
+  // a refactor touches many files; RefactorOutcome shows how many instead
+  const paths = p.kind === 'refactor' ? '' : p.files.map((f) => f.path).join(', ');
 
   return (
     <div className="flex flex-col gap-1 px-2.5 py-2 rounded-lg border border-gray-800 bg-surface-elevated/40 text-gray-300">
@@ -153,7 +159,7 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
         <>
           <div className="flex items-center gap-2">
             {p.status === 'ready'
-              ? <><CheckCircle2 size={12} className="text-brand-300 shrink-0" /><span>{ready} {nodeName(p)} are ready to review.</span></>
+              ? <><CheckCircle2 size={12} className="text-brand-300 shrink-0" /><span>{p.kind === 'refactor' ? <><InlineCode text={p.title} /> is ready to review.</> : <>{ready} {nodeName(p)} are ready to review.</>}</span></>
               : <>{outcome!.icon}<span>{outcomeText}{paths && <span className="text-gray-500"> · {paths}</span>}</span></>}
             {p.status === 'ready' && (
               <>
@@ -169,7 +175,7 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
               </>
             )}
           </div>
-          <Result p={p} />
+          <Result projectId={projectId} p={p} />
         </>
       )}
 

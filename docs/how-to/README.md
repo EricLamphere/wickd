@@ -17,5 +17,6 @@ Step-by-step guides for using wickd.
 | [View run history](view-run-history.md) | Browse past invocations, inspect per-node timings and logs, and track execution trends |
 | [Analyze run performance](analyze-run-performance.md) | Run timeline per thread, DAG durations overlay, and (Pro) critical path, regressions and recommendations |
 | [Inherit docs and trace tagged columns (Pro)](inherit-docs-and-trace-tags.md) | Fill empty column descriptions from upstream columns, and follow tagged (e.g. `pii`) columns to every model and exposure they reach |
+| [Refactor models and columns (Pro)](refactor.md) | Rename a model or a column across the project, or extract a CTE into its own model; review every edit, then apply, check with dbt parse, and undo |
 | [Use Wicky, the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |
 | [Use the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |

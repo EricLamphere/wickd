@@ -5,8 +5,9 @@
  */
 export const OPEN_WICKY_EVENT = 'wickd:open-wicky';
 
-/** Ask = answers from the project's code and docs; Query = Wicky writes SQL you run. */
-export type WickyChatMode = 'ask' | 'query';
+/** Ask = answers from the project's code and docs; Query = Wicky writes SQL you run;
+ *  Refactor = Wicky turns a request into a rename / extract you confirm and review. */
+export type WickyChatMode = 'ask' | 'query' | 'refactor';
 
 export interface OpenWickyDetail {
   /** Sent as soon as the chat is ready; omitted → just open and focus the input. */

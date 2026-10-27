@@ -19,7 +19,9 @@ class AiProposalFileDto(BaseModel):
     path: str
     original_text: str | None
     proposed_text: str
-    status: str
+    status: str  # pending | accepted | rejected | undone
+    op: str = "modify"  # modify | create | delete | rename
+    new_path: str | None = None  # rename target
 
 
 class AiProposalResultDto(BaseModel):
@@ -39,6 +41,13 @@ class AiProposalResultDto(BaseModel):
     selected: list[str] | None = None
     # items the user has already accepted in review (they stay until the file is applied)
     accepted: list[str] = []
+    # refactor: what the engine did ({op, unique_id, old?, new, downstream?, files, …}), edits it
+    # left for the user ([{path, line, text, reason}]), notes, and the `dbt parse` run after
+    # applying ({status: running | ok | error, output?})
+    summary: dict = {}
+    manual: list[dict] = []
+    notes: list[str] = []
+    verify: dict | None = None
 
 
 class AiProposalDto(BaseModel):
@@ -55,12 +64,14 @@ class AiProposalDto(BaseModel):
 
 class AiMessageDto(BaseModel):
     id: int
-    role: str  # user | assistant | action
+    role: str  # user | assistant | action | query | refactor
     content: str
     unique_id: str | None
     created_at: str
     proposal: AiProposalDto | None = None  # set for role "action"
     # role "query": {question, sql, explanation, status, error?, columns?, rows?, truncated?}
+    # role "refactor": {request, operation | None, description, reason?, status:
+    #   proposed | none | confirmed | cancelled, proposal_id?}
     payload: dict | None = None
 
 
@@ -88,6 +99,8 @@ def proposal_dto(p: AiProposal) -> AiProposalDto:
                 original_text=f.original_text,
                 proposed_text=f.proposed_text,
                 status=f.status,
+                op=f.op or "modify",
+                new_path=f.new_path,
             )
             for f in p.files
         ],

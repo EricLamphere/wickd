@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, FilePlus2, FileText, Hammer, Loader2, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Eye, FilePlus2, FileText, Hammer, Loader2, RefreshCw } from 'lucide-react';
 import { api, type ColumnDrift, type DriftSnapshot, type ModelDriftResult } from '../../../../lib/api';
 import { useProjectEvents } from '../../../../lib/sse';
 import { describeDocumentResult, documentErrorMessage } from '../../lib/documentModel';
+import { documentSummary, useDocumentProposal } from '../../lib/useDocumentProposal';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE, type useOpenInFiles } from '../../lib/openInFiles';
 import { errorMessage } from '../health/useHealth';
+import { ProposalReviewModal } from '../Wicky/ProposalReviewModal';
 import { columnSummary, isDrifted, isManifestOnly, isWarehouseOnly } from './driftView';
 
 const ACTION_CLS =
@@ -192,32 +194,37 @@ interface DocumentColumnsButtonProps {
   onDocumented: (columns: string[]) => void;
 }
 
-/** Adds the model's warehouse-only columns to its schema YAML. */
+/** Adds the model's warehouse-only columns to its schema YAML, after you review the change. */
 function DocumentColumnsButton({ projectId, uniqueId, columns, onDocumented }: DocumentColumnsButtonProps) {
-  const mutation = useMutation({
-    mutationFn: () => api.models.document(projectId, uniqueId, columns),
-    onSuccess: () => onDocumented(columns),
-  });
+  const doc = useDocumentProposal(projectId, uniqueId, () => onDocumented(columns));
+  const proposal = doc.proposal;
 
   return (
     <>
       {columns.length > 0 && (
         <button
           type="button"
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          title="Add these columns to the model's schema YAML"
+          onClick={() => doc.start(columns)}
+          disabled={doc.pending}
+          title="Add these columns to the model's schema YAML; you review the change before it's written"
           className={ACTION_CLS}
         >
-          {mutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePlus2 className="w-3 h-3" />}
+          {doc.pending ? <Loader2 className="w-3 h-3 animate-spin" /> : <FilePlus2 className="w-3 h-3" />}
           Document {columns.length} warehouse-only column{columns.length !== 1 ? 's' : ''}
         </button>
       )}
-      {mutation.isSuccess && (
-        <span className="text-[10px] text-emerald-400 truncate">{describeDocumentResult(mutation.data)}</span>
+      {proposal && (proposal.status === 'applied' || proposal.status === 'empty') && (
+        <span className="text-[10px] text-emerald-400 truncate">{describeDocumentResult(documentSummary(proposal))}</span>
       )}
-      {mutation.isError && (
-        <span className="text-[10px] text-red-400 break-all">{documentErrorMessage(mutation.error)}</span>
+      {proposal?.status === 'rejected' && <span className="text-[10px] text-gray-500">Not written.</span>}
+      {proposal?.status === 'ready' && !doc.reviewing && (
+        <button type="button" onClick={doc.openReview} className="inline-flex items-center gap-0.5 text-[10px] text-brand-300 hover:text-brand-200">
+          <Eye className="w-3 h-3" /> Not written yet · Review
+        </button>
+      )}
+      {doc.error && <span className="text-[10px] text-red-400 break-all">{documentErrorMessage(doc.error)}</span>}
+      {doc.reviewing && proposal && (
+        <ProposalReviewModal projectId={projectId} proposal={proposal} onClose={doc.closeReview} />
       )}
     </>
   );

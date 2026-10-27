@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { useModifierKeyClass } from '../../lib/useModifierKeyClass';
 import { BottomPane } from './components/BottomPane';
 import { CommandPalette } from './components/CommandPalette';
+import { RefactorHost } from './components/refactor/RefactorHost';
 import { WickyPane } from './components/Wicky/WickyPane';
 import { CommandPaletteContext } from './lib/commandPaletteContext';
 import {
@@ -98,6 +99,7 @@ export default function ProjectLayout() {
         />
       </div>
       <WickyPane projectId={id} graph={graph ?? null} selectedNodeId={selectedNodeId} />
+      <RefactorHost projectId={id} />
         {paletteOpen && (
           <CommandPalette
             projectId={id}

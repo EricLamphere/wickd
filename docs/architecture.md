@@ -50,10 +50,12 @@ wickd/
 │   │   │   ├── debug.py             # /api/projects/{id}/debug — runs dbt debug, parses output into structured checks
 │   │   │   ├── drift.py             # /api/projects/{id}/drift — schema drift check (batched dbt show vs manifest columns); /drift/{id}/recheck re-probes one model
 │   │   │   ├── health_summary.py    # /api/projects/{id}/health/summary — status of connection/drift/freshness for the Health overview, tab badges and nav dot (logic in app/health/summary.py)
-│   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document — docs generator (stub `- name:` entries in schema YAML)
+│   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document/propose — docs generator (stub `- name:` entries in schema YAML), as a reviewable proposal
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
 │   │   │   ├── propagation.py       # /api/projects/{id}/propagate/* + /lineage/tag-flow — inherited descriptions and tag flow (Pro; engine in wickd_pro via app/propagation/pro.py)
+│   │   │   ├── refactor.py          # /api/projects/{id}/refactor + Wicky refactor requests — rename model / rename column / extract CTE (Pro; engine in wickd_pro via app/refactor/pro.py)
+│   │   │   ├── ai_proposal_apply.py # /api/projects/{id}/ai/proposals/{pid}/accept (whole proposal at once) + /undo (file ops in app/ai/file_ops.py)
 │   │   │   ├── performance.py       # /api/projects/{id}/node-durations (Base) + run analysis / project performance (Pro; analysis in wickd_pro via app/performance/pro.py)
 │   │   │   ├── exports.py           # /api/projects/{id}/exports/dag + /api/exports/default-dir, /reveal — writes DAG exports to a user-chosen folder (path validation in app/exports/paths.py)
 │   │   │   └── health.py            # /api/health
@@ -342,12 +344,12 @@ ai_messages
 ai_proposals                         -- AI-generated file changes awaiting review
   id              INTEGER PK
   project_id      INTEGER FK→projects (CASCADE)
-  kind            TEXT(32)   -- document | tests
+  kind            TEXT(32)   -- document | tests | propagate | refactor
   unique_id       TEXT(512) (nullable)
   title           TEXT(255)
-  status          TEXT(16)   -- generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing)
+  status          TEXT(16)   -- generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing) | undone
   error_message   TEXT (nullable)
-  result_json     TEXT       -- what the AI produced, kept for chat history: {description, columns: {name: text}} or {tests: [{column, test, reason, values?, to?, field?, failures}]}
+  result_json     TEXT       -- what the AI produced, kept for chat history: {description, columns: {name: text}} or {tests: [{column, test, reason, values?, to?, field?, failures}]}; refactors: {summary, manual: [{path, line, text, reason}], notes, verify: {status: running | ok | error, output}}
   created_at / updated_at  DATETIME
   -- Proposals still 'generating' are reset to 'error' on server restart
 
@@ -356,8 +358,11 @@ ai_proposal_files
   proposal_id     INTEGER FK→ai_proposals (CASCADE)
   path            TEXT(1024) -- relative to the project root
   original_text   TEXT (nullable)  -- file content the proposal was made against; null = new file
-  proposed_text   TEXT
-  status          TEXT(16)   -- pending | accepted | rejected
+  proposed_text   TEXT             -- rename: the text written at new_path
+  status          TEXT(16)   -- pending | accepted | rejected | undone
+  op              TEXT       -- modify | create | delete | rename (default modify; a legacy modify with no original_text is a create)
+  new_path        TEXT (nullable)  -- rename target
+  applied_text    TEXT (nullable)  -- what accepting wrote; Undo restores only while the file still holds it
 ```
 
 ---
@@ -392,7 +397,7 @@ POST   /api/projects/{id}/compile
 GET    /api/projects/{id}/models/{unique_id}/compiled    on-demand compile + return compiled SQL
 POST   /api/projects/{id}/models/{unique_id}/show        run dbt show, return rows
 POST   /api/projects/{id}/models/{unique_id}/profile    run dbt show (full table), return column profile stats
-POST   /api/projects/{id}/models/{unique_id}/document   add `- name:` entries for the node + columns to its schema YAML (body `{columns}`; null → probe the warehouse); then dbt compile
+POST   /api/projects/{id}/models/{unique_id}/document/propose   add `- name:` entries for the node + columns to its schema YAML (body `{columns}`; null → probe the warehouse), as an `ai_proposals` row of kind `document_stub` (status ready, or empty with a note when nothing is missing) for the review window; Base — reviewing/accepting it needs no Pro license (`BASE_KINDS` in app/ai/gating.py); accepting compiles the node
 GET    /api/projects/{id}/models/{unique_id}/sql
 PUT    /api/projects/{id}/models/{unique_id}/sql
 POST   /api/projects/{id}/column-lineage/start            start async column lineage scan (202, or 200 if a fresh snapshot already exists); returns ColumnLineageSnapshot — Pro feature, 403 if not entitled
@@ -435,8 +440,14 @@ GET    /api/projects/{id}/ai/proposals?unique_id=         proposals needing atte
 GET    /api/projects/{id}/ai/proposals/{pid}              one proposal with its files
 DELETE /api/projects/{id}/ai/proposals/{pid}              dismiss (status → dismissed; the row is kept for chat history)
 PUT    /api/projects/{id}/ai/proposals/{pid}/selection     body {keys, accepted}; keys = items kept (not rejected), accepted = those already accepted in review; keep only these items (tests "t0"…, "description", "col:<name>"): the file is rebuilt from its original text via app/ai/selection.py; accept is refused (409) when nothing is selected
-POST   /api/projects/{id}/ai/proposals/{pid}/files/{fid}/accept   write the proposed file; 409 if the file changed since the proposal was made; triggers a compile
+POST   /api/projects/{id}/ai/proposals/{pid}/files/{fid}/accept   apply the file's operation (modify / create / delete / rename); 409 if the file changed since the proposal was made (or a create/rename target exists); triggers a compile (refactors: `dbt parse` once every file is decided)
 POST   /api/projects/{id}/ai/proposals/{pid}/files/{fid}/reject   leave the file alone
+POST   /api/projects/{id}/ai/proposals/{pid}/accept       Accept all: apply every pending file as one unit: all are checked first (409 `{error: conflict, files: [...]}`), a failed write rolls back the files already written; files whose items were all rejected in review are rejected instead; then compiles the nodes written (refactors: `dbt parse`)
+POST   /api/projects/{id}/ai/proposals/{pid}/reject       Reject all: every pending file rejected, nothing written
+POST   /api/projects/{id}/ai/proposals/{pid}/undo         restore every accepted file (original text back, created files removed, renames reversed) while each still holds what was applied; else 409 `{error: changed_since_applied, files: [...]}`; status → undone
+POST   /api/projects/{id}/refactor                        Pro (no AI model needed): body {op: rename_model | rename_column | extract_cte, unique_id, new_name, column?, cte?, conversation_id?, message_id?}; 202 AiProposal (kind refactor) built in the background; refusals land as status error with the reason; 409 while another refactor is being prepared
+POST   /api/projects/{id}/ai/conversations/{cid}/refactor body {content, unique_id?}; Wicky turns the request into one operation (schema-constrained, re-validated); returns [user message, `refactor` message] — payload {request, operation, description, status: proposed | none}; confirming it is POST /refactor with message_id (status → confirmed)
+POST   /api/projects/{id}/ai/messages/{mid}/refactor/cancel  mark a `refactor` card cancelled
 
 GET    /api/license                                      current cached entitlement status (does not force a fresh Polar check); includes the plaintext license_key and can_cancel
 PUT    /api/license                                       set (or clear, if license_key is null) the license key; immediately checks it against Polar
@@ -796,6 +807,14 @@ Builds on column lineage (section 10). Since `lineage_version` 3 the scan record
 - **Engine (private):** `wickd_pro.propagation` — `inherit_descriptions()` walks upstream from each undocumented column along identity/rename/cast edges to the nearest documented column(s), and reports a conflict instead of guessing when several distinct descriptions are reachable; `tag_flow()` follows declared column tags downstream through every kind (a hash of PII is still PII), preferring the strongest path, and lists exposures that depend on a reached node; `inherit_tags()` narrows that to undeclared columns. Public shim: `app/propagation/pro.py`; manifest → plain dicts in `app/propagation/inputs.py` (column `tags` and `config.tags` both count).
 - **Writing (public):** `app/propagation/proposals.py` turns results into one `ai_proposals` row of kind `propagate` with one `ai_proposal_files` row per schema YAML touched (the file `plan_document_node()` picks). Copied descriptions are the source column's raw YAML text (`raw_descriptions()` / `raw_source_descriptions()`), so `{{ doc() }}` blocks stay doc blocks. Tags are spliced by `app/dbt/schema_column_tags.py` `add_column_tags()` (block list, one-line list, single string, or `config: tags:`; re-parse verified). Each item names its file; partial accept (`PUT .../selection` with `file_id`) rebuilds only that file through `render_file()`, and accepting a file compiles the nodes it documents.
 - **UI:** Docs project overview "Fill descriptions from lineage (N)", the side pane's "Inherit descriptions from upstream (N)" (only when the model has something to fill), and the Docs **Tags** browse tab (`?browse=tags&tag=`: `TagFlowPanel` with a DataTable, exposures, "Write inherited tags to YAML", and "Show in DAG", which seeds the DAG's `dag-column-sels-{id}` / `dag-expanded-nodes-{id}` session keys). Review uses `ProposalReviewModal`, which lists the active file's items for multi-file proposals. Lineage not ready → `LineageNotReadyNotice` with "Refresh column lineage". No new SSE events: `['propagate-preview', id]` and `['tag-flow', id]` are invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
+
+### 10e. Refactors (wickd Pro)
+
+Rename a model, rename a column, or extract a CTE into its own model, proposed as one reviewable multi-file diff. The engine is deterministic; an LLM is only used (optionally) to turn a Wicky chat request into the operation.
+
+- **Engine (private):** `wickd_pro.refactor` — `rename_model()`, `rename_column()`, `extract_cte()` take the manifest, the project's raw files (`app/refactor/inputs.py` `project_files()`: resource dirs + dbt_project.yml, no packages/target) and (for columns) the latest column lineage snapshot. SQL is never re-serialised: Jinja blocks are masked with same-length placeholders (`{{ ref('x') }}` → an identifier, `{% %}` → spaces), sqlglot parses the masked text, and identifier positions map back onto the raw file as span edits. Column renames resolve references per scope (`selected_sources`, CTEs passing the column through `*`), keep downstream output names (`c.new as old`), and update YAML columns, `column_name` tests, `relationships` `field:` and unit-test fixture rows (dict / csv). Anything uncertain — `select *` reaching the output, unqualified names another relation may also have, `using (col)`, Jinja mentions, SQL that won't parse, dbt_project.yml keys, docs blocks, string literals — is never edited and comes back as `manual: [{path, line, text, reason}]`. Refusals (bad name, collision, package model, CTE reading sibling CTEs) raise with a user-facing reason. Intent parsing: `wickd_pro.ai.refactor_intent` (`refactor_prompt()` constrains the model name to an enum of real models; `parse_refactor_intent()` re-validates).
+- **Public:** `app/refactor/pro.py` (shim), `service.py` (`run()`; adds the YAML stub for an extracted model via `plan_document_node()`), `verify.py` (`dbt parse` through `runner.run()` after applying, result in `result_json.verify`, announced with `ai_proposal_updated`; failures are reported, never reverted). Proposal files carry an `op` (`app/ai/file_ops.py`: check → apply → undo, each refusing when disk doesn't match). Gating: `require_refactor()` (Pro entitlement + engine, not the AI model); reviewing a refactor proposal uses `require_proposal_access()`.
+- **UI:** Wicky's **Refactor** chat mode (and "Refactor…" quick action) → `RefactorCard` (confirm / cancel) → `ActionEntry` with `RefactorOutcome` (dbt parse status, Undo, manual list). Direct entries dispatch `startRefactor()` (`routes/Project/lib/refactorEvents.ts`) — side pane "Rename model…", Docs column rows (hover), Files editor context menu "Extract CTE to model…" — handled by `RefactorHost` (mounted in ProjectLayout: name prompt, build, review, outcome toast). `ProposalReviewModal` shows op badges, rename paths, "Needs manual review" (click to jump to the line); every proposal has "Reject all" / "Accept all" (`POST .../reject` / `.../accept`). No new SSE events.
 
 ### 10b. Local AI — Wicky (wickd Pro)
 

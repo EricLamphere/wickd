@@ -34,6 +34,14 @@ Switch the chat box to **Query data** and ask about the data itself. Two fixed s
 2. You review — and can edit — the SQL, then click **Run**. Results (at most 100 rows) appear in
    a table, and Wicky answers your question from them.
 
+### Refactor
+Switch the chat box to **Refactor** (or click **Refactor…** in Quick actions) and describe a
+rename or an extraction, e.g. *rename customer_id to customer_key in stg_customers*. Wicky only
+works out **which** refactor you mean; it shows it as a card (*Rename column `customer_id` →
+`customer_key` in `stg_customers` (3 downstream models)*) for you to confirm. wickd's refactor
+engine then prepares every edit deterministically, with no AI involved, and you review them as one
+multi-file diff. See [Refactor models and columns](how-to/refactor.md).
+
 ### Quick actions (for the selected node)
 
 | Action | What happens |
@@ -41,6 +49,7 @@ Switch the chat box to **Query data** and ask about the data itself. Two fixed s
 | **Explain failure** | Shown when the node or one of its tests failed in the latest run. Wicky reads the error, the test's SQL and a few failing rows, then explains what failed, the likely cause and how to fix it. |
 | **Document** | Writes the model and column descriptions that are missing (or rewrites all of them, if you choose *Rewrite all*). |
 | **Add tests** | Suggests generic tests (`unique`, `not_null`, `accepted_values`, `relationships`), checks each one against the warehouse, and shows which pass today. |
+| **Refactor…** | Switches the chat to Refactor mode for the selected model. |
 
 Document and Add tests produce a **proposal**: a diff of your schema YAML. In the review window
 each change is listed on the left — click it to find it in the diff, then accept or reject it.
@@ -112,8 +121,9 @@ what the manifest contains; other projects; anything from previous chats.
 
 - **Change anything on its own.** It can't edit files, run `dbt run`/`build`/`test`, or run a
   query you haven't approved. There's no agent loop.
-- **Edit SQL models.** Quick actions only write schema YAML (descriptions and tests). Any SQL in
-  an answer is text for you to copy.
+- **Edit SQL models with AI.** Quick actions only write schema YAML (descriptions and tests). Any
+  SQL in an answer is text for you to copy. Refactors do edit SQL, but the edits come from a
+  deterministic engine, not the model, and you review them before anything is written.
 - **See the data in Ask.** Only Query data, Add tests and Explain failure touch the warehouse, as
   described above.
 - **See unsaved or uncompiled edits.** It reads the last compiled manifest.
@@ -197,5 +207,6 @@ answer from them automatically.
 |---|---|
 | Model runtime, downloads, API, safety checks, YAML editing, review flow, UI | wickd (this repo) — `backend/app/ai/`, `backend/app/api/ai_*.py`, `backend/app/dbt/schema_*.py`, `frontend/src/routes/Project/components/Wicky/` |
 | Prompts, context building, output validation | `wickd-pro` (private) — `wickd_pro/ai/` |
+| Refactor engine (rename model / column, extract CTE) | `wickd-pro` (private) — `wickd_pro/refactor/`; public side `backend/app/refactor/`, `backend/app/api/refactor.py` |
 
 See [architecture.md](architecture.md) → *Local AI — Wicky* for the technical flow and API routes.

@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw, BookOpen, Search, ChevronRight, ChevronDown,
   Database, FileCode2, Layers, FlaskConical, Sprout, Wrench,
-  Copy, Check, Folder, FolderOpen, LayoutGrid, Package, ChevronsDownUp, Share2, Tag as TagIcon,
+  Copy, Check, Folder, FolderOpen, LayoutGrid, Package, ChevronsDownUp, Share2, Tag as TagIcon, Wand2,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
@@ -12,6 +12,7 @@ import { useProjectEvents } from '../../lib/sse';
 import { useUrlTab } from '../../lib/useUrlTab';
 import { buildMacroCall, macroCallName, wrapJinja } from './lib/macroCall';
 import { readSessionValue, restorableDocsView } from './lib/docsLastView';
+import { startRefactor } from './lib/refactorEvents';
 import NavRail from './components/NavRail';
 import { InheritDescriptionsButton } from './components/propagation/InheritDescriptionsButton';
 import { TagBrowseList } from './components/propagation/TagBrowseList';
@@ -1148,7 +1149,12 @@ function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDt
         {tab === 'columns' && (
           <div className="flex flex-col gap-3">
             <h2 className="text-sm font-semibold text-gray-200">Columns <span className="font-normal text-gray-600">({node.columns.length})</span></h2>
-            <ColumnsTable columns={node.columns} />
+            <ColumnsTable
+              columns={node.columns}
+              onRename={node.resource_type === 'model' && node.language !== 'python'
+                ? (column) => startRefactor({ op: 'rename_column', uniqueId: node.unique_id, model: node.name, column })
+                : undefined}
+            />
           </div>
         )}
         {tab === 'depends_on' && (
@@ -1379,7 +1385,12 @@ function CopyButton({ copied, onCopy }: { copied: boolean; onCopy: () => void })
   );
 }
 
-function ColumnsTable({ columns, compact = false }: { columns: DocsNodeDto['columns']; compact?: boolean }) {
+function ColumnsTable({ columns, compact = false, onRename }: {
+  columns: DocsNodeDto['columns'];
+  compact?: boolean;
+  /** Rename a column everywhere (refactor, wickd Pro); shown on row hover. */
+  onRename?: (column: string) => void;
+}) {
   return (
     <div className="rounded-lg border border-gray-800 overflow-hidden">
       <table className="w-full text-xs text-gray-300 border-collapse">
@@ -1394,8 +1405,19 @@ function ColumnsTable({ columns, compact = false }: { columns: DocsNodeDto['colu
         </thead>
         <tbody>
           {columns.map((col, i) => (
-            <tr key={col.name} className={`border-b border-gray-800/50 ${i % 2 === 0 ? '' : 'bg-surface-elevated/20'}`}>
-              <td className="px-3 py-2 font-mono text-brand-300 whitespace-nowrap">{col.name}</td>
+            <tr key={col.name} className={`group border-b border-gray-800/50 ${i % 2 === 0 ? '' : 'bg-surface-elevated/20'}`}>
+              <td className="px-3 py-2 font-mono text-brand-300 whitespace-nowrap">
+                {col.name}
+                {onRename && (
+                  <button
+                    onClick={() => onRename(col.name)}
+                    title="Rename this column in the model, its YAML and downstream models (wickd Pro); you review every change first"
+                    className="ml-1.5 p-0.5 align-middle rounded text-gray-600 opacity-0 group-hover:opacity-100 hover:text-gray-300 focus:opacity-100"
+                  >
+                    <Wand2 size={11} />
+                  </button>
+                )}
+              </td>
               <td className="px-3 py-2 font-mono text-gray-500 whitespace-nowrap">{col.data_type || '—'}</td>
               <td className="px-3 py-2 text-gray-400">{col.description || <span className="text-gray-700 italic">—</span>}</td>
               {!compact && (

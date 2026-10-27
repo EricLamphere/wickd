@@ -19,13 +19,6 @@ async def client():
 
 
 @pytest.fixture(autouse=True)
-def no_compile():
-    """Don't spawn a real dbt compile after the YAML write."""
-    with patch.object(document_api, "_compile_model", new=AsyncMock()) as m:
-        yield m
-
-
-@pytest.fixture(autouse=True)
 def project_env():
     with patch.object(document_api, "load_project_env", new=AsyncMock(return_value={})):
         yield
@@ -62,37 +55,15 @@ async def _seed(client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyP
     return resp.json()[0]["id"], d
 
 
-async def test_document_with_explicit_columns(client, tmp_path, monkeypatch, no_compile) -> None:
-    pid, d = await _seed(client, tmp_path, monkeypatch)
-
-    with patch.object(document_api, "probe_warehouse_columns", new=AsyncMock()) as probe:
-        resp = await client.post(
-            f"/api/projects/{pid}/models/model.proj.orders/document",
-            json={"columns": ["id", "amount"]},
-        )
-
-    assert resp.status_code == 200
-    assert resp.json() == {
-        "path": "models/marts/schema.yml",
-        "created_file": True,
-        "added_entry": True,
-        "added_columns": ["id", "amount"],
-    }
-    probe.assert_not_awaited()
-    data = yaml.safe_load((d / "models" / "marts" / "schema.yml").read_text())
-    assert data["models"][0]["columns"] == [{"name": "id"}, {"name": "amount"}]
-    no_compile.assert_called_once()
-
-
 async def test_document_probes_warehouse_when_no_columns_given(client, tmp_path, monkeypatch) -> None:
     pid, _ = await _seed(client, tmp_path, monkeypatch)
 
     probe = AsyncMock(return_value=ProbeResult(columns=("ID", "TOTAL"), error=None))
     with patch.object(document_api, "probe_warehouse_columns", new=probe):
-        resp = await client.post(f"/api/projects/{pid}/models/model.proj.orders/document", json={})
+        resp = await client.post(f"/api/projects/{pid}/models/model.proj.orders/document/propose", json={})
 
     assert resp.status_code == 200
-    assert resp.json()["added_columns"] == ["ID", "TOTAL"]
+    assert resp.json()["result"]["summary"]["added_columns"] == ["ID", "TOTAL"]
     probe.assert_awaited_once()
 
 
@@ -101,33 +72,18 @@ async def test_document_probe_failure_returns_422_and_writes_nothing(client, tmp
 
     probe = AsyncMock(return_value=ProbeResult(columns=(), error="relation does not exist"))
     with patch.object(document_api, "probe_warehouse_columns", new=probe):
-        resp = await client.post(f"/api/projects/{pid}/models/model.proj.orders/document", json={})
+        resp = await client.post(f"/api/projects/{pid}/models/model.proj.orders/document/propose", json={})
 
     assert resp.status_code == 422
     assert "relation does not exist" in resp.json()["detail"]
     assert not (d / "models" / "marts" / "schema.yml").exists()
 
 
-async def test_document_skips_compile_when_nothing_changed(client, tmp_path, monkeypatch, no_compile) -> None:
-    pid, d = await _seed(client, tmp_path, monkeypatch)
-    (d / "models" / "marts" / "schema.yml").write_text(
-        "version: 2\nmodels:\n  - name: orders\n    columns:\n      - name: id\n"
-    )
-
-    resp = await client.post(
-        f"/api/projects/{pid}/models/model.proj.orders/document", json={"columns": ["id"]}
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["added_columns"] == []
-    no_compile.assert_not_called()
-
-
 async def test_document_unsupported_resource_type(client, tmp_path, monkeypatch) -> None:
     pid, _ = await _seed(client, tmp_path, monkeypatch)
 
     resp = await client.post(
-        f"/api/projects/{pid}/models/test.proj.not_null_orders_id/document", json={"columns": ["x"]}
+        f"/api/projects/{pid}/models/test.proj.not_null_orders_id/document/propose", json={"columns": ["x"]}
     )
 
     assert resp.status_code == 422
@@ -136,13 +92,13 @@ async def test_document_unsupported_resource_type(client, tmp_path, monkeypatch)
 async def test_document_unknown_node(client, tmp_path, monkeypatch) -> None:
     pid, _ = await _seed(client, tmp_path, monkeypatch)
 
-    resp = await client.post(f"/api/projects/{pid}/models/model.proj.nope/document", json={"columns": ["x"]})
+    resp = await client.post(f"/api/projects/{pid}/models/model.proj.nope/document/propose", json={"columns": ["x"]})
 
     assert resp.status_code == 404
 
 
 async def test_document_unknown_project(client) -> None:
-    resp = await client.post("/api/projects/9999/models/model.proj.orders/document", json={})
+    resp = await client.post("/api/projects/9999/models/model.proj.orders/document/propose", json={})
 
     assert resp.status_code == 404
 
@@ -151,7 +107,47 @@ async def test_document_rejects_oversized_column_names(client, tmp_path, monkeyp
     pid, _ = await _seed(client, tmp_path, monkeypatch)
 
     resp = await client.post(
-        f"/api/projects/{pid}/models/model.proj.orders/document", json={"columns": ["x" * 1000]}
+        f"/api/projects/{pid}/models/model.proj.orders/document/propose", json={"columns": ["x" * 1000]}
     )
 
     assert resp.status_code == 422
+
+
+# ── Review first: POST .../document/propose (Base, no Pro license needed) ────
+
+
+async def test_propose_builds_a_reviewable_proposal_and_writes_nothing(client, tmp_path, monkeypatch) -> None:
+    from app.api import ai_proposals
+
+    pid, d = await _seed(client, tmp_path, monkeypatch)
+    resp = await client.post(
+        f"/api/projects/{pid}/models/model.proj.orders/document/propose", json={"columns": ["id", "amount"]}
+    )
+    assert resp.status_code == 200
+    proposal = resp.json()
+    assert proposal["kind"] == "document_stub" and proposal["status"] == "ready"
+    assert proposal["title"] == "Docs YAML for orders"
+    assert proposal["result"]["summary"]["added_columns"] == ["id", "amount"]
+    [file] = proposal["files"]
+    assert file["path"] == "models/marts/schema.yml" and file["op"] == "create"
+    assert not (d / "models" / "marts" / "schema.yml").exists()
+
+    # accepting needs no Pro entitlement (this test DB has no license at all)
+    with patch.object(ai_proposals, "_compile_model", new=AsyncMock()) as compiled:
+        r = await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/files/{file['id']}/accept")
+    assert r.status_code == 200 and r.json()["status"] == "applied"
+    data = yaml.safe_load((d / "models" / "marts" / "schema.yml").read_text())
+    assert data["models"][0]["columns"] == [{"name": "id"}, {"name": "amount"}]
+    compiled.assert_called_once()
+
+
+async def test_propose_is_empty_when_everything_is_documented(client, tmp_path, monkeypatch) -> None:
+    pid, d = await _seed(client, tmp_path, monkeypatch)
+    (d / "models" / "marts" / "schema.yml").write_text(
+        "version: 2\nmodels:\n  - name: orders\n    columns:\n      - name: id\n"
+    )
+    resp = await client.post(
+        f"/api/projects/{pid}/models/model.proj.orders/document/propose", json={"columns": ["id"]}
+    )
+    assert resp.json()["status"] == "empty" and resp.json()["files"] == []
+    assert "already in models/marts/schema.yml" in resp.json()["error_message"]

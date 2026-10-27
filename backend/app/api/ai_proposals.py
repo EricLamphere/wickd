@@ -8,7 +8,9 @@ far (throttled), so Wicky can show the descriptions as they're written.
 
 Accepting a file re-reads it first: if it changed since the proposal was
 made (the user edited it, or switched branches), the accept is refused with
-409 rather than overwriting their work.
+409 rather than overwriting their work. Files can be modified, created, deleted
+or renamed (app/ai/file_ops.py); refactor proposals also apply as one unit and
+can be undone (api/ai_proposal_apply.py), and run `dbt parse` once applied.
 """
 
 import asyncio
@@ -23,11 +25,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai import file_ops
 from app.ai.client import LlmError
 from app.ai.config import load_ai_config
 from app.ai.documentation import generate_documentation
 from app.ai.errors import NothingToPropose, ProposalError
-from app.ai.gating import require_ai
+from app.ai.gating import REFACTOR_KIND, require_ai, require_proposal_access
 from app.ai.pro import AiUnavailable
 from app.ai.runtime import RuntimeUnavailable
 from app.ai.selection import SelectionError, item_keys, rebuild
@@ -41,6 +44,7 @@ from app.dbt.schema_yaml import SchemaYamlError
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.propagation import proposals as propagation
+from app.refactor.verify import start_verify
 
 log = get_logger(__name__)
 
@@ -278,8 +282,9 @@ async def list_proposals(
 async def get_proposal(
     project_id: int, proposal_id: int, session: AsyncSession = Depends(get_session)
 ) -> AiProposalDto:
-    await require_ai(session)
-    return proposal_dto(await _load(session, project_id, proposal_id))
+    proposal = await _load(session, project_id, proposal_id)
+    await require_proposal_access(session, proposal.kind)
+    return proposal_dto(proposal)
 
 
 @router.delete("/{project_id}/ai/proposals/{proposal_id}", status_code=204)
@@ -295,27 +300,6 @@ async def dismiss_proposal(
     await _publish(proposal)
 
 
-def _project_file(project_path: Path, relative: str) -> Path:
-    root = project_path.resolve()
-    path = (root / relative).resolve()
-    if not path.is_relative_to(root):
-        raise HTTPException(status_code=400, detail="file is outside the project")
-    return path
-
-
-def _read_current(path: Path) -> str | None:
-    if not path.exists():
-        return None
-    with path.open(encoding="utf-8", newline="") as f:
-        return f.read()
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as f:
-        f.write(text)
-
-
 @router.put("/{project_id}/ai/proposals/{proposal_id}/selection", response_model=AiProposalDto)
 async def select_items(
     project_id: int, proposal_id: int, dto: SelectionDto, session: AsyncSession = Depends(get_session)
@@ -324,8 +308,8 @@ async def select_items(
 
     `selected` / `accepted` cover the whole proposal; for a multi-file proposal the
     request replaces only `file_id`'s share of them."""
-    await require_ai(session)
     proposal = await _load(session, project_id, proposal_id)
+    await require_proposal_access(session, proposal.kind)
     if dto.file_id is None and len(proposal.files) != 1:
         raise HTTPException(status_code=422, detail="file_id is required for a proposal with several files")
     file = next(
@@ -361,8 +345,8 @@ async def select_items(
 async def _decide(
     session: AsyncSession, project_id: int, proposal_id: int, file_id: int, accept: bool
 ) -> AiProposalDto:
-    await require_ai(session)
     proposal = await _load(session, project_id, proposal_id)
+    await require_proposal_access(session, proposal.kind)
     file = next((f for f in proposal.files if f.id == file_id), None)
     if file is None:
         raise HTTPException(status_code=404, detail="file not found in proposal")
@@ -375,41 +359,51 @@ async def _decide(
         in_file = set(item_keys(proposal.kind, result, file.path)) if len(proposal.files) > 1 else None
         if not [k for k in selected if in_file is None or k in in_file]:
             raise HTTPException(status_code=409, detail="nothing is selected — reject it instead")
+    project = await session.get(Project, project_id)
+    assert project is not None
     if accept:
-        project = await session.get(Project, project_id)
-        assert project is not None
-        path = _project_file(Path(project.path), file.path)
-        current = await asyncio.to_thread(_read_current, path)
-        if current != file.original_text:
-            raise HTTPException(
-                status_code=409,
-                detail=f"{file.path} changed since this was generated — regenerate to review it again",
-            )
-        try:
-            await asyncio.to_thread(_write, path, file.proposed_text)
-        except OSError as exc:
-            raise HTTPException(status_code=500, detail=f"could not write {file.path}: {exc}") from exc
-        log.info("ai_proposal_file_accepted", proposal_id=proposal_id, path=file.path)
+        file.applied_text = await apply_file(Path(project.path), file)
+        log.info("ai_proposal_file_accepted", proposal_id=proposal_id, path=file.path, op=file.op)
 
     file.status = "accepted" if accept else "rejected"
+    finish_if_decided(proposal)
+    await session.commit()
+    await _publish(proposal)
+    if proposal.kind == REFACTOR_KIND and proposal.status == "applied":
+        start_verify(proposal.id, project_id, Path(project.path))
+
+    selector = _compile_selector(proposal, result, file.path) if accept else None
+    if selector:  # refresh the manifest so docs / side pane pick it up
+        asyncio.create_task(_compile_model(project_id, project.path, selector))
+    return proposal_dto(proposal)
+
+
+async def apply_file(root: Path, file: AiProposalFile) -> str | None:
+    """Check the file is as the proposal expects, then write it; returns the applied text."""
+    op = file_ops.FileOp.of(file)
+    try:
+        await asyncio.to_thread(file_ops.check_apply, root, op)
+    except file_ops.FileOpError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        return await asyncio.to_thread(file_ops.apply, root, op)
+    except (OSError, file_ops.FileOpError) as exc:
+        raise HTTPException(status_code=500, detail=f"could not write {file.path}: {exc}") from exc
+
+
+def finish_if_decided(proposal: AiProposal) -> None:
+    """Once no file is pending: applied if any was accepted, else rejected."""
     if all(f.status != "pending" for f in proposal.files):
         any_accepted = any(f.status == "accepted" for f in proposal.files)
         proposal.status = "applied" if any_accepted else "rejected"
     proposal.updated_at = datetime.now(UTC)
-    await session.commit()
-    await _publish(proposal)
-
-    selector = _compile_selector(proposal, result, file.path) if accept else None
-    if selector:
-        project = await session.get(Project, project_id)
-        if project is not None:  # refresh the manifest so docs / side pane pick it up
-            asyncio.create_task(_compile_model(project_id, project.path, selector))
-    return proposal_dto(proposal)
 
 
 def _compile_selector(proposal: AiProposal, result: dict, path: str) -> str | None:
     """The nodes an accepted file documents: the proposal's node, or (lineage
-    propagation) every node with items in that file."""
+    propagation) every node with items in that file. Refactors run `dbt parse` instead."""
+    if proposal.kind == REFACTOR_KIND:
+        return None
     if proposal.kind == propagation.KIND:
         names = {i["name"] for i in result.get("items") or [] if i.get("file") == path and i.get("name")}
         return " ".join(sorted(names)) or None

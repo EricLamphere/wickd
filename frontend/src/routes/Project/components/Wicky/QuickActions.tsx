@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, Loader2, Sparkles, Stethoscope } from 'lucide-react';
+import { FlaskConical, Loader2, Sparkles, Stethoscope, Wand2 } from 'lucide-react';
 import type { ModelNode } from '../../../../lib/api';
 import { aiApi, aiErrorMessage, type AiProposalDto } from '../../../../lib/aiApi';
 import { canDocument } from '../SidePane/DocumentModelButton';
@@ -15,6 +15,8 @@ interface QuickActionsProps {
   /** The node or one of its tests failed in the latest run. */
   failing: boolean;
   onExplainFailure: () => void;
+  /** Switch the chat to Refactor mode (rename a model or column, extract a CTE). */
+  onRefactor: () => void;
 }
 
 type ProposalKind = 'document' | 'tests';
@@ -36,7 +38,7 @@ const BUTTON = 'flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-elevate
 
 /** One-click Wicky actions for the selected node. Results appear in the chat below. */
 export function QuickActions({
-  projectId, model, proposals, ensureConversation, failing, onExplainFailure,
+  projectId, model, proposals, ensureConversation, failing, onExplainFailure, onRefactor,
 }: QuickActionsProps) {
   const qc = useQueryClient();
   const [choosing, setChoosing] = useState(false);
@@ -101,6 +103,15 @@ export function QuickActions({
               {busy('tests') ? <Loader2 size={12} className="animate-spin text-brand-300" /> : <FlaskConical size={12} className="text-brand-300" />}
               {busy('tests') ? 'Adding tests…' : 'Add tests'}
             </button>
+            {model.resource_type === 'model' && (
+              <button
+                onClick={onRefactor}
+                title="Rename this model or one of its columns everywhere, or extract a CTE into its own model; you review every edit"
+                className={BUTTON}
+              >
+                <Wand2 size={12} className="text-brand-300" /> Refactor…
+              </button>
+            )}
           </>
         )}
       </div>

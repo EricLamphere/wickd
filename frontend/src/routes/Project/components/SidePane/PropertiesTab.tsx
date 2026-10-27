@@ -1,10 +1,11 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, ChevronRight, Play, Hammer, FlaskConical, Layers, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { BookOpen, ChevronRight, Play, Hammer, FlaskConical, Layers, Loader2, Pencil, Plus, Trash2, Wand2 } from 'lucide-react';
 import { api, type ModelNode, type GraphDto, type RunOpts } from '../../../../lib/api';
 import { DocumentModelButton, canDocument } from './DocumentModelButton';
 import { ImpactSummary } from './ImpactSummary';
 import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
+import { startRefactor } from '../../lib/refactorEvents';
 
 type RunCommand = 'run' | 'build' | 'test';
 
@@ -565,6 +566,16 @@ export function PropertiesTab({
           <DocumentModelButton key={model.unique_id} projectId={projectId} model={model} />
         )}
         {canDocument(model) && <InheritDescriptionsButton projectId={projectId} uniqueId={model.unique_id} />}
+        {model.resource_type === 'model' && model.original_file_path && (
+          <button
+            onClick={() => startRefactor({ op: 'rename_model', uniqueId: model.unique_id, model: model.name })}
+            title="Rename the model's file, every ref() to it and its YAML entry (wickd Pro); you review every change first"
+            className="flex items-center justify-center gap-2 w-full py-2 text-sm rounded bg-surface-elevated hover:bg-gray-700 text-gray-300 border border-gray-700 transition-colors"
+          >
+            <Wand2 className="w-4 h-4" />
+            Rename model…
+          </button>
+        )}
         {model.resource_type === 'model' && model.original_file_path && (
           <button
             onClick={onDelete}

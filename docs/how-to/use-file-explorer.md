@@ -52,6 +52,8 @@ Click any `.sql` or `.yml` file to open it in the Monaco editor. The editor supp
 
 The file watcher detects saved changes and publishes a `files_changed` event, which may trigger the DAG to re-render if a manifest change follows.
 
+**Extract a CTE into a model (Pro).** In a model's SQL, put the cursor on a CTE's name, right-click and choose **Extract CTE to model…**. Save the file first. See [Refactor models and columns](refactor.md).
+
 ## Navigating to the DAG from a file
 
 When a model is open in the editor, the **SidePane** on the right shows the model's DAG metadata:

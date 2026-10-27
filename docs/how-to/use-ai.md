@@ -53,6 +53,10 @@ Switch the chat box from **Ask** to **Query data**, then ask a question about th
 
 Only single `SELECT` queries can run: wickd checks the SQL and refuses anything that writes, changes settings or uses Jinja other than `ref()` / `source()`. Small models do best with one question at a time.
 
+## Refactor
+
+Switch the chat box to **Refactor** (or click **Refactor…** under Quick actions) and describe a rename or an extraction ("rename customer_id to customer_key"). Wicky shows the refactor it understood; click **Prepare refactor** and review every edit before it's written. See [Refactor models and columns](refactor.md).
+
 ## Ask questions
 
 Type in the box at the bottom of Wicky. The selected node's SQL, columns, tests and upstream docs (or a project overview) are sent as context. Wicky can't query your warehouse.

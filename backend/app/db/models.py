@@ -327,10 +327,10 @@ class AiProposal(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
-    kind: Mapped[str] = mapped_column(String(32))  # document
+    kind: Mapped[str] = mapped_column(String(32))  # document | tests | propagate | refactor
     unique_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     title: Mapped[str] = mapped_column(String(255), default="")
-    # generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing)
+    # generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing) | undone
     status: Mapped[str] = mapped_column(String(16), default="generating")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # what the AI produced, kept for the chat history: {"description", "columns": {name: text}}
@@ -350,7 +350,11 @@ class AiProposalFile(Base):
     proposal_id: Mapped[int] = mapped_column(ForeignKey("ai_proposals.id", ondelete="CASCADE"), index=True)
     path: Mapped[str] = mapped_column(String(1024))  # relative to the project root (posix)
     original_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # None → new file
-    proposed_text: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | accepted | rejected
+    proposed_text: Mapped[str] = mapped_column(Text)  # rename: the text written at new_path
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending | accepted | rejected | undone
+    op: Mapped[str] = mapped_column(String(16), default="modify")  # modify | create | delete | rename
+    new_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)  # rename target
+    # what accepting wrote (None for a delete); Undo restores only while the file still holds it
+    applied_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     proposal: Mapped["AiProposal"] = relationship(back_populates="files")

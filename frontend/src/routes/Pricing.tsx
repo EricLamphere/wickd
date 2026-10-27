@@ -44,6 +44,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },
   { label: 'Lineage propagation — inherit descriptions & trace tagged (PII) columns', base: false, pro: true },
   { label: 'Run performance insights — critical path, regressions & recommendations', base: false, pro: true },
+  { label: 'Refactors — rename models & columns everywhere, extract CTEs into models', base: false, pro: true },
   { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs & tests', base: false, pro: true },
   { label: 'Priority support', base: false, pro: true },
 ];

@@ -15,6 +15,9 @@ other's types.
     query_prompt(manifest, unique_id, history, question) -> {"messages", "schema", "max_tokens"}
     parse_query(raw) -> {"sql", "explanation"}
     answer_messages(question, sql, columns, rows, truncated) -> list[message]
+    refactor_prompt(manifest, unique_id, history, request) -> {"messages", "schema", "max_tokens"}
+    parse_refactor_intent(raw, manifest, unique_id) -> {"op", "unique_id", "model", "new_name",
+        "column"? (rename_column), "cte"? (extract_cte)} | {"op": "none", "reason"}
 
 `run_info` is app/ai/run_context.py's node_run_info() output.
 """
@@ -95,3 +98,12 @@ def answer_messages(
     question: str, sql: str, columns: list[str], rows: list[list], truncated: bool
 ) -> list[dict]:
     return _pro().answer_messages(question, sql, columns, rows, truncated)
+
+
+def refactor_prompt(manifest: dict, unique_id: str | None, history: list[dict], request: str) -> dict:
+    return _pro().refactor_prompt(manifest, unique_id, history, request)
+
+
+def parse_refactor_intent(raw: str, manifest: dict, unique_id: str | None) -> dict:
+    """Raises ValueError when the model's answer isn't a usable operation."""
+    return _pro().parse_refactor_intent(raw, manifest, unique_id)

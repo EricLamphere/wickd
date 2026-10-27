@@ -510,6 +510,19 @@ async def run_migrations() -> None:
             await session.execute(text("ALTER TABLE invocation_model_results ADD COLUMN adapter_response_json TEXT"))
             await session.commit()
 
+        # Refactors: proposal files can create / delete / rename, and remember what was applied (Undo)
+        if not await _column_exists(session, "ai_proposal_files", "op"):
+            await session.execute(
+                text("ALTER TABLE ai_proposal_files ADD COLUMN op TEXT NOT NULL DEFAULT 'modify'")
+            )
+            await session.commit()
+        if not await _column_exists(session, "ai_proposal_files", "new_path"):
+            await session.execute(text("ALTER TABLE ai_proposal_files ADD COLUMN new_path TEXT"))
+            await session.commit()
+        if not await _column_exists(session, "ai_proposal_files", "applied_text"):
+            await session.execute(text("ALTER TABLE ai_proposal_files ADD COLUMN applied_text TEXT"))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

@@ -30,8 +30,10 @@ it to open the full list, or use **Refresh lineage** on the card to re-scan.
    - **Used by**: what depends on it.
    - **Evidence**: why the test was suggested, e.g. "joined to `dim_customers.customer_id` in
      4 models" or "one row per `order_id` (deduplicated)".
-3. Click a row to see all of its evidence and the models that join on the column; ⌘-click a model name
-   to open it in Files. Columns sort by clicking their headers (Risk is the default).
+3. Click a row to see all of its evidence and the models that join on the column, plus the full
+   **Used by** list: each downstream model with the columns built from this one, the models that
+   filter, join or group on it, and the exposures it reaches (up to 50 per list, then "+ N more").
+   ⌘-click a model name to open it in Files. Columns sort by clicking their headers (Risk is the default).
 4. Use **Show 50 / 100 / 200 / 500** to see more. Columns that already have the test are left out.
 
 `relationships` is suggested only from the many side of a join to a column known to be unique (the

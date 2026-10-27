@@ -60,7 +60,11 @@ MANIFEST = {
 
 RANKING = [
     {"unique_id": ORDERS, "name": "stg_orders", "column": "customer_id", "score": 9, "reach": 1, "row_uses": 1,
-     "exposures": 1, "in_grain": False, "existing": [], "candidates": [
+     "exposures": 1, "in_grain": False, "existing": [], "used_by": {
+         "columns": [{"unique_id": "model.proj.fct", "name": "fct", "columns": ["customer_id"]}],
+         "row_uses": [{"unique_id": "model.proj.fct", "name": "fct"}],
+         "exposures": [{"unique_id": "exposure.proj.dash", "name": "Sales dashboard"}],
+     }, "candidates": [
          {"test": "not_null", "evidence": "inner-joined on in 1 model", "source": "join", "models": ["fct"]},
          {"test": "relationships", "to": CUSTOMERS, "field": "customer_id",
           "evidence": "joined to `dim_customers.customer_id` in 1 model", "source": "join"},
@@ -224,6 +228,13 @@ async def test_lists_rows_with_suggestions_and_caches_the_ranking(client, db_ses
         "source": "join", "to": CUSTOMERS, "field": "customer_id", "combination": None, "models": [],
     }
     assert body["rows"][0]["candidates"][0]["models"] == ["fct"]
+    assert body["rows"][0]["used_by"] == {
+        "columns": [{"unique_id": "model.proj.fct", "name": "fct", "columns": ["customer_id"]}],
+        "row_uses": [{"unique_id": "model.proj.fct", "name": "fct", "columns": []}],
+        "exposures": [{"unique_id": "exposure.proj.dash", "name": "Sales dashboard", "columns": []}],
+    }
+    # older wickd_pro builds return counts only
+    assert body["rows"][1]["used_by"] == {"columns": [], "row_uses": [], "exposures": []}
     assert calls["structure"][DAILY]["grain"]["columns"] == ["day"]
 
     await client.get(f"/api/projects/{pid}/test-gaps")

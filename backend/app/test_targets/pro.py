@@ -12,9 +12,13 @@ boundary, all read from a lineage_version 4 column lineage snapshot:
 
     rank_test_targets(manifest, lineage, row_deps, structure, unique_ids=None)
         → [{unique_id, name, column (None for a model-level test), columns?, score,
-            reach, row_uses, exposures, in_grain, existing: [test],
+            reach, row_uses, exposures, in_grain, used_by?, existing: [test],
             candidates: [{test, evidence, source: grain | join, to?, field?,
                           combination?, models?}]}]   (highest score first)
+
+`used_by` (newer builds) names what reach / row_uses / exposures count:
+{columns: [{unique_id, name, columns}], row_uses: [{unique_id, name}],
+exposures: [{unique_id, name}]}, capped per list.
 
 `test` is not_null / unique / relationships (`to` = a unique_id, `field` its
 column) / unique_combination_of_columns (`combination`, needs dbt_utils).

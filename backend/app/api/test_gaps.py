@@ -82,6 +82,21 @@ class GapCandidateDto(BaseModel):
     models: list[str] = []  # join candidates: the models that join on it
 
 
+class UsedNodeDto(BaseModel):
+    unique_id: str
+    name: str
+    columns: list[str] = []  # downstream columns built from it (UsedByDto.columns only)
+
+
+class UsedByDto(BaseModel):
+    """What the reach / row_uses / exposures counts are made of (capped; the counts stay exact).
+    Empty on older wickd_pro builds that only return counts."""
+
+    columns: list[UsedNodeDto] = []  # downstream models and the columns derived from it
+    row_uses: list[UsedNodeDto] = []  # models that filter / join / group on it
+    exposures: list[UsedNodeDto] = []
+
+
 class GapRowDto(BaseModel):
     key: str
     unique_id: str
@@ -93,6 +108,7 @@ class GapRowDto(BaseModel):
     row_uses: int  # models that filter / join / group on it (or on what's derived from it)
     exposures: int
     in_grain: bool
+    used_by: UsedByDto = UsedByDto()
     existing: list[str]
     candidates: list[GapCandidateDto]
 
@@ -116,6 +132,7 @@ def _gap_dto(row: dict) -> GapRowDto:
         row_uses=row["row_uses"],
         exposures=row["exposures"],
         in_grain=row["in_grain"],
+        used_by=UsedByDto.model_validate(row.get("used_by") or {}),
         existing=row.get("existing") or [],
         candidates=[
             GapCandidateDto(

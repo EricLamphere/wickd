@@ -17,6 +17,20 @@ export interface TestGapCandidateDto {
   models: string[];
 }
 
+export interface UsedNodeDto {
+  unique_id: string;
+  name: string;
+  /** downstream columns built from it (UsedByDto.columns only) */
+  columns: string[];
+}
+
+/** What reach / row_uses / exposures count, capped (the counts stay exact); empty on older Pro builds. */
+export interface UsedByDto {
+  columns: UsedNodeDto[];
+  row_uses: UsedNodeDto[];
+  exposures: UsedNodeDto[];
+}
+
 export interface TestGapDto {
   key: string;
   unique_id: string;
@@ -31,6 +45,7 @@ export interface TestGapDto {
   row_uses: number;
   exposures: number;
   in_grain: boolean;
+  used_by: UsedByDto;
   existing: string[];
   candidates: TestGapCandidateDto[];
 }

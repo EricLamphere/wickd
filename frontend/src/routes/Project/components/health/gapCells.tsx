@@ -4,6 +4,7 @@ import { Columns3, FileCode2, Filter, LayoutDashboard, Network, Rows3 } from 'lu
 import type { TestGapCandidateDto, TestGapDto } from '../../../../lib/testGapsApi';
 import { OPEN_IN_FILES_TITLE } from '../../lib/openInFiles';
 import type { NodeFileNav } from '../NodeName';
+import { GapUsedBy } from './GapUsedBy';
 import { TEST_LABEL } from './testGapsView';
 
 const TEST_TONE: Record<string, string> = {
@@ -85,11 +86,13 @@ export function GapUse({ row }: { row: Pick<TestGapDto, 'reach' | 'row_uses' | '
 }
 
 /** Expanded row: each suggested test with its full evidence, the models involved, and where to go. */
-export function GapDetail({ projectId, uniqueId, model, candidates, fileNav, actions }: {
+export function GapDetail({ projectId, uniqueId, model, candidates, usedBy, fileNav, actions }: {
   projectId: number;
   uniqueId: string;
   model: string;
   candidates: TestGapCandidateDto[];
+  /** The gap's row, for the full Used by lists (not kept for ignored rows). */
+  usedBy?: Pick<TestGapDto, 'reach' | 'row_uses' | 'exposures' | 'used_by'>;
   fileNav: NodeFileNav & { open: (uniqueId: string) => void };
   /** Row actions shown after the navigation buttons (e.g. Ignore, then Generate these tests). */
   actions?: ReactNode;
@@ -97,25 +100,28 @@ export function GapDetail({ projectId, uniqueId, model, candidates, fileNav, act
   const navigate = useNavigate();
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-      <ul className="flex-1 min-w-[18rem] flex flex-col gap-3">
-        {candidates.length === 0 && <li className="text-xs text-gray-500">Nothing would be suggested for it now.</li>}
-        {candidates.map((c) => (
-          <li key={c.test} className="flex flex-col items-start gap-1">
-            <TestPill candidate={c} />
-            <span className="flex flex-col gap-1 pl-0.5 text-xs">
-              <span className="text-gray-300">{c.evidence}</span>
-              {c.models.length > 0 && (
-                <span className="flex flex-wrap items-center gap-1 text-[11px] text-gray-500">
-                  joined in
-                  {c.models.map((m) => (
-                    <span key={m} className="px-1.5 rounded bg-surface-elevated font-mono text-gray-300">{m}</span>
-                  ))}
-                </span>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div className="flex-1 min-w-[18rem] flex flex-col gap-4">
+        <ul className="flex flex-col gap-3">
+          {candidates.length === 0 && <li className="text-xs text-gray-500">Nothing would be suggested for it now.</li>}
+          {candidates.map((c) => (
+            <li key={c.test} className="flex flex-col items-start gap-1">
+              <TestPill candidate={c} />
+              <span className="flex flex-col gap-1 pl-0.5 text-xs">
+                <span className="text-gray-300">{c.evidence}</span>
+                {c.models.length > 0 && (
+                  <span className="flex flex-wrap items-center gap-1 text-[11px] text-gray-500">
+                    joined in
+                    {c.models.map((m) => (
+                      <span key={m} className="px-1.5 rounded bg-surface-elevated font-mono text-gray-300">{m}</span>
+                    ))}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {usedBy && <GapUsedBy row={usedBy} fileNav={fileNav} />}
+      </div>
       <div className="flex flex-wrap items-center gap-1.5">
         {fileNav.canOpen(uniqueId) && (
           <button

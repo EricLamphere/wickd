@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { TestGapDto } from '../../../../lib/testGapsApi';
 import {
-  describeCandidate, describeUse, filterGaps, gapSubject, ignoredStatus, testCounts, testGapsBadge, testGapsCardState,
+  describeCandidate, describeUse, filterGaps, gapSubject, hiddenCount, ignoredStatus, testCounts, testGapsBadge, testGapsCardState,
 } from './testGapsView';
 
 const ROW: TestGapDto = {
   key: 'model.p.stg_orders::customer_id', unique_id: 'model.p.stg_orders', name: 'stg_orders',
   column: 'customer_id', columns: null, score: 9, reach: 1, row_uses: 2, exposures: 1, in_grain: false,
+  used_by: { columns: [], row_uses: [], exposures: [] },
   existing: [],
   candidates: [
     { test: 'not_null', evidence: 'inner-joined on in 2 models', source: 'join', to: null, field: null, combination: null, models: [] },
@@ -76,5 +77,13 @@ describe('ignored rows', () => {
     expect(ignoredStatus({ still_a_gap: true })).toBe('still a gap');
     expect(ignoredStatus({ still_a_gap: false })).toBe('no longer a gap');
     expect(ignoredStatus({ still_a_gap: null })).toBe('unknown — refresh column lineage');
+  });
+});
+
+describe('hiddenCount', () => {
+  it('counts what a capped list leaves out, never below zero', () => {
+    expect(hiddenCount(120, 50)).toBe(70);
+    expect(hiddenCount(3, 3)).toBe(0);
+    expect(hiddenCount(2, 5)).toBe(0);
   });
 });

@@ -20,6 +20,11 @@ export function describeUse(row: Pick<TestGapDto, 'reach' | 'row_uses' | 'exposu
   return parts.join(' · ') || '—';
 }
 
+/** How many of `total` a capped list of `shown` leaves out. */
+export function hiddenCount(total: number, shown: number): number {
+  return Math.max(0, total - shown);
+}
+
 export function gapSubject(row: Pick<TestGapDto, 'column' | 'columns'>): string {
   return row.column ?? `(${(row.columns ?? []).join(', ')})`;
 }

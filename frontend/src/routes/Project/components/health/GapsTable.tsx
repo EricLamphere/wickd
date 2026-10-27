@@ -171,6 +171,7 @@ export function GapsTable({ projectId, data, limit, onLimit, proposal }: GapsTab
             uniqueId={r.unique_id}
             model={r.name}
             candidates={r.candidates}
+            usedBy={r}
             fileNav={fileNav}
             actions={(
               <>

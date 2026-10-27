@@ -135,11 +135,22 @@ async def test_upload_traversal_is_400(client, tmp_path, monkeypatch) -> None:
 
 async def test_reveal(client, tmp_path, monkeypatch) -> None:
     pid, d = await _seed(client, tmp_path, monkeypatch)
+    monkeypatch.setattr(files_api.sys, "platform", "darwin")
     proc = AsyncMock()
     with patch.object(files_api.asyncio, "create_subprocess_exec", new=AsyncMock(return_value=proc)) as spawn:
         r = await client.post(f"/api/projects/{pid}/files/reveal", json={"path": "models/marts/orders.sql"})
     assert r.status_code == 204
-    assert str(d / "models" / "marts" / "orders.sql") in [str(a) for a in spawn.call_args.args][-1]
+    assert spawn.call_args.args == ("open", "-R", str(d / "models" / "marts" / "orders.sql"))
+
+
+async def test_reveal_linux_opens_parent_dir(client, tmp_path, monkeypatch) -> None:
+    pid, d = await _seed(client, tmp_path, monkeypatch)
+    monkeypatch.setattr(files_api.sys, "platform", "linux")
+    proc = AsyncMock()
+    with patch.object(files_api.asyncio, "create_subprocess_exec", new=AsyncMock(return_value=proc)) as spawn:
+        r = await client.post(f"/api/projects/{pid}/files/reveal", json={"path": "models/marts/orders.sql"})
+    assert r.status_code == 204
+    assert spawn.call_args.args == ("xdg-open", str(d / "models" / "marts"))
 
 
 async def test_reveal_missing_is_404(client, tmp_path, monkeypatch) -> None:

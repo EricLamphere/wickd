@@ -93,6 +93,12 @@ def _fake_trace_job_full(
     return uid, columns, [ColumnRef(node="model.proj.stg_orders", column="status")]
 
 
+def _fake_trace_job_kinds(job: LineageJob) -> tuple:
+    """_fake_trace_job_full with a transform kind on each projection ref."""
+    uid, columns, rows = _fake_trace_job_full(job)
+    return uid, {col: [(ref, "identity") for ref in refs] for col, refs in columns.items()}, rows
+
+
 def _supports_rows() -> bool:
     return True
 
@@ -105,10 +111,13 @@ def _fake_algorithm(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(column_lineage_module, "trace_job", _fake_trace_job)
     monkeypatch.setattr(column_lineage_module, "trace_job_full", _fake_trace_job_full)
     monkeypatch.setattr(column_lineage_module, "supports_row_dependencies", _supports_rows)
+    monkeypatch.setattr(column_lineage_module, "trace_job_kinds", _fake_trace_job_kinds)
+    monkeypatch.setattr(column_lineage_module, "supports_transform_kinds", _supports_rows)
     import app.api.column_lineage as api_module
     monkeypatch.setattr(api_module, "prepare_lineage_jobs", _fake_prepare_lineage_jobs)
-    monkeypatch.setattr(api_module, "trace_job_full", _fake_trace_job_full)
     monkeypatch.setattr(api_module, "supports_row_dependencies", _supports_rows)
+    monkeypatch.setattr(api_module, "trace_job_kinds", _fake_trace_job_kinds)
+    monkeypatch.setattr(api_module, "supports_transform_kinds", _supports_rows)
 
 
 @pytest.fixture(autouse=True)
@@ -253,10 +262,11 @@ async def test_start_and_poll_end_to_end(
     assert len(refs) == 1
     assert refs[0]["node"] == "model.proj.stg_orders"
     assert refs[0]["column"] == "order_id"
+    assert refs[0]["kind"] == "identity"
     assert final["row_dependencies"] == {
-        "model.proj.orders": [{"node": "model.proj.stg_orders", "column": "status"}],
+        "model.proj.orders": [{"node": "model.proj.stg_orders", "column": "status", "kind": None}],
     }
-    assert final["lineage_version"] == 2
+    assert final["lineage_version"] == 3
 
 
 async def test_rerun_recomputes_snapshots_from_an_older_lineage_version(
@@ -281,7 +291,7 @@ async def test_rerun_recomputes_snapshots_from_an_older_lineage_version(
     assert resp.status_code == 202
     final = await _wait_for_done(client, pid)
     assert final["id"] != old.id
-    assert final["lineage_version"] == 2
+    assert final["lineage_version"] == 3
 
 
 async def test_start_auto_compiles_stale_manifest(

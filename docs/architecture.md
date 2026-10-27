@@ -53,6 +53,7 @@ wickd/
 │   │   │   ├── document.py          # /api/projects/{id}/models/{uid}/document — docs generator (stub `- name:` entries in schema YAML)
 │   │   │   ├── freshness.py         # /api/projects/{id}/freshness — dbt source freshness, backgrounded snapshot
 │   │   │   ├── column_lineage.py    # /api/projects/{id}/column-lineage — backgrounded, parallel column-level lineage scan
+│   │   │   ├── propagation.py       # /api/projects/{id}/propagate/* + /lineage/tag-flow — inherited descriptions and tag flow (Pro; engine in wickd_pro via app/propagation/pro.py)
 │   │   │   ├── performance.py       # /api/projects/{id}/node-durations (Base) + run analysis / project performance (Pro; analysis in wickd_pro via app/performance/pro.py)
 │   │   │   ├── exports.py           # /api/projects/{id}/exports/dag + /api/exports/default-dir, /reveal — writes DAG exports to a user-chosen folder (path validation in app/exports/paths.py)
 │   │   │   └── health.py            # /api/health
@@ -243,6 +244,7 @@ project_env_vars
   --   dbt_target        active dbt target; passed as --target on every invocation
   --   REQUIREMENTS_PATH path to project-specific requirements.txt
   --   WORKSPACE_PATH    relative path to SQL workspace dir (default "workspace")
+  --   PROPAGATE_TAGS    comma-separated tags the Docs Tags tab traces through lineage (default "pii,sensitive")
   --   Any KEY=value exported by an init script is upserted here automatically
 
 app_settings
@@ -304,7 +306,8 @@ column_lineage_snapshots
                              -- used to short-circuit a re-scan when the manifest hasn't changed
   row_dependencies_json TEXT -- JSON {uid: [{node, column}, ...]}: upstream columns each model filters / joins /
                              -- groups on (WHERE, JOIN ON/USING, GROUP BY, HAVING, QUALIFY), i.e. which rows it has
-  lineage_version INTEGER    -- 1 = projection lineage only; 2 = also row dependencies. The short-circuit
+  lineage_version INTEGER    -- 1 = projection lineage only; 2 = also row dependencies; 3 = also a transform `kind`
+                             -- (identity | rename | cast | derived) on each results_json ref. The short-circuit
                              -- only reuses a snapshot whose version matches what a scan would produce now
   -- Interrupted snapshots (status='running') are reset to 'error' on server restart
 
@@ -395,6 +398,10 @@ PUT    /api/projects/{id}/models/{unique_id}/sql
 POST   /api/projects/{id}/column-lineage/start            start async column lineage scan (202, or 200 if a fresh snapshot already exists); returns ColumnLineageSnapshot — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage                 get the latest ColumnLineageSnapshot for a project — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage/{snapshot_id}   get a specific ColumnLineageSnapshot by id — Pro feature, 403 if not entitled
+GET    /api/projects/{id}/propagate/descriptions?unique_id=&include_casts=true  Pro: how many empty column descriptions lineage could fill `{fillable, conflicts, by_node}`; 409 `{error: lineage_not_ready, reason: missing|running|outdated|error}` until a lineage_version 3 snapshot exists
+POST   /api/projects/{id}/propagate/descriptions         Pro: build a "propagate" proposal filling those descriptions (body `{unique_ids?, include_casts}`); 202, then `ai_proposal_updated`
+GET    /api/projects/{id}/lineage/tag-flow?tag=          Pro: every column / exposure carrying data from columns tagged `tag` (default: first of PROPAGATE_TAGS) `{tag, tags, columns, exposures}`; 409 as above
+POST   /api/projects/{id}/propagate/tags                 Pro: build a "propagate" proposal adding inherited tags to columns' YAML (body `{tag?}`; default every PROPAGATE_TAGS tag); 202
 POST   /api/projects/{id}/exports/dag                    write a DAG export the frontend rendered (body `{directory, filename, format: html|svg|png, content, encoding: utf8|base64, overwrite}`) into the chosen folder; 201 `{path, bytes}`, 400 `{field, message}` for a bad folder/name, 409 if the file exists and `overwrite` is false
 GET    /api/exports/default-dir                          default export folder: ~/Downloads, else the home directory
 POST   /api/exports/reveal                               show an exported file in Finder / the platform file manager (204; 404 if missing)
@@ -782,6 +789,14 @@ In the frontend (`Models.tsx`):
 - Highlighted `{node, column}` pairs are passed as props into each `ModelNode`; nodes and edges outside the trace are dimmed
 - None of this blocks other queries/interactions — the scan runs fully server-side in background worker processes; the frontend only ever does small polling GETs and SSE-driven invalidation.
 
+### 10d. Lineage propagation (wickd Pro)
+
+Builds on column lineage (section 10). Since `lineage_version` 3 the scan records how each output column is derived from each upstream ref: `identity` (same name), `rename`, `cast` (CAST / TRY_CAST / SAFE_CAST / `::`, optionally inside `COALESCE(x, literal)`) or `derived` (anything else). It is computed in `wickd_pro.transform_kinds` from sqlglot's lineage tree as the weakest step along the path (`trace_job_kinds()`, behind the shim's `supports_transform_kinds()` probe, so older Pro builds still produce version 2 snapshots).
+
+- **Engine (private):** `wickd_pro.propagation` — `inherit_descriptions()` walks upstream from each undocumented column along identity/rename/cast edges to the nearest documented column(s), and reports a conflict instead of guessing when several distinct descriptions are reachable; `tag_flow()` follows declared column tags downstream through every kind (a hash of PII is still PII), preferring the strongest path, and lists exposures that depend on a reached node; `inherit_tags()` narrows that to undeclared columns. Public shim: `app/propagation/pro.py`; manifest → plain dicts in `app/propagation/inputs.py` (column `tags` and `config.tags` both count).
+- **Writing (public):** `app/propagation/proposals.py` turns results into one `ai_proposals` row of kind `propagate` with one `ai_proposal_files` row per schema YAML touched (the file `plan_document_node()` picks). Copied descriptions are the source column's raw YAML text (`raw_descriptions()` / `raw_source_descriptions()`), so `{{ doc() }}` blocks stay doc blocks. Tags are spliced by `app/dbt/schema_column_tags.py` `add_column_tags()` (block list, one-line list, single string, or `config: tags:`; re-parse verified). Each item names its file; partial accept (`PUT .../selection` with `file_id`) rebuilds only that file through `render_file()`, and accepting a file compiles the nodes it documents.
+- **UI:** Docs project overview "Fill descriptions from lineage (N)", the side pane's "Inherit descriptions from upstream (N)" (only when the model has something to fill), and the Docs **Tags** browse tab (`?browse=tags&tag=`: `TagFlowPanel` with a DataTable, exposures, "Write inherited tags to YAML", and "Show in DAG", which seeds the DAG's `dag-column-sels-{id}` / `dag-expanded-nodes-{id}` session keys). Review uses `ProposalReviewModal`, which lists the active file's items for multi-file proposals. Lineage not ready → `LineageNotReadyNotice` with "Refresh column lineage". No new SSE events: `['propagate-preview', id]` and `['tag-flow', id]` are invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
+
 ### 10b. Local AI — Wicky (wickd Pro)
 
 User-facing overview of context, limits, safety and locality: [wicky.md](wicky.md).
@@ -997,6 +1012,7 @@ Per-project env vars (stored in `project_env_vars`, injected into every dbt subp
 | `REQUIREMENTS_PATH` | Environment tab (UI) | Path to a project-specific `requirements.txt`; installed during `base: pip install` |
 | `dbt_target` | Target dropdown (UI) | Active dbt target; passed as `--target` on every dbt invocation |
 | `WORKSPACE_PATH` | Environment tab (UI) | Relative path to the SQL workspace directory inside the project (default `workspace`) |
+| `PROPAGATE_TAGS` | Environment tab (UI) | Comma-separated column tags traced through lineage on the Docs Tags tab (default `pii,sensitive`) |
 | _(any exported var)_ | Init scripts automatically | Any `export KEY=value` in a custom init script is captured and upserted here after the step succeeds; persists across restarts |
 
 `load_project_env()` builds the subprocess env as: `os.environ` + `project_env_vars` rows + active profile vars (from `env_profiles` / `profile_env_vars`).

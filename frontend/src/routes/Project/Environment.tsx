@@ -258,6 +258,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 
   const requirementsPath = envVars.find((v) => v.key === 'REQUIREMENTS_PATH')?.value ?? '';
   const workspacePath = envVars.find((v) => v.key === 'WORKSPACE_PATH')?.value ?? '';
+  const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
@@ -283,6 +284,17 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
       await api.init.deleteEnvVar(projectId, 'WORKSPACE_PATH');
     }
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+  };
+
+  const handleSavePropagateTags = async (val: string) => {
+    const normalized = val.split(',').map((t) => t.trim()).filter(Boolean).join(',');
+    if (normalized) {
+      await api.init.setEnvVar(projectId, 'PROPAGATE_TAGS', normalized);
+    } else {
+      await api.init.deleteEnvVar(projectId, 'PROPAGATE_TAGS');
+    }
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+    qc.invalidateQueries({ queryKey: ['tag-flow', projectId] });
   };
 
   return (
@@ -320,6 +332,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />
+            <ProjectSettingRow
+              label="PROPAGATE_TAGS"
+              value={propagateTags}
+              placeholder="pii,sensitive"
+              kind="default"
+              onSave={handleSavePropagateTags}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
           </>
         )}
       </div>
@@ -328,7 +349,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'PROPAGATE_TAGS', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

@@ -79,6 +79,15 @@ export function FileTree(props: FileTreeProps) {
   useEffect(() => {
     if (revealPath) expandTo(revealPath);
   }, [revealPath, expandTo]);
+  // Scroll the revealed file into view once its row exists (its folders load asynchronously)
+  const scrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!revealPath || scrolledTo.current === revealPath) return;
+    const row = containerRef.current?.querySelector(`[data-path="${CSS.escape(revealPath)}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: 'nearest' });
+    scrolledTo.current = revealPath;
+  }, [revealPath, rows]);
 
   useEffect(() => {
     if (props.refreshSignal > 0) reload();

@@ -62,6 +62,32 @@ def existing_descriptions(
     return ExistingDescriptions(node=not _wants(entry, overwrite=False), columns=described)
 
 
+def raw_descriptions(text: str, filename: str, resource_key: str, name: str) -> dict[str, str]:
+    """Column name → its description exactly as written in the YAML (so a
+    `{{ doc('…') }}` stays a doc block, unlike the manifest's rendered text)."""
+    entries = _parse(text, filename).get(resource_key)
+    entry = _find_entry(entries, name) if isinstance(entries, list) else None
+    return _column_descriptions(entry)
+
+
+def raw_source_descriptions(text: str, filename: str, source_name: str, table: str) -> dict[str, str]:
+    """raw_descriptions() for a source table (`sources: - name: … tables: - name: …`)."""
+    sources = _parse(text, filename).get("sources")
+    source = _find_entry(sources, source_name) if isinstance(sources, list) else None
+    tables = source.get("tables") if source is not None else None
+    return _column_descriptions(_find_entry(tables, table) if isinstance(tables, list) else None)
+
+
+def _column_descriptions(entry: dict | None) -> dict[str, str]:
+    if entry is None:
+        return {}
+    return {
+        str(c["name"]): str(c["description"])
+        for c in entry.get("columns") or []
+        if isinstance(c, dict) and "name" in c and not _wants(c, overwrite=False)
+    }
+
+
 @dataclass(frozen=True)
 class _Splice:
     start: int

@@ -1,16 +1,35 @@
-import type { AiProposalDto, AiSuggestedTest } from '../../../../lib/aiApi';
+import type { AiProposalDto, AiSuggestedTest, PropagationItem } from '../../../../lib/aiApi';
 import { describeTest } from '../../../../lib/partialTests';
 
-/** One separately acceptable piece of a proposal: a test, or a description. */
+/** One separately acceptable piece of a proposal: a test, a description, or inherited tags. */
 export interface ProposalItem {
   key: string;
-  /** Column (or "Model description"). */
+  /** Column (or "Model description"; "model.column" for lineage propagation). */
   title: string;
   detail: string;
   test?: AiSuggestedTest;
+  /** Lineage propagation: the item's schema file, and the item itself. */
+  file?: string;
+  propagation?: PropagationItem;
+}
+
+const KIND_LABELS: Record<string, string> = { identity: 'same column', rename: 'renamed', cast: 'cast', derived: 'derived' };
+
+function propagationDetail(item: PropagationItem): string {
+  if (item.field === 'tags') {
+    return (item.tags ?? []).map((t) => `+${t}${item.via_kind?.[t] === 'derived' ? ' (derived)' : ''}`).join(' ');
+  }
+  const from = item.source ? ` ← ${item.source.node.split('.').pop()}.${item.source.column}` : '';
+  const how = item.kind ? ` (${KIND_LABELS[item.kind] ?? item.kind})` : '';
+  return `${item.value ?? ''}${from}${how}`;
 }
 
 export function proposalItems(p: AiProposalDto): ProposalItem[] {
+  if (p.kind === 'propagate') {
+    return (p.result.items ?? []).map((i) => ({
+      key: i.key, title: `${i.name}.${i.column}`, detail: propagationDetail(i), file: i.file, propagation: i,
+    }));
+  }
   if (p.kind === 'tests') {
     return (p.result.tests ?? [])
       .filter((t) => t.key)
@@ -24,6 +43,11 @@ export function proposalItems(p: AiProposalDto): ProposalItem[] {
   return items;
 }
 
+/** The items written to `path` (every item, for single-file proposals). */
+export function itemsInFile(items: ProposalItem[], path: string | undefined): ProposalItem[] {
+  return items.filter((i) => !i.file || i.file === path);
+}
+
 /** Keys currently included in the proposed file (all of them until the user changes it). */
 export function selectedKeys(p: AiProposalDto): Set<string> {
   return new Set(p.result.selected ?? proposalItems(p).map((i) => i.key));
@@ -33,8 +57,20 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+interface Locator {
+  /** the node entry to look inside first (lineage propagation: many nodes share a file) */
+  parent?: string;
+  anchor: string;
+  marker: RegExp;
+  direct: boolean;
+}
+
 /** Where an item sits: the entry it belongs to, and the line to find inside it. */
-function locator(p: AiProposalDto, item: ProposalItem): { anchor: string; marker: RegExp; direct: boolean } {
+function locator(p: AiProposalDto, item: ProposalItem): Locator {
+  if (item.propagation) {
+    const marker = item.propagation.field === 'tags' ? /^\s*(-\s+)?tags:/ : /^\s*(-\s+)?description:/;
+    return { parent: item.propagation.name, anchor: item.propagation.column, marker, direct: true };
+  }
   if (item.test) {
     return { anchor: item.test.column, marker: new RegExp(`^\\s*-\\s*${escapeRegExp(item.test.test)}\\b`), direct: false };
   }
@@ -50,22 +86,50 @@ function locator(p: AiProposalDto, item: ProposalItem): { anchor: string; marker
  * entry itself (same indent as its `name:`), not of something nested in it.
  */
 export function findItemLine(text: string, p: AiProposalDto, item: ProposalItem): number | null {
-  const { anchor, marker, direct } = locator(p, item);
+  const { parent, anchor, marker, direct } = locator(p, item);
   if (!anchor) return null;
   const lines = text.split('\n');
-  const nameRe = new RegExp(`^(\\s*(?:-\\s+)?)name:\\s*["']?${escapeRegExp(anchor)}["']?\\s*(#.*)?$`, 'i');
-  for (let i = 0; i < lines.length; i++) {
-    const m = nameRe.exec(lines[i]);
-    if (!m) continue;
-    const keyCol = m[1].length;
-    for (let j = i + 1; j < lines.length; j++) {
+  const start = parent ? findEntry(lines, parent, 0, lines.length) : null;
+  if (parent && !start) return null;
+  const [from, to] = start ? [start.line + 1, entryEnd(lines, start)] : [0, lines.length];
+  for (let i = from; i < to; i++) {
+    const entry = matchName(lines[i], anchor);
+    if (entry === null) continue;
+    for (let j = i + 1; j < to; j++) {
       const line = lines[j];
       if (!line.trim() || line.trim().startsWith('#')) continue;
       const indent = line.length - line.trimStart().length;
-      const dashed = /^\s*-\s/.test(line);
-      if (indent < keyCol || (dashed && indent <= keyCol - 2)) break; // left the entry
-      if (marker.test(line) && (!direct || indent === keyCol)) return j + 1;
+      if (leftEntry(line, indent, entry)) break;
+      if (marker.test(line) && (!direct || indent === entry)) return j + 1;
     }
   }
   return null;
+}
+
+/** The key column of a `name: <anchor>` line, else null. */
+function matchName(line: string, anchor: string): number | null {
+  const m = new RegExp(`^(\\s*(?:-\\s+)?)name:\\s*["']?${escapeRegExp(anchor)}["']?\\s*(#.*)?$`, 'i').exec(line);
+  return m ? m[1].length : null;
+}
+
+function leftEntry(line: string, indent: number, keyCol: number): boolean {
+  const dashed = /^\s*-\s/.test(line);
+  return indent < keyCol || (dashed && indent <= keyCol - 2);
+}
+
+function findEntry(lines: string[], name: string, from: number, to: number): { line: number; keyCol: number } | null {
+  for (let i = from; i < to; i++) {
+    const keyCol = matchName(lines[i], name);
+    if (keyCol !== null) return { line: i, keyCol };
+  }
+  return null;
+}
+
+function entryEnd(lines: string[], entry: { line: number; keyCol: number }): number {
+  for (let j = entry.line + 1; j < lines.length; j++) {
+    const line = lines[j];
+    if (!line.trim() || line.trim().startsWith('#')) continue;
+    if (leftEntry(line, line.length - line.trimStart().length, entry.keyCol)) return j;
+  }
+  return lines.length;
 }

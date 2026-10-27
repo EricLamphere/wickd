@@ -106,5 +106,26 @@ def supports_row_dependencies() -> bool:
         return False
 
 
+def trace_job_kinds(job) -> tuple:
+    """trace_job_full() with each projection ref's transform kind:
+    (uid, {column: [(ColumnRef, kind | None)]}, [ColumnRef]), kind one of
+    identity / rename / cast / derived. Older wickd_pro builds without kinds
+    get None for every kind — see supports_transform_kinds()."""
+    pro = _pro()
+    with_kinds = getattr(pro, "trace_job_kinds", None)
+    if with_kinds is not None:
+        return with_kinds(job)
+    uid, col_lineage, row_refs = trace_job_full(job)
+    return uid, {col: [(ref, None) for ref in refs] for col, refs in col_lineage.items()}, row_refs
+
+
+def supports_transform_kinds() -> bool:
+    """Whether the installed wickd_pro records how each column is derived."""
+    try:
+        return hasattr(_pro(), "trace_job_kinds")
+    except ColumnLineageUnavailable:
+        return False
+
+
 def build_column_lineage(manifest_path: Path) -> dict:
     return _pro().build_column_lineage(manifest_path)

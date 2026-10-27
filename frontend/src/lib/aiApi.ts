@@ -119,12 +119,48 @@ export interface AiProposalDto {
     columns: Record<string, string>;
     /** kind "tests"; failures = failing rows when pre-checked against the warehouse, null if not checked */
     tests: AiSuggestedTest[];
-    /** Item keys included in the file ("t0"…, "description", "col:<name>"); null = all. */
+    /** kind "propagate" (lineage propagation; spans several files): one item per column. */
+    items?: PropagationItem[];
+    conflicts?: PropagationConflict[];
+    skipped?: { unique_id: string; reason: string }[];
+    /** Item keys included in the file(s) ("t0"…, "description", "col:<name>", "description:<uid>:<col>"); null = all. */
     selected: string[] | null;
     /** Items already accepted in review (applied when the file is). */
     accepted: string[];
   };
   files: AiProposalFileDto[];
+}
+
+export interface PropagationHop {
+  node: string;
+  column: string;
+  kind?: string;
+}
+
+/** One inherited description or set of tags in a "propagate" proposal. */
+export interface PropagationItem {
+  key: string;
+  field: 'description' | 'tags';
+  unique_id: string;
+  column: string;
+  /** schema file it's written to (matches a proposal file's path) */
+  file: string;
+  /** the node's name in that file */
+  name: string;
+  /** field "description": the text (raw YAML, doc blocks kept) and where it came from */
+  value?: string;
+  source?: { node: string; column: string };
+  kind?: string;
+  path?: PropagationHop[];
+  /** field "tags" */
+  tags?: string[];
+  via_kind?: Record<string, string>;
+}
+
+export interface PropagationConflict {
+  unique_id: string;
+  column: string;
+  candidates: { description: string; source: { node: string; column: string } }[];
 }
 
 /** explain_failure: diagnose the node's latest failed run/tests (needs a unique_id). */
@@ -233,9 +269,14 @@ export const aiApi = {
     get<AiProposalDto[]>(
       `/projects/${projectId}/ai/proposals${uniqueId ? `?unique_id=${encodeURIComponent(uniqueId)}` : ''}`,
     ),
-  /** keys: items kept in the file (not rejected); accepted: those already accepted. */
-  selectItems: (projectId: number, proposalId: number, keys: string[], accepted: string[]) =>
-    put<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/selection`, { keys, accepted }),
+  /** keys: items kept in the file (not rejected); accepted: those already accepted.
+   *  fileId: which file, for proposals spanning several (keys are that file's items). */
+  selectItems: (projectId: number, proposalId: number, keys: string[], accepted: string[], fileId?: number) =>
+    put<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}/selection`, {
+      keys, accepted, file_id: fileId ?? null,
+    }),
+  proposal: (projectId: number, proposalId: number) =>
+    get<AiProposalDto>(`/projects/${projectId}/ai/proposals/${proposalId}`),
   dismissProposal: (projectId: number, id: number) =>
     del<void>(`/projects/${projectId}/ai/proposals/${id}`),
   acceptFile: (projectId: number, proposalId: number, fileId: number) =>

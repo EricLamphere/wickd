@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw, BookOpen, Search, ChevronRight, ChevronDown,
   Database, FileCode2, Layers, FlaskConical, Sprout, Wrench,
-  Copy, Check, Folder, FolderOpen, LayoutGrid, Package, ChevronsDownUp, Share2,
+  Copy, Check, Folder, FolderOpen, LayoutGrid, Package, ChevronsDownUp, Share2, Tag as TagIcon,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
@@ -13,6 +13,9 @@ import { useUrlTab } from '../../lib/useUrlTab';
 import { buildMacroCall, macroCallName, wrapJinja } from './lib/macroCall';
 import { readSessionValue, restorableDocsView } from './lib/docsLastView';
 import NavRail from './components/NavRail';
+import { InheritDescriptionsButton } from './components/propagation/InheritDescriptionsButton';
+import { TagBrowseList } from './components/propagation/TagBrowseList';
+import { TagFlowPanel } from './components/propagation/TagFlowPanel';
 
 // ---- tree types ----
 
@@ -297,9 +300,9 @@ function useExpandedSet(storageKey: string): [Set<string>, (key: string, open: b
 
 // ---- tab type ----
 
-type DocsTab = 'project' | 'database' | 'group';
+type DocsTab = 'project' | 'database' | 'group' | 'tags';
 
-const DOCS_TAB_IDS: readonly DocsTab[] = ['project', 'database', 'group'];
+const DOCS_TAB_IDS: readonly DocsTab[] = ['project', 'database', 'group', 'tags'];
 
 /**
  * Selects a docs node as a new history entry (so back/forward steps through it),
@@ -340,7 +343,7 @@ export default function DocsPage() {
   const [databaseExpanded, setDatabaseExpanded, collapseDatabase, expandDatabaseMany] = useExpandedSet(`docs-expanded-database-${id}`);
   const [groupExpanded, setGroupExpanded, collapseGroup, expandGroupMany] = useExpandedSet(`docs-expanded-group-${id}`);
 
-  const collapseAll = docsTab === 'project' ? collapseProject : docsTab === 'database' ? collapseDatabase : collapseGroup;
+  const collapseAll = docsTab === 'project' ? collapseProject : docsTab === 'database' ? collapseDatabase : docsTab === 'group' ? collapseGroup : () => {};
 
   const selectedUid = searchParams.get('node') ?? null;
 
@@ -484,6 +487,7 @@ export default function DocsPage() {
     { id: 'project',  label: 'Project',  icon: <BookOpen className="w-3.5 h-3.5" /> },
     { id: 'database', label: 'Database', icon: <Database className="w-3.5 h-3.5" /> },
     { id: 'group',    label: 'Group',    icon: <LayoutGrid className="w-3.5 h-3.5" /> },
+    { id: 'tags',     label: 'Tags',     icon: <TagIcon className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -510,7 +514,7 @@ export default function DocsPage() {
               <button
                 key={t.id}
                 onClick={() => setDocsTab(t.id)}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors flex-1 justify-center
+                className={`flex items-center gap-1 px-1.5 py-1 text-[11px] rounded transition-colors flex-1 justify-center
                   ${docsTab === t.id
                     ? 'bg-brand-900/50 text-brand-300'
                     : 'text-gray-500 hover:text-gray-300 hover:bg-surface-elevated/40'
@@ -522,7 +526,7 @@ export default function DocsPage() {
             ))}
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className={`flex items-center gap-1 ${docsTab === 'tags' ? 'hidden' : ''}`}>
             <div className="relative flex-1">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-600 pointer-events-none" />
               <input type="search" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)}
@@ -543,20 +547,21 @@ export default function DocsPage() {
 
         {/* Tree */}
         <div className="overflow-auto flex-1 py-1 select-none">
-          {generating && !hasDoc && (
+          {docsTab === 'tags' && <TagBrowseList projectId={id} />}
+          {docsTab !== 'tags' && generating && !hasDoc && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-600">
               <RefreshCw className="w-5 h-5 animate-spin text-brand-400" />
               <span className="text-xs">Generating…</span>
             </div>
           )}
-          {!generating && !hasDoc && (
+          {docsTab !== 'tags' && !generating && !hasDoc && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-600 px-4 text-center">
               <BookOpen className="w-6 h-6" />
               <p className="text-xs">No docs yet.</p>
               <button onClick={handleRefresh} className="px-3 py-1 text-xs rounded bg-brand-600 hover:bg-brand-500 text-white transition-colors">Generate</button>
             </div>
           )}
-          {!generating && hasDoc && docsLoading && (
+          {docsTab !== 'tags' && !generating && hasDoc && docsLoading && (
             <div className="flex items-center justify-center h-16 text-xs text-gray-600">Loading…</div>
           )}
           {!generating && hasDoc && !docsLoading && (
@@ -603,21 +608,22 @@ export default function DocsPage() {
 
       {/* Detail panel */}
       <div className="flex-1 overflow-auto bg-surface-app">
-        {isProjectOverview && (
+        {docsTab === 'tags' && <TagFlowPanel projectId={id} />}
+        {docsTab !== 'tags' && isProjectOverview && (
           <ProjectOverview
             projectId={id}
             projectName={projectName}
             description={docsData?.project_description ?? ''}
           />
         )}
-        {selectedNode && <NodeDetail node={selectedNode} allNodes={nodeMap} allMacros={macroMap} projectId={id} />}
-        {selectedMacro && <MacroDetail
+        {docsTab !== 'tags' && selectedNode && <NodeDetail node={selectedNode} allNodes={nodeMap} allMacros={macroMap} projectId={id} />}
+        {docsTab !== 'tags' && selectedMacro && <MacroDetail
             key={selectedMacro.unique_id}
             macro={selectedMacro}
             projectId={id}
             callName={macroCallName(selectedMacro.name, selectedMacro.package_name, projectName, docsData?.adapter_type ?? '')}
           />}
-        {!isProjectOverview && !selectedNode && !selectedMacro && (
+        {docsTab !== 'tags' && !isProjectOverview && !selectedNode && !selectedMacro && (
           <div className="flex items-center justify-center h-full text-gray-600 text-sm select-none">
             Select a node to view documentation
           </div>
@@ -954,6 +960,9 @@ function ProjectOverview({ projectId, projectName, description }: {
         <div className="flex items-baseline gap-3 mb-4">
           <Package className="w-6 h-6 text-brand-400 shrink-0" />
           <h1 className="text-2xl font-semibold text-gray-100 font-mono">{projectName}</h1>
+        </div>
+        <div className="mb-4">
+          <InheritDescriptionsButton projectId={projectId} />
         </div>
         {/* Centered tabs */}
         <div className="flex justify-center border-b border-gray-800">

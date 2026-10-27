@@ -30,7 +30,7 @@ from app.ai.errors import NothingToPropose, ProposalError
 from app.ai.gating import require_ai
 from app.ai.pro import AiUnavailable
 from app.ai.runtime import RuntimeUnavailable
-from app.ai.selection import SelectionError, rebuild
+from app.ai.selection import SelectionError, item_keys, rebuild
 from app.ai.test_generation import generate_tests
 from app.api.ai_dtos import AiProposalDto, proposal_dto
 from app.api.init import load_project_env
@@ -40,6 +40,7 @@ from app.db.models import AiConversation, AiMessage, AiProposal, AiProposalFile,
 from app.dbt.schema_yaml import SchemaYamlError
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
+from app.propagation import proposals as propagation
 
 log = get_logger(__name__)
 
@@ -78,8 +79,10 @@ async def _load(session: AsyncSession, project_id: int, proposal_id: int) -> AiP
 
 
 class SelectionDto(BaseModel):
-    keys: list[str] = Field(max_length=500)  # items kept in the file (i.e. not rejected)
-    accepted: list[str] = Field(default=[], max_length=500)  # of those, already accepted
+    keys: list[str] = Field(max_length=5000)  # items kept in the file (i.e. not rejected)
+    accepted: list[str] = Field(default=[], max_length=5000)  # of those, already accepted
+    # which file, for proposals spanning several (lineage propagation); keys are that file's
+    file_id: int | None = None
 
 
 class AddTestsDto(BaseModel):
@@ -317,22 +320,38 @@ def _write(path: Path, text: str) -> None:
 async def select_items(
     project_id: int, proposal_id: int, dto: SelectionDto, session: AsyncSession = Depends(get_session)
 ) -> AiProposalDto:
-    """Keep only some of a proposal's items: the file is rebuilt from its original text."""
+    """Keep only some of a proposal's items: the file is rebuilt from its original text.
+
+    `selected` / `accepted` cover the whole proposal; for a multi-file proposal the
+    request replaces only `file_id`'s share of them."""
     await require_ai(session)
     proposal = await _load(session, project_id, proposal_id)
-    if proposal.status != "ready" or len(proposal.files) != 1 or proposal.files[0].status != "pending":
+    if dto.file_id is None and len(proposal.files) != 1:
+        raise HTTPException(status_code=422, detail="file_id is required for a proposal with several files")
+    file = next(
+        (f for f in proposal.files if dto.file_id is None or f.id == dto.file_id), None
+    )
+    if file is None:
+        raise HTTPException(status_code=404, detail="file not found in proposal")
+    if proposal.status != "ready" or file.status != "pending":
         raise HTTPException(status_code=409, detail="this change was already handled")
-    file = proposal.files[0]
     result = json.loads(proposal.result_json or "{}")
     keys = list(dict.fromkeys(dto.keys))
     accepted = [k for k in dict.fromkeys(dto.accepted) if k in keys]
     try:
         text = await asyncio.to_thread(
-            rebuild, proposal.kind, result, file.original_text, Path(file.path).name, keys
+            rebuild, proposal.kind, result, file.original_text, file.path, keys
         )
     except (SelectionError, SchemaYamlError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     file.proposed_text = text
+    if len(proposal.files) > 1:
+        mine = set(item_keys(proposal.kind, result, file.path))
+        everything = item_keys(proposal.kind, result)
+        selected = result.get("selected")
+        others = [k for k in (everything if selected is None else selected) if k not in mine]
+        keys = others + keys
+        accepted = [k for k in result.get("accepted") or [] if k not in mine] + accepted
     proposal.result_json = json.dumps({**result, "selected": keys, "accepted": accepted})
     proposal.updated_at = datetime.now(UTC)
     await session.commit()
@@ -350,8 +369,12 @@ async def _decide(
     if proposal.status != "ready" or file.status != "pending":
         raise HTTPException(status_code=409, detail="this change was already handled")
 
-    if accept and json.loads(proposal.result_json or "{}").get("selected") == []:
-        raise HTTPException(status_code=409, detail="nothing is selected — reject it instead")
+    result = json.loads(proposal.result_json or "{}")
+    selected = result.get("selected")
+    if accept and selected is not None:
+        in_file = set(item_keys(proposal.kind, result, file.path)) if len(proposal.files) > 1 else None
+        if not [k for k in selected if in_file is None or k in in_file]:
+            raise HTTPException(status_code=409, detail="nothing is selected — reject it instead")
     if accept:
         project = await session.get(Project, project_id)
         assert project is not None
@@ -376,13 +399,21 @@ async def _decide(
     await session.commit()
     await _publish(proposal)
 
-    if accept and proposal.unique_id:
+    selector = _compile_selector(proposal, result, file.path) if accept else None
+    if selector:
         project = await session.get(Project, project_id)
         if project is not None:  # refresh the manifest so docs / side pane pick it up
-            asyncio.create_task(
-                _compile_model(project_id, project.path, proposal.unique_id.split(".")[-1])
-            )
+            asyncio.create_task(_compile_model(project_id, project.path, selector))
     return proposal_dto(proposal)
+
+
+def _compile_selector(proposal: AiProposal, result: dict, path: str) -> str | None:
+    """The nodes an accepted file documents: the proposal's node, or (lineage
+    propagation) every node with items in that file."""
+    if proposal.kind == propagation.KIND:
+        names = {i["name"] for i in result.get("items") or [] if i.get("file") == path and i.get("name")}
+        return " ".join(sorted(names)) or None
+    return proposal.unique_id.split(".")[-1] if proposal.unique_id else None
 
 
 @router.post("/{project_id}/ai/proposals/{proposal_id}/files/{file_id}/accept", response_model=AiProposalDto)

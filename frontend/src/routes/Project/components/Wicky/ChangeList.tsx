@@ -38,7 +38,7 @@ export function ChangeList({ items, stateOf, focused, disabled, onFocus, onDecid
             } ${state === 'rejected' ? 'cursor-default' : 'cursor-pointer'}`}
           >
             <span className={`min-w-0 flex-1 ${ROW_STATE[state]}`}>
-              <code className="text-brand-300">{item.title}</code>{' '}
+              <code className="text-brand-300 break-all">{item.title}</code>{' '}
               <span className="break-words">{item.detail}</span>
               {failures === 0 && <span className="ml-1 text-emerald-400 no-underline">✓ passes</span>}
               {typeof failures === 'number' && failures > 0 && (

@@ -17,7 +17,8 @@ from app.dbt.column_lineage import (
     LineageJob,
     prepare_lineage_jobs,
     supports_row_dependencies,
-    trace_job_full,
+    supports_transform_kinds,
+    trace_job_kinds,
 )
 from app.events.bus import Event, bus
 from app.licensing.gating import require_pro
@@ -36,19 +37,27 @@ _running: dict[int, asyncio.Task] = {}
 _POOL_SIZE = max(1, min(8, (os.cpu_count() or 2) - 1))
 
 # Bumped whenever snapshots gain data older ones lack, so the unchanged-manifest
-# short-circuit doesn't keep serving them. 2 = row dependencies.
-LINEAGE_VERSION = 2
+# short-circuit doesn't keep serving them. 2 = row dependencies, 3 = transform
+# kinds on projection refs (identity / rename / cast / derived).
+LINEAGE_VERSION = 3
 
 
 def _current_lineage_version() -> int:
-    """What a scan run now would produce (an older Pro build can't trace row dependencies)."""
-    return LINEAGE_VERSION if supports_row_dependencies() else 1
+    """What a scan run now would produce (older Pro builds lack kinds / row dependencies)."""
+    if supports_transform_kinds():
+        return LINEAGE_VERSION
+    return 2 if supports_row_dependencies() else 1
+
+
 _pool = ProcessPoolExecutor(max_workers=_POOL_SIZE)
 
 
 class ColumnLineageEntryDto(BaseModel):
     node: str
     column: str
+    # how the column is derived from this ref: identity | rename | cast | derived
+    # (projection refs from lineage_version 3 on; None otherwise)
+    kind: str | None = None
 
 
 class ColumnLineageSnapshotDto(BaseModel):
@@ -317,6 +326,13 @@ async def _compile_then_run_column_lineage(
     await _run_column_lineage(project_id, snap_id, jobs, manifest_mtime)
 
 
+def _ref_json(ref, kind: str | None) -> dict:
+    entry = {"node": ref.node, "column": ref.column}
+    if kind is not None:
+        entry["kind"] = kind
+    return entry
+
+
 async def _run_column_lineage(
     project_id: int,
     snap_id: int,
@@ -336,7 +352,7 @@ async def _run_column_lineage(
 
     try:
         future_to_job = {
-            loop.run_in_executor(_pool, trace_job_full, job): job
+            loop.run_in_executor(_pool, trace_job_kinds, job): job
             for job in jobs
         }
 
@@ -355,7 +371,7 @@ async def _run_column_lineage(
                     uid, col_lineage, row_refs = fut.result()
                     if col_lineage:
                         results[uid] = {
-                            col: [{"node": ref.node, "column": ref.column} for ref in refs]
+                            col: [_ref_json(ref, kind) for ref, kind in refs]
                             for col, refs in col_lineage.items()
                         }
                     if row_refs:

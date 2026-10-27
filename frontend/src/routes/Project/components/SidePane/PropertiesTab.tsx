@@ -4,6 +4,7 @@ import { BookOpen, ChevronRight, Play, Hammer, FlaskConical, Layers, Loader2, Pe
 import { api, type ModelNode, type GraphDto, type RunOpts } from '../../../../lib/api';
 import { DocumentModelButton, canDocument } from './DocumentModelButton';
 import { ImpactSummary } from './ImpactSummary';
+import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
 
 type RunCommand = 'run' | 'build' | 'test';
 
@@ -563,6 +564,7 @@ export function PropertiesTab({
         {canDocument(model) && (
           <DocumentModelButton key={model.unique_id} projectId={projectId} model={model} />
         )}
+        {canDocument(model) && <InheritDescriptionsButton projectId={projectId} uniqueId={model.unique_id} />}
         {model.resource_type === 'model' && model.original_file_path && (
           <button
             onClick={onDelete}

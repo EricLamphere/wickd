@@ -28,6 +28,12 @@ class AiProposalResultDto(BaseModel):
     columns: dict[str, str] = {}
     # tests: [{key, column, test, reason, values?, to?, field?, failures}]
     tests: list[dict] = []
+    # propagate (lineage propagation, several files): [{key, field: description | tags,
+    # unique_id, column, file, name, value? (description), source?, kind?, path?,
+    # tags?, via_kind?}], plus conflicts / nodes skipped because their YAML couldn't be edited
+    items: list[dict] = []
+    conflicts: list[dict] = []
+    skipped: list[dict] = []
     # item keys included in the proposed file (tests: "t0"…, document: "description" /
     # "col:<name>"); None = all of them
     selected: list[str] | None = None

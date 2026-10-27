@@ -112,6 +112,8 @@ Use global profiles for credentials or env vars that apply to multiple projects 
 
 Use this to point the SQL Workspace at a different folder — for example `analysis/scratch` if you want workspace files committed alongside your models, or a path outside the project root for throwaway queries.
 
+**PROPAGATE_TAGS** — the column tags the Docs **Tags** tab follows through lineage (wickd Pro), comma-separated. Defaults to `pii,sensitive`. See [Inherit docs and trace tagged columns](inherit-docs-and-trace-tags.md).
+
 ### Global settings (read-only here)
 
 Global settings are shown for reference but can only be edited in the Global Settings modal:

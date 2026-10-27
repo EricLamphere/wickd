@@ -6,7 +6,7 @@ import { Check, ChevronRight, FileText, Loader2, X } from 'lucide-react';
 import { useTheme } from '../../../../lib/useTheme';
 import { aiApi, aiErrorMessage, type AiProposalDto, type AiProposalFileDto } from '../../../../lib/aiApi';
 import { ChangeList, type ItemState } from './ChangeList';
-import { findItemLine, proposalItems, selectedKeys, type ProposalItem } from './proposalItems';
+import { findItemLine, itemsInFile, proposalItems, selectedKeys, type ProposalItem } from './proposalItems';
 
 interface ProposalReviewModalProps {
   projectId: number;
@@ -33,7 +33,9 @@ const FILE_STATUS_STYLES: Record<AiProposalFileDto['status'], string> = {
  * descriptions) list them on the left: click one to jump to it in the diff,
  * ✓ / ✗ to decide it — rejecting rebuilds the file without it. Once every
  * item is decided the file is applied (or rejected, if nothing was kept).
- * Accept all / Reject all decide the whole file at once.
+ * Accept all / Reject all decide the whole file at once. Proposals spanning
+ * several files (lineage propagation) list the active file's items, and each
+ * file is decided on its own.
  */
 export function ProposalReviewModal({ projectId, proposal: initial, onClose }: ProposalReviewModalProps) {
   const qc = useQueryClient();
@@ -47,9 +49,13 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const highlight = useRef<{ clear: () => void } | null>(null);
 
   const files = proposal.files;
-  const active = files.find((f) => f.id === activeId) ?? files[0];
-  const items = files.length === 1 ? proposalItems(proposal) : [];
   const kept = selectedKeys(proposal);
+  const active = files.find((f) => f.id === activeId) ?? files[0];
+  const allItems = proposalItems(proposal);
+  const multiFile = files.length > 1;
+  // a multi-file proposal only has per-item review when its items name their file
+  const items = !multiFile || allItems.some((i) => i.file) ? itemsInFile(allItems, active?.path) : [];
+  const keptInFile = items.filter((i) => kept.has(i.key)).length;
   const accepted = new Set(proposal.result.accepted ?? []);
   const stateOf = (key: string): ItemState => (!kept.has(key) ? 'rejected' : accepted.has(key) ? 'accepted' : 'pending');
   const nextPendingFile = useMemo(
@@ -117,6 +123,7 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
       projectId, proposal.id,
       items.map((i) => i.key).filter((k) => keep.has(k)),
       items.map((i) => i.key).filter((k) => keep.has(k) && done.has(k)),
+      multiFile ? active?.id : undefined,
     );
 
   const decideItem = (key: string, decision: 'accept' | 'reject' | 'undo') => run(async () => {
@@ -129,7 +136,7 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
     setProposal(updated);
     // every change decided → apply what was kept (or reject the file if nothing was)
     if (items.every((i) => !keep.has(i.key) || done.has(i.key))) {
-      await decideFile(keep.size > 0, updated);
+      await decideFile(items.some((i) => keep.has(i.key)), updated);
     }
   });
 
@@ -165,16 +172,6 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
         </div>
 
         <div className="flex flex-1 min-h-0">
-          {items.length > 0 && pending && (
-            <ChangeList
-              items={items}
-              stateOf={stateOf}
-              focused={focused}
-              disabled={busy}
-              onFocus={focus}
-              onDecide={decideItem}
-            />
-          )}
           {files.length > 1 && (
             <div className="w-56 shrink-0 border-r border-gray-800 overflow-auto py-1">
               {files.map((f) => (
@@ -190,6 +187,16 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
                 </button>
               ))}
             </div>
+          )}
+          {items.length > 0 && pending && (
+            <ChangeList
+              items={items}
+              stateOf={stateOf}
+              focused={focused}
+              disabled={busy}
+              onFocus={focus}
+              onDecide={decideItem}
+            />
           )}
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-xs shrink-0">
@@ -237,15 +244,17 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
             disabled={busy || !pending}
             className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-surface-elevated border border-gray-700 text-gray-300 hover:bg-gray-700 disabled:opacity-40"
           >
-            <X size={12} /> {items.length > 0 ? 'Reject all' : 'Reject'}
+            <X size={12} /> {multiFile ? 'Reject file' : items.length > 0 ? 'Reject all' : 'Reject'}
           </button>
           <button
             onClick={acceptAll}
-            disabled={busy || !pending || (items.length > 0 && kept.size === 0)}
+            disabled={busy || !pending || (items.length > 0 && keptInFile === 0)}
             className="flex items-center gap-1 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40"
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-            {items.length === 0 ? 'Accept' : someRejected ? 'Accept the rest' : 'Accept all'}
+            {multiFile
+              ? (someRejected ? 'Accept the rest of this file' : 'Accept file')
+              : items.length === 0 ? 'Accept' : someRejected ? 'Accept the rest' : 'Accept all'}
           </button>
         </div>
       </div>

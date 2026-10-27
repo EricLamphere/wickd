@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../../lib/api';
 import type { TreeNode } from './types';
 import { isAtOrUnder, updateAtPath } from './treeOps';
@@ -16,6 +16,9 @@ function ancestorDirs(path: string): string[] {
  */
 export function useFileTree(projectId: number) {
   const [tree, setTree] = useState<TreeNode[]>([]);
+  // The reload in flight, if any: expandTo() waits for it, or the reload's older
+  // snapshot of the tree would land last and collapse the folders it just opened.
+  const reloading = useRef<Promise<void> | null>(null);
   const expandedKey = `file-explorer-expanded-${projectId}`;
 
   const readExpanded = useCallback((): Set<string> => {
@@ -43,7 +46,7 @@ export function useFileTree(projectId: number) {
   );
 
   /** Re-read the root and every remembered open folder; forgets folders that no longer exist. */
-  const reload = useCallback(async () => {
+  const loadTree = useCallback(async () => {
     const expanded = readExpanded();
     const load = async (path: string): Promise<TreeNode[]> => {
       const children = (await listDir(path)) ?? [];
@@ -61,6 +64,14 @@ export function useFileTree(projectId: number) {
     writeExpanded(present);
     setTree(root);
   }, [listDir, readExpanded, writeExpanded]);
+
+  const reload = useCallback((): Promise<void> => {
+    const run = loadTree().finally(() => {
+      if (reloading.current === run) reloading.current = null;
+    });
+    reloading.current = run;
+    return run;
+  }, [loadTree]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -86,10 +97,17 @@ export function useFileTree(projectId: number) {
   const expandTo = useCallback(async (path: string, includeSelf = false) => {
     const dirs = includeSelf && path ? [...ancestorDirs(path), path] : ancestorDirs(path);
     if (dirs.length === 0) return;
+    const remember = () => {
+      const expanded = readExpanded();
+      dirs.forEach((d) => expanded.add(d));
+      writeExpanded(expanded);
+    };
+    remember(); // so a reload starting meanwhile opens them too
+    if (reloading.current) {
+      await reloading.current;
+      remember(); // that reload saved only the folders it knew about
+    }
     const loaded = await Promise.all(dirs.map((d) => listDir(d)));
-    const expanded = readExpanded();
-    dirs.forEach((d) => expanded.add(d));
-    writeExpanded(expanded);
     setTree((prev) => dirs.reduce(
       (acc, d, i) => updateAtPath(acc, d, (n) => ({
         ...n,

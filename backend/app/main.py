@@ -35,6 +35,7 @@ from app.api import logs as logs_api
 from app.api import models as models_api
 from app.api import performance as performance_api
 from app.api import projects as projects_api
+from app.api import propagation as propagation_api
 from app.api import runs as runs_api
 from app.api import settings as settings_api
 from app.api import setup as setup_api
@@ -109,6 +110,7 @@ app.include_router(health_summary_api.router)
 app.include_router(drift_api.router)
 app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)
+app.include_router(propagation_api.router)
 app.include_router(exports_api.router)
 app.include_router(exports_api.global_router)
 app.include_router(ai_model_api.router)

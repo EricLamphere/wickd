@@ -234,7 +234,7 @@ async def test_document_from_chat_stays_in_history(client, db_session, entitled,
     proposal = await _wait_status(client, pid, r.json()["id"], "ready")
     assert proposal["result"] == {
         "description": "One row per order.", "columns": {"id": "Order key."}, "tests": [],
-        "selected": None, "accepted": [],
+        "selected": None, "accepted": [], "items": [], "conflicts": [], "skipped": [],
     }
     fid = proposal["files"][0]["id"]
     await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/files/{fid}/accept")

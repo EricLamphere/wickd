@@ -80,6 +80,7 @@ Per-project settings are stored in `project_env_vars` and injected into every db
 | `INIT_SCRIPT_PATH` | Environment tab | Directory (relative to the project root) scanned for `.sh` init scripts | `wickd/init` |
 | `REQUIREMENTS_PATH` | Environment tab | Project-specific `requirements.txt`, installed after the global one | _(none)_ |
 | `WORKSPACE_PATH` | Environment tab | Directory (relative to the project root) for SQL Workspace files | `wickd/workspace` |
+| `PROPAGATE_TAGS` | Environment tab | Comma-separated column tags traced through lineage on the Docs Tags tab (Pro) | `pii,sensitive` |
 | `dbt_target` | Target dropdown | Active dbt target, passed as `--target` on every invocation | _(profiles.yml default)_ |
 | _(any key)_ | Init scripts | Any `export KEY=value` in a custom init script is captured automatically | — |
 

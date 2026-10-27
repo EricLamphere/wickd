@@ -42,6 +42,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `INIT_SCRIPT_PATH` | `projects.init_script_path` | `wickd/init` | `wickd/init` |
 | `REQUIREMENTS_PATH` | `ProjectEnvVar` | (empty) | `/path/to/requirements.txt` |
 | `WORKSPACE_PATH` | `ProjectEnvVar` | `wickd/workspace` | `analysis/scratch` |
+| `PROPAGATE_TAGS` | `ProjectEnvVar` | `pii,sensitive` | `pii,sensitive` |
 
 ## Current Global Settings
 

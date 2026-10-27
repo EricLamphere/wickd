@@ -443,9 +443,13 @@ export function exportFieldError(err: unknown): { field: string; message: string
   return { field: body.field, message: body.message };
 }
 
+export type TransformKind = 'identity' | 'rename' | 'cast' | 'derived';
+
 export interface ColumnLineageEntry {
   node: string;
   column: string;
+  /** How the column is derived from this upstream column (lineage_version 3+, projection refs only). */
+  kind?: TransformKind | null;
 }
 
 export interface ColumnLineageDto {
@@ -459,7 +463,7 @@ export interface ColumnLineageDto {
   results: Record<string, Record<string, ColumnLineageEntry[]>>;
   /** uid → upstream columns the model filters / joins / groups on (empty when lineage_version is 1). */
   row_dependencies: Record<string, ColumnLineageEntry[]>;
-  /** 1 = projection lineage only; 2 = also row dependencies. */
+  /** 1 = projection lineage only; 2 = also row dependencies; 3 = also transform kinds. */
   lineage_version: number;
   error_message: string | null;
 }

@@ -1,8 +1,9 @@
 import { Link, NavLink } from 'react-router-dom';
 import { navAlert } from './health/healthStatus';
 import { useHealthSummary } from './health/useHealth';
+import { useSemanticStatus } from './semantic/useSemantic';
 
-export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs';
+export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs' | 'metrics';
 
 interface Props {
   projectId: number;
@@ -38,6 +39,12 @@ const ENV_ICON = (
 const DOCS_ICON = (
   <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+  </svg>
+);
+
+const METRICS_ICON = (
+  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7.5 15l3.75-4.5 3 3L19.5 7.5" />
   </svg>
 );
 
@@ -97,6 +104,7 @@ const PROJECT_ITEMS: { key: CurrentPage; label: string; icon: React.ReactNode; p
   { key: 'files',     label: 'Files',          icon: FILES_ICON,     path: 'files' },
   { key: 'dag',       label: 'DAG',            icon: DAG_ICON,       path: 'models' },
   { key: 'docs',      label: 'Docs',           icon: DOCS_ICON,      path: 'docs' },
+  { key: 'metrics',   label: 'Metrics',        icon: METRICS_ICON,   path: 'metrics' },
   { key: 'workspace', label: 'SQL Workspace',  icon: WORKSPACE_ICON, path: 'workspace' },
   { key: 'runs',      label: 'Run History',    icon: RUNS_ICON,      path: 'runs' },
   { key: 'health',    label: 'Health',         icon: HEALTH_ICON,    path: 'health' },
@@ -177,6 +185,10 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
   const { data: health } = useHealthSummary(projectId);
   const healthAlert = navAlert(health);
   const alerts: NavAlerts = healthAlert ? { health: healthAlert } : {};
+  // Metrics only for projects with a semantic layer (shown while the status loads on its page)
+  const { data: semantic } = useSemanticStatus(projectId);
+  const hasMetrics = (semantic?.counts.metrics ?? 0) > 0 || current === 'metrics';
+  const projectItems = hasMetrics ? PROJECT_ITEMS : PROJECT_ITEMS.filter((i) => i.key !== 'metrics');
 
   return (
     <nav className="flex flex-col pt-2 overflow-hidden h-full">
@@ -199,7 +211,7 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
       <div className="mx-4 my-2 border-t border-gray-800" />
       <div className="flex flex-col flex-1 overflow-y-auto">
         <NavSection label="Configure" items={CONFIGURE_ITEMS} projectId={projectId} current={current} collapsed={collapsed} />
-        <NavSection label="Project" items={PROJECT_ITEMS} projectId={projectId} current={current} collapsed={collapsed} alerts={alerts} />
+        <NavSection label="Project" items={projectItems} projectId={projectId} current={current} collapsed={collapsed} alerts={alerts} />
       </div>
       {onToggleCollapse && (
         <button

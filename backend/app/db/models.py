@@ -188,6 +188,36 @@ class SemanticCheckSnapshot(Base):
     manifest_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+class MetricQueryResult(Base):
+    """The last result of one MetricFlow query, see app/semantic/query_cache.py.
+
+    Keyed by the compiled SQL (changes when definitions do), the dbt target and a hash
+    of the env vars wickd layers in (profiles can repoint a target); never the values.
+    """
+
+    __tablename__ = "metric_query_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    target: Mapped[str] = mapped_column(Text, default="")
+    env_fingerprint: Mapped[str] = mapped_column(String(64))
+    sql_hash: Mapped[str] = mapped_column(String(64))
+    profile_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    metrics_json: Mapped[str] = mapped_column(Text, default="[]")
+    group_by_json: Mapped[str] = mapped_column(Text, default="[]")
+    columns_json: Mapped[str] = mapped_column(Text, default="[]")
+    rows_json: Mapped[str] = mapped_column(Text, default="[]")
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    ran_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    elapsed_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "target", "env_fingerprint", "sql_hash", name="uq_metric_query_result"),
+    )
+
+
 class FreshnessSnapshot(Base):
     __tablename__ = "freshness_snapshots"
 

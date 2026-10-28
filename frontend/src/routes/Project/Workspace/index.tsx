@@ -15,12 +15,8 @@ import { DatabaseExplorer } from './DatabaseExplorer';
 import type { ContextMenuState, QueryResult, RenameState, TreeNode } from './types';
 import { updateNode } from './types';
 import { alertError, confirmDialog, promptDialog } from '../../../lib/dialogs';
+import { CONTENT_KEY, EXPANDED_KEY, OPEN_KEY, RESULTS_KEY, TAB_KEY } from './sessionKeys';
 
-const OPEN_KEY = (id: number) => `ws-open-${id}`;
-const EXPANDED_KEY = (id: number) => `ws-expanded-${id}`;
-const RESULTS_KEY = (id: number) => `ws-results-${id}`;
-const CONTENT_KEY = (id: number | string, path: string) => `ws-content-${id}-${path}`;
-const TAB_KEY = (id: number) => `ws-tab-${id}`;
 
 const MIN_RESULTS_WIDTH = 200;
 const DEFAULT_RESULTS_WIDTH = 360;

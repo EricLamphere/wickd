@@ -77,6 +77,7 @@ When handling SSE events, invalidate the relevant query:
 
 | `semantic_check_started`, `semantic_check_finished` | `['semantic-check-latest', projectId]`, `['health-summary', projectId]` (`components/semantic/useSemantic.ts`, `components/health/useHealth.ts`) |
 | `graph_changed`, `semantic_check_finished` | `['semantic-status', projectId]` |
+| `graph_changed` | `['semantic-catalog', projectId]` (Metrics page, `routes/Project/Metrics/useMetricExplorer.ts`; also flags a shown result "definitions changed") |
 | `metricflow_env` (global stream) | `['semantic-status']` once the sidecar is ready or failed |
 
 When adding a new event type that signals stale data, add an entry here.

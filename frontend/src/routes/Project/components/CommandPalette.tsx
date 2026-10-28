@@ -11,6 +11,7 @@ import {
   Hammer,
   HeartPulse,
   LayoutDashboard,
+  LineChart,
   Play,
   RefreshCw,
   Search,
@@ -25,6 +26,7 @@ import { normalizeCommand } from '../lib/customCommand';
 import { CustomCommandMode } from './CustomCommandMode';
 import { useSelectedNodeId } from '../lib/selectedNodeContext';
 import { openWicky } from '../lib/wickyEvents';
+import { exploreSearch, exploreUrl } from '../Metrics/lib/exploreLink';
 
 // ---- Types ----
 
@@ -80,6 +82,13 @@ function buildNavCommands(projectId: number, navigate: NavigateFunction): Comman
       title: 'Go to Docs',
       icon: <BookOpen size={14} />,
       onExecute: () => navigate(`${base}/docs`),
+    },
+    {
+      id: 'nav-metrics',
+      category: 'navigation',
+      title: 'Go to Metrics',
+      icon: <LineChart size={14} />,
+      onExecute: () => navigate(`${base}/metrics`),
     },
     {
       id: 'nav-workspace',
@@ -252,6 +261,20 @@ function buildModelCommands(
   const base = `/projects/${projectId}`;
   const cmds: Command[] = [];
   for (const node of nodes) {
+    if (node.resource_type === 'metric' || node.resource_type === 'saved_query') {
+      const search = exploreSearch(node.resource_type, node.name, { grain: node.semantic?.time_granularity });
+      if (search) {
+        cmds.push({
+          id: `explore-${node.unique_id}`,
+          category: 'model',
+          title: `${node.resource_type === 'metric' ? 'Explore metric' : 'Run saved query'}: ${node.label || node.name}`,
+          subtitle: node.original_file_path ?? undefined,
+          icon: <LineChart size={14} />,
+          onExecute: () => navigate(exploreUrl(projectId, search)),
+        });
+      }
+      continue;
+    }
     if (node.resource_type !== 'model') continue;
     const sub = node.original_file_path ?? undefined;
     cmds.push(

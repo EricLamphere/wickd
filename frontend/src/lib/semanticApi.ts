@@ -104,6 +104,75 @@ export interface MetricflowEnvEvent {
   message: string;
 }
 
+export interface CatalogDimension {
+  /** dunder name, e.g. customer__country or metric_time__day (time dims may carry their grain) */
+  name: string;
+  type: 'categorical' | 'time' | string;
+  time_granularity: string | null;
+  label: string | null;
+  description: string | null;
+}
+
+export interface CatalogMetric {
+  name: string;
+  label: string | null;
+  description: string | null;
+  /** simple | ratio | cumulative | derived | conversion */
+  type: string;
+  dimensions: CatalogDimension[];
+  semantic_models: string[];
+}
+
+export interface CatalogSavedQuery {
+  name: string;
+  label: string | null;
+  description: string | null;
+  metrics: string[];
+  group_by: string[];
+  where: string[];
+}
+
+export interface SemanticCatalogDto {
+  metrics: CatalogMetric[];
+  saved_queries: CatalogSavedQuery[];
+}
+
+/** Body of explain / query / cached: MetricFlow names (group-bys carry their grain: metric_time__week). */
+export interface MetricQueryBody {
+  metrics?: string[];
+  group_by?: string[];
+  where?: string[];
+  order_by?: string[];
+  limit?: number;
+  start?: string;
+  end?: string;
+  saved_query?: string;
+}
+
+export interface ExplainResultDto {
+  sql: string;
+  columns: string[];
+}
+
+export interface MetricQueryResultDto {
+  sql: string;
+  sql_hash: string;
+  columns: string[];
+  rows: unknown[][];
+  truncated: boolean;
+  ran_at: string;
+  elapsed_ms: number;
+  target: string | null;
+  profile_name: string | null;
+  source: 'warehouse' | 'cache';
+}
+
+export interface SaveQueryBody extends MetricQueryBody {
+  name: string;
+  label?: string;
+  description?: string;
+}
+
 export interface SemanticErrorBody {
   error: string;
   message: string;
@@ -128,4 +197,15 @@ export const semanticApi = {
   applyDbtChange: (projectId: number, body: { version: string; want_cli: boolean; update_pins: boolean; replace_ranges: boolean }) =>
     post<DbtChangeApplied>(`/projects/${projectId}/metricflow/apply-dbt-change`, body),
   verifyDbtChange: (projectId: number) => post<DbtChangeVerified>(`/projects/${projectId}/metricflow/verify-dbt-change`),
+  catalog: (projectId: number) => get<SemanticCatalogDto>(`/projects/${projectId}/semantic/catalog`),
+  explain: (projectId: number, body: MetricQueryBody) =>
+    post<ExplainResultDto>(`/projects/${projectId}/semantic/explain`, body),
+  /** Runs on the warehouse (`cache: 'prefer'` serves the stored result when there is one). */
+  query: (projectId: number, body: MetricQueryBody & { rows?: number; cache?: 'refresh' | 'prefer' }) =>
+    post<MetricQueryResultDto>(`/projects/${projectId}/semantic/query`, body),
+  /** The stored result for the current target + env, never running the query (null if none). */
+  cachedQuery: (projectId: number, body: MetricQueryBody) =>
+    post<MetricQueryResultDto | null>(`/projects/${projectId}/semantic/query/cached`, body),
+  saveQuery: (projectId: number, body: SaveQueryBody) =>
+    post<{ path: string }>(`/projects/${projectId}/semantic/saved-queries`, body),
 };

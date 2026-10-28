@@ -41,6 +41,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'DAG exports — interactive HTML, SVG & PNG', base: true, pro: true },
   { label: 'Model impact analysis — selection, uncommitted & branch changes', base: true, pro: true },
   { label: 'Semantic layer (MetricFlow) — metrics in the DAG, Docs & Impact, validations', base: true, pro: true },
+  { label: 'Metric explorer — query, chart & save metrics', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },
   { label: 'Lineage propagation — inherit descriptions & trace tagged (PII) columns', base: false, pro: true },

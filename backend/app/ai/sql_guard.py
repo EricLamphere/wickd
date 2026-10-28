@@ -78,9 +78,9 @@ def _replace_jinja(sql: str) -> str:
     return _JINJA_EXPR.sub(placeholder, sql)
 
 
-def validate_select(sql: str, dialect: str | None) -> str:
+def validate_select(sql: str, dialect: str | None, *, max_chars: int = MAX_SQL_CHARS) -> str:
     """The SQL, trimmed and without a trailing semicolon, if it's one read-only query."""
-    cleaned, _ = _check(sql, dialect)
+    cleaned, _ = _check(sql, dialect, max_chars)
     return cleaned
 
 
@@ -96,11 +96,11 @@ def for_dbt_show(sql: str, dialect: str | None) -> str:
     return cleaned
 
 
-def _check(sql: str, dialect: str | None) -> tuple[str, exp.Expression]:
+def _check(sql: str, dialect: str | None, max_chars: int = MAX_SQL_CHARS) -> tuple[str, exp.Expression]:
     cleaned = sql.strip().rstrip(";").strip()
     if not cleaned:
         raise QueryRejected("the query is empty")
-    if len(cleaned) > MAX_SQL_CHARS:
+    if len(cleaned) > max_chars:
         raise QueryRejected("the query is too long")
     plain = _replace_jinja(cleaned)
     try:

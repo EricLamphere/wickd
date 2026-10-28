@@ -104,6 +104,11 @@ wickd/
 │   │   │   ├── dbt_change.py        # pip dry-run plan, pin updates and install args for the version dialog
 │   │   │   ├── check.py             # Health check run: validate (+ LIMIT 0 per metric with warehouse) → SemanticCheckSnapshot
 │   │   │   ├── autoparse.py         # debounced silent `dbt parse` after YAML edits in projects with a semantic layer
+│   │   │   ├── query_spec.py        # check_query()/check_where(): metric names exist, `where` = MetricFlow templates + a plain SQL condition (no Jinja blocks, comments, `;`, subqueries); checked_sql() re-checks MetricFlow's SQL is one read-only SELECT
+│   │   │   ├── query_service.py     # run_metric_query(): validate → explain → cache (refresh/prefer/only) → one shared, shielded `dbt show` per key → store
+│   │   │   ├── query_cache.py       # metric_query_results: key (project, target, env fingerprint, sql hash); lookup()/store(), last 100 per project
+│   │   │   ├── batch.py             # run_many(): N queries in one `dbt show` (Jinja run_query + WICKD_METRIC_BATCH lines), resumes after a failing statement; for dashboards/monitors
+│   │   │   ├── saved_queries.py     # Save as saved query: choose the YAML file, date range → metric_time filters
 │   │   │   └── mode.py              # metricflow_mode: project ('' / auto / off) over the global default
 │   │   └── watcher/
 │   │       └── service.py           # ONE shared watchfiles watcher thread for all projects; routes changes to bus.publish per project; YAML changes schedule semantic autoparse
@@ -138,6 +143,7 @@ wickd/
 │   │           │                        #   DagFilterBar: text selector (+model, tag:x), Type/Materialization/Tag/Status dropdowns; optional Coverage overlay
 │   │           │                        #   Coverage: per-column test count heatmap; derives from GraphDto client-side; persists toggle state per-project
 │   │           ├── Docs.tsx             # Native docs browser (folder tree)
+│   │           ├── Metrics/             # Metrics page: MetricsSidebar, QueryBar + FilterEditor, ResultsPane (Chart / Table / SQL), MetricChart (Recharts, colours from --series-N), MetricsUnavailable, ExploreButton + MetricPreview; lib/metricQuery.ts (URL ⇄ state ⇄ request), lib/metricSeries.ts (small multiples, top 8 series), lib/exploreLink.ts, lib/openInWorkspace.ts — all lib/ tested
 │   │           ├── Environment.tsx      # Env vars + profiles
 │   │           ├── InitScripts.tsx      # Init pipeline management
 │   │           ├── Health.tsx           # Health page: Overview (default) + Connection + Schema Drift + Test Gaps (Pro) + Source Freshness tabs, each check tab with a status badge
@@ -334,6 +340,15 @@ column_lineage_snapshots
                              -- grain: {columns, via: group_by | distinct | dedupe} | null}} (lineage_version 4; test suggestions)
   -- Interrupted snapshots (status='running') are reset to 'error' on server restart
 
+metric_query_results       -- Metrics page result cache (semantic/query_cache.py)
+  project_id      INTEGER FK → projects (cascade)
+  target          TEXT       -- DBT_TARGET the query ran with ('' = profile default)
+  env_fingerprint TEXT       -- sha256 of the env vars wickd layers in (global → profile → project + target) and of the profiles.yml dbt reads; never the values
+  sql_hash        TEXT       -- sha256 of MetricFlow's SQL (changes when definitions do)
+  profile_name    TEXT       -- active global profile, for display
+  metrics_json, group_by_json, columns_json, rows_json (≤ 5000 rows), truncated, ran_at, elapsed_ms
+  UNIQUE(project_id, target, env_fingerprint, sql_hash); last 100 per project kept
+
 semantic_check_snapshots
   id              INTEGER PK
   project_id      INTEGER FK→projects (CASCADE)
@@ -513,7 +528,9 @@ GET    /api/projects/{id}/health/summary                 status/headline/issue c
 GET    /api/projects/{id}/semantic/status?want_cli=       Semantic layer: {available, can_query, mode, mode_source, reason_code, reason, warning, dbt_core, python, engine_version, sidecar, spec, adapter_type, counts, compatible_dbt_versions, recommended_version, cli_release}
 GET    /api/projects/{id}/semantic/catalog               metrics with dimensions, and saved queries, as MetricFlow sees them; 409 {error, message, status} when unavailable
 POST   /api/projects/{id}/semantic/explain               body {metrics, group_by, where, order_by, limit, start, end, saved_query} → {sql, columns}; 400 invalid_query
-POST   /api/projects/{id}/semantic/query                 explain + `dbt show --inline` → {sql, columns, rows, truncated}; body adds `rows` (≤ 5000)
+POST   /api/projects/{id}/semantic/query                 validate + explain + `dbt show --inline` (or the stored result) → {sql, sql_hash, columns, rows, truncated, ran_at, elapsed_ms, target, profile_name, source: warehouse|cache}; body adds `rows` (≤ 5000) and `cache` (refresh | prefer); identical queries in flight share one run
+POST   /api/projects/{id}/semantic/query/cached          same body as explain → the stored result for the current target + env, or null; never runs the query
+POST   /api/projects/{id}/semantic/saved-queries         body = explain body + {name, label?, description?} → {path}: appends a `saved_queries:` entry to the project's YAML (422 yaml_edit_failed)
 POST   /api/projects/{id}/semantic/check                 body {warehouse}; starts the Health → Semantic Layer check (semantic_check_started / _finished)
 GET    /api/projects/{id}/semantic/check/latest          latest SemanticCheckSnapshot or null
 POST   /api/projects/{id}/metricflow/plan-dbt-change     body {version, want_cli}: pip dry run → {ok, previous_version, install, changes, pins, error}
@@ -931,6 +948,7 @@ The Global Settings modal's "Subscription" tab (`components/SubscriptionSection.
 - **Compatibility:** `semantic/compat.py` (dbt-core × Python × YAML spec, plus the optional `mf` CLI's dbt-metricflow ranges in `compat_data.py`). When MetricFlow can't run, routes answer 409 `{error, message, status}`, and `MetricFlowCompatDialog` offers compatible dbt-core versions (latest patch of each compatible minor, both directions), pip's dry-run diff, requirement-pin updates, then installs through the global-setup stream, verifies (`dbt --version`, `dbt parse`) and offers Revert. "Continue without MetricFlow" sets `projects.metricflow_mode = off`.
 - **Freshness:** a YAML change in a project with a semantic layer schedules a silent `dbt parse` 1.5 s later (`semantic/autoparse.py`, skipped while the runner is busy); every dbt command rewrites `semantic_manifest.json`, so `graph_changed` refreshes the UI.
 - **Health:** the Semantic Layer tab runs MetricFlow's validations (and optionally `LIMIT 0` per metric through `dbt show`), stored as `semantic_check_snapshots`; `summarize_semantic()` adds it to the overview, tab badges and nav dot.
+- **Metric explorer (plan 08):** the Metrics page keeps the query in the URL; the SQL pane follows `POST /semantic/explain` (debounced, no warehouse). Run calls `POST /semantic/query` with `cache: refresh`; on load the page shows the stored result for the same request (`/semantic/query/cached`). `semantic/query_service.py` validates (`query_spec.py`) → explains → keys the result by (project, target, env fingerprint, sql hash) → runs one shielded `dbt show` per key (concurrent identical requests share it, a closed tab doesn't cancel it) → stores it in `metric_query_results`. Turning on cache-first later is the `cache: prefer` policy plus a staleness rule. `semantic/batch.py` runs many queries in one `dbt show` for plans 10–11. Save as saved query splices YAML via `dbt/schema_saved_queries.py` (re-parse verified).
 
 ### 11. SQL Workspace
 

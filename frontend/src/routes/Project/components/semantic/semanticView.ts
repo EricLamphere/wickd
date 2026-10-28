@@ -61,3 +61,6 @@ export const OBJECT_LABEL: Record<NonNullable<SemanticIssue['object_type']>, str
   metric: 'Metric',
   saved_query: 'Saved query',
 };
+
+/** reason_codes for which the dbt-core version dialog offers a compatible version. */
+export const INCOMPATIBLE_REASONS = new Set(['too_old', 'latest_spec_needs_1_12', 'no_cli_release', 'unknown_version']);

@@ -1,7 +1,7 @@
 """Run MetricFlow's SQL on the user's warehouse via their own dbt (`dbt show --inline`).
 
 Same approach as Query data (api/ai_query.py): bounded wait for the project's runner
-lock, a timeout, parse_show_json(). Plan 08 adds batching.
+lock, a timeout, parse_show_json(). Batches of queries: batch.py.
 """
 
 import asyncio
@@ -52,7 +52,7 @@ def for_dbt_show(sql: str, adapter_type: str | None) -> str:
     return cleaned
 
 
-async def _wait_for_lock(project_id: int) -> bool:
+async def wait_for_lock(project_id: int) -> bool:
     waited = 0.0
     while runner.is_project_busy(project_id):
         if waited >= LOCK_WAIT_S:
@@ -66,7 +66,7 @@ async def run_sql(
     project_id: int, project_path: Path, sql: str, adapter_type: str | None, *, limit: int = DEFAULT_ROW_LIMIT
 ) -> QueryResult:
     limit = max(1, min(limit, MAX_ROW_LIMIT))
-    if not await _wait_for_lock(project_id):
+    if not await wait_for_lock(project_id):
         raise ExecutionError("busy", "dbt stayed busy with another command — try again in a moment.")
     env = await load_project_env(project_id)
     target = env.get("DBT_TARGET")

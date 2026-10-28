@@ -7,10 +7,10 @@ import StaleNotice from '../health/StaleNotice';
 import { errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from '../health/useHealth';
 import { MetricFlowCompatDialog } from './MetricFlowCompatDialog';
 import { SemanticIssues } from './SemanticIssues';
-import { statusLine } from './semanticView';
+import { INCOMPATIBLE_REASONS, statusLine } from './semanticView';
 import { useSemanticCheck, useSemanticStatus, useSetMetricflowMode, useSidecarProgress } from './useSemantic';
 
-const INCOMPATIBLE = new Set(['too_old', 'latest_spec_needs_1_12', 'no_cli_release', 'unknown_version']);
+const INCOMPATIBLE = INCOMPATIBLE_REASONS;
 
 interface DialogState {
   status: SemanticStatusDto;

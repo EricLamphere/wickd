@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db import engine as db_engine
 from app.db.engine import get_session
-from app.db.models import Base, Project, SemanticCheckSnapshot
+from app.db.models import Base, Project, ProjectEnvVar, SemanticCheckSnapshot
 from app.dbt.runner import runner
 from app.main import app
 from app.semantic import dbt_change, execute, service, status
@@ -215,8 +215,73 @@ async def test_query_runs_through_dbt_show(client, db, tmp_path, dbt_env, worker
     assert body["columns"] == ["metric_time__day", "revenue"]
     assert len(body["rows"]) == 2 and body["truncated"] is True
     assert seen["extra"][:2] == ("--inline", SQL)
-    assert ("--limit", "3") == seen["extra"][2:4]
+    assert ("--limit", "5001") == seen["extra"][2:4]  # always the cap: the cache serves any smaller `rows`
     assert seen["extra"][-2:] == ("--target", "dev")
+    assert body["source"] == "warehouse" and body["sql_hash"]
+
+
+@pytest.fixture
+def fake_show(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """dbt show returning three rows; counts calls and can block until released."""
+    state = {"calls": 0, "gate": None}
+
+    async def fake_env(project_id):
+        return {"DBT_TARGET": "dev"}
+
+    async def fake_run(req):
+        state["calls"] += 1
+        if state["gate"] is not None:
+            await state["gate"].wait()
+        rows = [{"metric_time__day": f"2024-01-0{i}", "revenue": i} for i in range(1, 4)]
+        return 0, json.dumps({"show": rows}).encode(), b""
+
+    monkeypatch.setattr(execute, "load_project_env", fake_env)
+    monkeypatch.setattr(runner, "run", fake_run)
+    return state
+
+
+async def test_query_results_are_cached_per_sql_and_env(client, db, tmp_path, dbt_env, worker_calls, fake_show) -> None:
+    project = await _project(db, tmp_path)
+    url = f"/api/projects/{project.id}/semantic"
+    assert (await client.post(f"{url}/query/cached", json={"metrics": ["revenue"]})).json() is None
+
+    first = (await client.post(f"{url}/query", json={"metrics": ["revenue"]})).json()
+    cached = (await client.post(f"{url}/query", json={"metrics": ["revenue"], "cache": "prefer", "rows": 1})).json()
+    assert fake_show["calls"] == 1
+    assert cached["source"] == "cache" and cached["rows"] == first["rows"][:1] and cached["truncated"] is True
+    assert cached["sql_hash"] == first["sql_hash"] and cached["ran_at"] == first["ran_at"]
+    preview = (await client.post(f"{url}/query/cached", json={"metrics": ["revenue"]})).json()
+    assert preview["source"] == "cache" and len(preview["rows"]) == 3
+
+    # A profile/project var change (e.g. a profile repointing the target) is a different env: a miss
+    db.add(ProjectEnvVar(project_id=project.id, key="DBT_DATABASE", value="prod"))
+    await db.commit()
+    assert (await client.post(f"{url}/query/cached", json={"metrics": ["revenue"]})).json() is None
+    again = (await client.post(f"{url}/query", json={"metrics": ["revenue"], "cache": "prefer"})).json()
+    assert again["source"] == "warehouse" and fake_show["calls"] == 2
+
+
+async def test_identical_queries_in_flight_share_one_run(client, db, tmp_path, dbt_env, worker_calls, fake_show) -> None:
+    project = await _project(db, tmp_path)
+    fake_show["gate"] = asyncio.Event()
+    body = {"metrics": ["revenue"]}
+    pending = [asyncio.create_task(client.post(f"/api/projects/{project.id}/semantic/query", json=body)) for _ in range(3)]
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+    fake_show["gate"].set()
+    responses = await asyncio.gather(*pending)
+    assert [r.status_code for r in responses] == [200, 200, 200]
+    assert fake_show["calls"] == 1
+
+
+async def test_query_rejects_unsafe_filters_before_metricflow(client, db, tmp_path, dbt_env, worker_calls) -> None:
+    project = await _project(db, tmp_path)
+    resp = await client.post(f"/api/projects/{project.id}/semantic/explain",
+                             json={"metrics": ["revenue"], "where": ["{{ Dimension('a') }} = 1; drop table t"]})
+    assert resp.status_code == 400 and resp.json()["detail"]["error"] == "invalid_query"
+    assert not [c for c in worker_calls if c[0] == "explain"]
+    resp = await client.post(f"/api/projects/{project.id}/semantic/explain", json={"metrics": ["unknown_metric"]})
+    assert resp.status_code == 400 and "unknown metric" in resp.json()["detail"]["message"]
 
 
 def test_for_dbt_show_wraps_queries_with_their_own_limit() -> None:
@@ -431,3 +496,76 @@ async def test_yaml_change_forgets_the_detected_spec(tmp_path) -> None:
     autoparse.schedule(99, tmp_path, delay=60)
     assert str(tmp_path) not in status._spec_cache
     autoparse.cancel_all()
+
+
+# ── Save as saved query ───────────────────────────────────────────────────────
+
+
+async def test_save_as_saved_query_appends_to_the_saved_queries_file(client, db, tmp_path, dbt_env, worker_calls) -> None:
+    project = await _project(db, tmp_path)
+    resp = await client.post(f"/api/projects/{project.id}/semantic/saved-queries", json={
+        "name": "revenue_weekly", "label": "Revenue weekly", "metrics": ["revenue"],
+        "group_by": ["metric_time__week"], "start": "2024-01-01",
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"path": "models/semantic.yml"}
+    text = (Path(project.path) / "models" / "semantic.yml").read_text()
+    assert "  - name: revenue_weekly\n" in text
+    assert "TimeDimension('metric_time', 'week')" in text
+    assert "{{ TimeDimension('metric_time', 'day') }} >= '2024-01-01'" in text
+
+
+@pytest.mark.parametrize("body, code", [
+    ({"name": "Bad Name", "metrics": ["revenue"]}, 422),
+    ({"name": "q", "metrics": ["revenue"], "where": ["1 = 1; drop table t"]}, 400),
+    ({"name": "q", "metrics": ["revenue"], "start": "yesterday'; --"}, 422),
+])
+async def test_save_as_saved_query_validates(client, db, tmp_path, dbt_env, worker_calls, body, code) -> None:
+    project = await _project(db, tmp_path)
+    before = (Path(project.path) / "models" / "semantic.yml").read_text()
+    resp = await client.post(f"/api/projects/{project.id}/semantic/saved-queries", json=body)
+    assert resp.status_code == code
+    assert (Path(project.path) / "models" / "semantic.yml").read_text() == before
+
+
+def test_choose_file_prefers_the_saved_queries_file() -> None:
+    from app.semantic.saved_queries import choose_file
+
+    manifest = {
+        "metadata": {"project_name": "p"},
+        "saved_queries": {"a": {"original_file_path": "models/sq.yml", "package_name": "p"},
+                          "b": {"original_file_path": "dbt_packages/x/sq.yml", "package_name": "x"}},
+        "metrics": {"m": {"name": "revenue", "original_file_path": "models/metrics.yml", "package_name": "p"}},
+    }
+    assert choose_file(manifest, ["revenue"]) == "models/sq.yml"
+    assert choose_file({**manifest, "saved_queries": {}}, ["revenue"]) == "models/metrics.yml"
+
+
+async def test_profiles_yml_change_is_a_different_cache_env(client, db, tmp_path, dbt_env, worker_calls, fake_show) -> None:
+    project = await _project(db, tmp_path)
+    profiles = Path(project.path) / "profiles.yml"
+    profiles.write_text("mf_bench:\n  target: dev\n  outputs:\n    dev: {type: duckdb, path: a.duckdb}\n")
+    url = f"/api/projects/{project.id}/semantic"
+    await client.post(f"{url}/query", json={"metrics": ["revenue"]})
+    assert (await client.post(f"{url}/query/cached", json={"metrics": ["revenue"]})).json() is not None
+    profiles.write_text("mf_bench:\n  target: dev\n  outputs:\n    dev: {type: duckdb, path: prod.duckdb}\n")
+    assert (await client.post(f"{url}/query/cached", json={"metrics": ["revenue"]})).json() is None
+
+
+async def test_failed_run_without_a_waiter_is_logged(monkeypatch) -> None:
+    from app.semantic import query_service
+    from app.semantic.query_cache import CacheKey
+
+    logged = []
+    monkeypatch.setattr(query_service.log, "warning", lambda event, **kw: logged.append((event, kw)))
+    key = CacheKey(1, "", "fp", "abc")
+
+    async def boom():
+        raise RuntimeError("warehouse down")
+
+    task = asyncio.create_task(boom())
+    query_service._inflight[key] = task
+    await asyncio.sleep(0)
+    query_service._finished(key, task)
+    assert key not in query_service._inflight
+    assert logged and "warehouse down" in logged[0][1]["error"]

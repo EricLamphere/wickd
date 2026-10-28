@@ -8,7 +8,7 @@ import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
@@ -18,9 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.engine import get_session
 from app.db.models import Project, SemanticCheckSnapshot
 from app.dbt.runner import RunRequest, runner
+from app.dbt.schema_yaml import SchemaYamlError
 from app.logging_setup import get_logger
-from app.semantic import check, dbt_change, service
-from app.semantic.execute import DEFAULT_ROW_LIMIT, MAX_ROW_LIMIT, ExecutionError, run_sql
+from app.semantic import check, dbt_change, saved_queries, service
+from app.semantic.execute import MAX_ROW_LIMIT, ExecutionError
+from app.semantic.query_service import explain_checked, run_metric_query
+from app.semantic.query_spec import QueryInvalid, check_query
 from app.semantic.runtime import RuntimeUnavailable
 from app.semantic.spec import is_latest_spec_parse_error
 from app.semantic.status import SemanticStatus, semantic_status
@@ -45,7 +48,9 @@ class ExplainDto(BaseModel):
 
 
 class QueryDto(ExplainDto):
-    rows: int = Field(default=DEFAULT_ROW_LIMIT, ge=1, le=MAX_ROW_LIMIT)
+    rows: int = Field(default=MAX_ROW_LIMIT, ge=1, le=MAX_ROW_LIMIT)
+    # refresh = always run on the warehouse; prefer = the cached result if there is one
+    cache: Literal["refresh", "prefer"] = "refresh"
 
 
 class CheckDto(BaseModel):
@@ -88,6 +93,8 @@ def _semantic_http(exc: Exception) -> HTTPException:
     if isinstance(exc, service.SemanticError):
         code = 400 if exc.code in ("invalid_query", "bad_request") else 409 if exc.code == "manifest_not_found" else 422
         return _http_error(code, exc.code, exc.message)
+    if isinstance(exc, QueryInvalid):
+        return _http_error(400, "invalid_query", str(exc))
     if isinstance(exc, ExecutionError):
         return _http_error(504 if exc.code == "timeout" else 409 if exc.code == "busy" else 422, exc.code, exc.message)
     raise exc
@@ -116,23 +123,66 @@ async def post_explain(project_id: int, dto: ExplainDto, session: AsyncSession =
     project = await _project(session, project_id)
     await _require_available(session, project, query=True)
     try:
-        return await service.explain(Path(project.path), dto.model_dump(exclude_none=True))
-    except (service.SemanticError, RuntimeUnavailable) as exc:
+        status = await semantic_status(session, project)
+        return await explain_checked(project, dto.model_dump(exclude_none=True), status.adapter_type)
+    except (service.SemanticError, RuntimeUnavailable, QueryInvalid) as exc:
         raise _semantic_http(exc) from exc
 
 
 @router.post("/{project_id}/semantic/query")
 async def post_query(project_id: int, dto: QueryDto, session: AsyncSession = Depends(get_session)) -> dict:
-    """Explain, then run the SQL with the user's dbt (`dbt show`). {sql, columns, rows, truncated}."""
+    """Explain, then run the SQL with the user's dbt (`dbt show`), or serve it from the cache.
+
+    {sql, sql_hash, columns, rows, truncated, ran_at, elapsed_ms, target, profile_name, source}
+    """
     project = await _project(session, project_id)
     status = await _require_available(session, project, query=True)
-    path = Path(project.path)
+    query = dto.model_dump(exclude_none=True, exclude={"rows", "cache"})
     try:
-        explained = await service.explain(path, dto.model_dump(exclude_none=True, exclude={"rows"}))
-        result = await run_sql(project_id, path, explained["sql"], status.adapter_type, limit=dto.rows)
-    except (service.SemanticError, RuntimeUnavailable, ExecutionError) as exc:
+        outcome = await run_metric_query(session, project, query, status.adapter_type, rows=dto.rows, cache=dto.cache)
+    except (service.SemanticError, RuntimeUnavailable, ExecutionError, QueryInvalid) as exc:
         raise _semantic_http(exc) from exc
-    return {"sql": explained["sql"], "columns": result.columns, "rows": result.rows, "truncated": result.truncated}
+    assert outcome is not None  # only cache="only" returns None
+    return outcome.to_dict()
+
+
+@router.post("/{project_id}/semantic/query/cached")
+async def post_cached_query(project_id: int, dto: ExplainDto, session: AsyncSession = Depends(get_session)) -> dict | None:
+    """The last stored result of this query for the current target + env, never running it (null if none)."""
+    project = await _project(session, project_id)
+    status = await _require_available(session, project, query=True)
+    try:
+        outcome = await run_metric_query(session, project, dto.model_dump(exclude_none=True), status.adapter_type,
+                                         cache="only")
+    except (service.SemanticError, RuntimeUnavailable, QueryInvalid) as exc:
+        raise _semantic_http(exc) from exc
+    return outcome.to_dict() if outcome is not None else None
+
+
+class SaveQueryDto(ExplainDto):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z_][a-z0-9_]*$", max_length=200)]
+    label: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None
+    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] | None = None
+
+
+@router.post("/{project_id}/semantic/saved-queries")
+async def post_saved_query(project_id: int, dto: SaveQueryDto, session: AsyncSession = Depends(get_session)) -> dict:
+    """Write the query as a `saved_queries:` entry; {path} of the YAML file it went into."""
+    project = await _project(session, project_id)
+    status = await _require_available(session, project)
+    path = Path(project.path)
+    query = dto.model_dump(exclude_none=True)
+    try:
+        catalog = await service.catalog(path)
+        if dto.name in {q["name"] for q in catalog.get("saved_queries", [])}:
+            raise QueryInvalid(f"there's already a saved query named `{dto.name}`")
+        check_query({k: v for k, v in query.items() if k != "saved_query"}, catalog, status.adapter_type)
+        written = saved_queries.save(path, saved_queries.spec_for(query, catalog))
+    except (service.SemanticError, RuntimeUnavailable, QueryInvalid) as exc:
+        raise _semantic_http(exc) from exc
+    except SchemaYamlError as exc:
+        raise _http_error(422, "yaml_edit_failed", str(exc)) from exc
+    return {"path": written}
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

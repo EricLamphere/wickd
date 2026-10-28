@@ -81,3 +81,7 @@ dbt-core versions.
 - **Global default**: `WICKD_METRICFLOW_MODE` in Global Settings, `auto` (default) or `off`.
 - **Per project**: `METRICFLOW_MODE` in **Environment → Settings → Project**: `auto`,
   `off`, or empty to use the global default.
+
+## Query your metrics
+
+The **Metrics** page lets you pick metrics, group-bys, a grain and filters, see MetricFlow's SQL, run it and chart the result. See [Explore metrics](explore-metrics.md).

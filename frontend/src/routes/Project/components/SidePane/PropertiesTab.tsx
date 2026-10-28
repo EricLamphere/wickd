@@ -7,6 +7,7 @@ import { ImpactSummary } from './ImpactSummary';
 import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
 import { childrenOfType, isSemanticType } from '../../lib/semantic';
 import { SemanticDetails } from './SemanticDetails';
+import { ExploreButton } from '../../Metrics/ExploreButton';
 import { startRefactor } from '../../lib/refactorEvents';
 
 type RunCommand = 'run' | 'build' | 'test';
@@ -494,6 +495,17 @@ export function PropertiesTab({
           usedBy={graph && model.resource_type === 'metric'
             ? childrenOfType(graph, model.unique_id, ['metric', 'saved_query']).map((n) => n.name)
             : []}
+        />
+      )}
+      {isSemantic && (
+        <ExploreButton
+          projectId={projectId}
+          resourceType={model.resource_type}
+          name={model.name}
+          grain={model.semantic?.time_granularity}
+          modelMetrics={graph?.nodes
+            .filter((n) => n.resource_type === 'metric' && n.semantic?.semantic_model === model.name)
+            .map((n) => n.name)}
         />
       )}
 

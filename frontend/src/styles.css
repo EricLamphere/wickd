@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 :root, html[data-theme="dark"] {
+  /* Chart series (categorical, fixed order — never cycled). Validated with the dataviz
+     skill's palette checker against --bg-panel in each theme; used as var(--series-N). */
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
+  --series-other: #6b7280;
   /* Surface layers */
   --bg-app:      26  29  33;   /* #1a1d21 — darkest layer */
   --bg-panel:    34  38  43;   /* #22262b — panels, sidebars */
@@ -40,6 +45,11 @@
 }
 
 html[data-theme="light"] {
+  /* Chart series, light steps of the same hues (3 sit below 3:1 on white: charts
+     always ship a legend + Table view) */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948;
+  --series-other: #9ca3af;
   /* Surfaces — panel is white so it pops against the blue-gray app bg */
   --bg-app:      242 244 247;
   --bg-panel:    255 255 255;

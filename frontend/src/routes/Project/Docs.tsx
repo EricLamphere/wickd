@@ -19,6 +19,7 @@ import { InheritDescriptionsButton } from './components/propagation/InheritDescr
 import { TagBrowseList } from './components/propagation/TagBrowseList';
 import { TagFlowPanel } from './components/propagation/TagFlowPanel';
 import { SemanticDetails } from './components/SidePane/SemanticDetails';
+import { ExploreButton, MetricPreview } from './Metrics/ExploreButton';
 import { isSemanticType } from './lib/semantic';
 
 // ---- tree types ----
@@ -1119,6 +1120,10 @@ function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDt
               <section>
                 <h2 className="text-sm font-semibold text-gray-200 mb-3">Definition</h2>
                 <SemanticDetails resourceType={node.resource_type} name={node.name} label={node.label} semantic={node.semantic} />
+                <div className="flex flex-col gap-2 mt-3">
+                  <ExploreButton projectId={projectId} resourceType={node.resource_type} name={node.name} grain={node.semantic?.time_granularity} />
+                  {node.resource_type === 'metric' && <MetricPreview projectId={projectId} metric={node.name} grain={node.semantic?.time_granularity} />}
+                </div>
               </section>
             )}
             {node.columns.length > 0 && (

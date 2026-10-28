@@ -575,6 +575,30 @@ async def run_migrations() -> None:
             await session.execute(text("ALTER TABLE semantic_check_snapshots ADD COLUMN manifest_hash TEXT"))
             await session.commit()
 
+        # Metric explorer result cache (plan 08): last result per project × target × env × SQL
+        if not await _table_exists(session, "metric_query_results"):
+            await session.execute(text(
+                "CREATE TABLE metric_query_results ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "target TEXT NOT NULL DEFAULT '', "
+                "env_fingerprint VARCHAR(64) NOT NULL, "
+                "sql_hash VARCHAR(64) NOT NULL, "
+                "profile_name TEXT, "
+                "metrics_json TEXT NOT NULL DEFAULT '[]', "
+                "group_by_json TEXT NOT NULL DEFAULT '[]', "
+                "columns_json TEXT NOT NULL DEFAULT '[]', "
+                "rows_json TEXT NOT NULL DEFAULT '[]', "
+                "truncated BOOLEAN NOT NULL DEFAULT 0, "
+                "ran_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "elapsed_ms INTEGER NOT NULL DEFAULT 0, "
+                "UNIQUE(project_id, target, env_fingerprint, sql_hash))"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_metric_query_results_project_id ON metric_query_results (project_id)"
+            ))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

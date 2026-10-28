@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { FlaskConical, Loader2, Sparkles, Stethoscope, Wand2 } from 'lucide-react';
+import { Boxes, FlaskConical, Loader2, Sparkles, Stethoscope, Wand2 } from 'lucide-react';
 import type { ModelNode } from '../../../../lib/api';
 import { aiApi, aiErrorMessage, type AiProposalDto } from '../../../../lib/aiApi';
+import { semanticErrorBody, type SemanticStatusDto } from '../../../../lib/semanticApi';
+import type { WickyAction } from '../../lib/wickyEvents';
 import { canDocument } from '../SidePane/DocumentModelButton';
+import { MetricflowBlockedNotice } from '../semantic/MetricflowBlockedNotice';
 
 interface QuickActionsProps {
   projectId: number;
@@ -17,9 +20,13 @@ interface QuickActionsProps {
   onExplainFailure: () => void;
   /** Switch the chat to Refactor mode (rename a model or column, extract a CTE). */
   onRefactor: () => void;
+  /** The model already has a semantic model (no "Add to semantic layer"). */
+  inSemanticLayer: boolean;
+  /** An action another page asked for (openWicky({ action })); started once per nonce. */
+  autoStart: { nonce: number; action: WickyAction } | null;
 }
 
-type ProposalKind = 'document' | 'tests';
+type ProposalKind = 'document' | 'tests' | 'semantic';
 
 const DOCUMENT_OPTIONS = [
   {
@@ -38,12 +45,14 @@ const BUTTON = 'flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-elevate
 
 /** One-click Wicky actions for the selected node. Results appear in the chat below. */
 export function QuickActions({
-  projectId, model, proposals, ensureConversation, failing, onExplainFailure, onRefactor,
+  projectId, model, proposals, ensureConversation, failing, onExplainFailure, onRefactor, inSemanticLayer, autoStart,
 }: QuickActionsProps) {
   const qc = useQueryClient();
   const [choosing, setChoosing] = useState(false);
   const [starting, setStarting] = useState<ProposalKind | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<SemanticStatusDto | null>(null);
+  const started = useRef<number | null>(null);
 
   const busy = (kind: ProposalKind) => starting === kind || proposals.some(
     (p) => p.kind === kind && p.unique_id === model.unique_id && p.status === 'generating',
@@ -53,21 +62,32 @@ export function QuickActions({
     setChoosing(false);
     setStarting(kind);
     setError(null);
+    setBlocked(null);
     try {
       const conversationId = await ensureConversation();
       if (kind === 'document') await aiApi.document(projectId, model.unique_id, overwrite, conversationId);
+      else if (kind === 'semantic') await aiApi.semanticDraft(projectId, model.unique_id, conversationId);
       else await aiApi.addTests(projectId, model.unique_id, conversationId);
       qc.invalidateQueries({ queryKey: ['ai-proposals', projectId] });
       qc.invalidateQueries({ queryKey: ['ai-conversation', projectId, conversationId] });
       qc.invalidateQueries({ queryKey: ['ai-conversations', projectId] });
     } catch (err) {
-      setError(aiErrorMessage(err));
+      const status = semanticErrorBody(err)?.status;
+      if (status) setBlocked(status);
+      else setError(aiErrorMessage(err));
     } finally {
       setStarting(null);
     }
   };
 
+  useEffect(() => {
+    if (!autoStart || started.current === autoStart.nonce) return;
+    started.current = autoStart.nonce;
+    if (autoStart.action === 'semantic_draft') void run('semantic');
+  }, [autoStart]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const editable = canDocument(model);
+  const canDraftSemantic = model.resource_type === 'model' && !inSemanticLayer;
   if (!editable && !failing) return null;
 
   return (
@@ -103,6 +123,17 @@ export function QuickActions({
               {busy('tests') ? <Loader2 size={12} className="animate-spin text-brand-300" /> : <FlaskConical size={12} className="text-brand-300" />}
               {busy('tests') ? 'Adding tests…' : 'Add tests'}
             </button>
+            {canDraftSemantic && (
+              <button
+                onClick={() => run('semantic')}
+                disabled={busy('semantic')}
+                title="Draft a semantic model and starting metrics for this model, validated with MetricFlow and run against the warehouse; review them before anything is saved"
+                className={BUTTON}
+              >
+                {busy('semantic') ? <Loader2 size={12} className="animate-spin text-brand-300" /> : <Boxes size={12} className="text-brand-300" />}
+                {busy('semantic') ? 'Drafting metrics…' : 'Add to semantic layer'}
+              </button>
+            )}
             {model.resource_type === 'model' && (
               <button
                 onClick={onRefactor}
@@ -138,6 +169,7 @@ export function QuickActions({
         </div>
       )}
       {error && <span className="text-red-400 break-words">{error}</span>}
+      {blocked && <MetricflowBlockedNotice projectId={projectId} status={blocked} onResolved={() => setBlocked(null)} />}
     </div>
   );
 }

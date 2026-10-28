@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { navAlert } from './health/healthStatus';
 import { useHealthSummary } from './health/useHealth';
 import { useSemanticStatus } from './semantic/useSemantic';
+import { useProEntitled } from '../RunHistory/usePerformance';
 
 export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs' | 'metrics';
 
@@ -185,9 +186,10 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
   const { data: health } = useHealthSummary(projectId);
   const healthAlert = navAlert(health);
   const alerts: NavAlerts = healthAlert ? { health: healthAlert } : {};
-  // Metrics only for projects with a semantic layer (shown while the status loads on its page)
+  // Metrics for projects with a semantic layer, or (Pro) to draft one from a model
   const { data: semantic } = useSemanticStatus(projectId);
-  const hasMetrics = (semantic?.counts.metrics ?? 0) > 0 || current === 'metrics';
+  const { entitled } = useProEntitled();
+  const hasMetrics = (semantic?.counts.metrics ?? 0) > 0 || entitled || current === 'metrics';
   const projectItems = hasMetrics ? PROJECT_ITEMS : PROJECT_ITEMS.filter((i) => i.key !== 'metrics');
 
   return (

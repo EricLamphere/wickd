@@ -19,7 +19,12 @@ export interface OpenWickyDetail {
    *  Stays Wicky's context until the page's selected node changes. */
   uniqueId?: string;
   mode?: AskMode;
+  /** Start a quick action on `uniqueId` (e.g. from the side pane or the Metrics page). */
+  action?: WickyAction;
 }
+
+/** Quick actions other pages can start; results show in the chat like any other. */
+export type WickyAction = 'semantic_draft';
 
 export function openWicky(detail: OpenWickyDetail = {}): void {
   window.dispatchEvent(new CustomEvent<OpenWickyDetail>(OPEN_WICKY_EVENT, { detail }));

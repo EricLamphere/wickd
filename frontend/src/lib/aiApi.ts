@@ -1,6 +1,7 @@
 // Typed helpers for the AI routes (wickd Pro). Kept out of api.ts, which is
 // already past the file-size limit; same request helpers and error type.
 import { ApiError, del, get, post, put } from './api';
+import type { MetricQueryBody } from './semanticApi';
 
 export interface AiModelDto {
   id: string;
@@ -85,6 +86,9 @@ export interface AiQueryPayload {
   rows?: unknown[][] | null;
   /** more rows existed than the row limit */
   truncated?: boolean;
+  /** Answered with the project's defined metrics: the MetricFlow request `sql` was rendered
+   *  from. Run executes it through the semantic layer; editing the SQL drops it. */
+  metric_request?: MetricQueryBody;
 }
 
 export interface AiConversationDto {
@@ -183,7 +187,8 @@ export interface AiProposalDto {
     batch?: boolean;
     /** kind "tests": why only some suggestions were made (e.g. lineage-backed only, no AI model). */
     note?: string | null;
-    /** kind "propagate" (lineage propagation; spans several files): one item per column. */
+    /** kind "propagate" (lineage propagation; spans several files): one item per column.
+     *  kind "semantic": SemanticDraftItem[] (read with semanticItems()). */
     items?: PropagationItem[];
     conflicts?: PropagationConflict[];
     skipped?: { unique_id: string; reason: string }[];
@@ -196,8 +201,37 @@ export interface AiProposalDto {
     manual?: ManualReviewItem[];
     notes?: string[];
     verify?: RefactorVerify | null;
+    /** kind "semantic": the YAML spec written, the model and its new semantic model, MetricFlow warnings. */
+    spec?: 'legacy' | 'latest' | null;
+    model?: string | null;
+    semantic_model?: string | null;
+    warnings?: string[];
   };
   files: AiProposalFileDto[];
+}
+
+/** One acceptable piece of an "Add to semantic layer" proposal. */
+export interface SemanticDraftItem {
+  key: string;
+  file: string;
+  kind: 'semantic_model' | 'metric' | 'time_spine';
+  name: string;
+  label?: string;
+  description: string;
+  /** metric: "sum(amount)" or "revenue / orders" */
+  definition?: string;
+  type?: string;
+  /** metric: a LIMIT 5 query run before review (by metric_time when the project has a time spine) */
+  smoke?: { columns: string[]; rows: unknown[][] } | { error: string } | null;
+  /** semantic_model */
+  entities?: string[];
+  dimensions?: string[];
+  measures?: string[];
+  agg_time_dimension?: string | null;
+}
+
+export function semanticItems(p: AiProposalDto): SemanticDraftItem[] {
+  return p.kind === 'semantic' ? ((p.result.items ?? []) as unknown as SemanticDraftItem[]) : [];
 }
 
 export interface PropagationHop {
@@ -335,6 +369,9 @@ export const aiApi = {
     }),
   addTests: (projectId: number, uniqueId: string, conversationId: number | null) =>
     post<AiProposalDto>(`/projects/${projectId}/ai/tests`, { unique_id: uniqueId, conversation_id: conversationId }),
+  /** Add to semantic layer: Wicky drafts a semantic model + metrics (409 {status} when MetricFlow can't run). */
+  semanticDraft: (projectId: number, uniqueId: string, conversationId: number | null) =>
+    post<AiProposalDto>(`/projects/${projectId}/ai/semantic-draft`, { unique_id: uniqueId, conversation_id: conversationId }),
   proposals: (projectId: number, uniqueId?: string) =>
     get<AiProposalDto[]>(
       `/projects/${projectId}/ai/proposals${uniqueId ? `?unique_id=${encodeURIComponent(uniqueId)}` : ''}`,

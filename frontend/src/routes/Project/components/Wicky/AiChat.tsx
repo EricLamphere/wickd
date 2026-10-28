@@ -11,7 +11,7 @@ import { refactorApi } from '../../../../lib/refactorApi';
 import { ActionEntry } from './ActionEntry';
 import { QueryEntry } from './QueryEntry';
 import { RefactorCard } from './RefactorCard';
-import type { WickyChatMode } from '../../lib/wickyEvents';
+import type { WickyAction, WickyChatMode } from '../../lib/wickyEvents';
 
 interface AiChatProps {
   projectId: number;
@@ -34,6 +34,8 @@ export interface ChatRequest {
   mode: AskMode;
   /** Switch to this tab first; omitted → the current one. */
   chatMode?: ChatMode;
+  /** Start this quick action instead of sending text (QuickActions runs it). */
+  action?: WickyAction;
 }
 
 interface Pending {

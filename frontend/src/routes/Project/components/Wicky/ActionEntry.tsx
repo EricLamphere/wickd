@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Ban, CheckCircle2, Eye, Info, Loader2, RotateCcw, X } from 'lucide-react';
 import {
-  aiApi, type AiProposalDto, type AiProposalProgress, type AiSuggestedTest,
+  aiApi, semanticItems, type AiProposalDto, type AiProposalProgress, type AiSuggestedTest,
 } from '../../../../lib/aiApi';
 import { parsePartialDocs, type PartialDocs } from '../../../../lib/partialDocs';
 import { describeTest, parsePartialTests, testSubject, testWhy, type PartialTest } from '../../../../lib/partialTests';
@@ -10,6 +10,7 @@ import { ProposalReviewModal } from './ProposalReviewModal';
 import { proposalItems, selectedKeys } from './proposalItems';
 import { RefactorOutcome } from './RefactorOutcome';
 import { InlineCode } from './InlineCode';
+import { SmokeRows } from './SmokeRows';
 
 interface ActionEntryProps {
   projectId: number;
@@ -29,6 +30,11 @@ const PHASE_COPY: Record<string, Record<string, string>> = {
     writing: 'Choosing tests…',
     checking: 'Running the tests against the warehouse…',
   },
+  semantic: {
+    facts: 'Reading columns, tests and a sample of the data…',
+    writing: 'Designing the semantic model and metrics…',
+    validating: 'Validating with MetricFlow and running each metric…',
+  },
 };
 
 /** Per-kind wording: [in progress, ready, failed]. */
@@ -36,6 +42,7 @@ const COPY: Record<string, [string, string, string]> = {
   document: ['Documenting', 'Docs for', 'Couldn’t document'],
   tests: ['Adding tests to', 'Tests for', 'Couldn’t add tests to'],
   refactor: ['Preparing the refactor of', 'The refactor of', 'Couldn’t refactor'],
+  semantic: ['Drafting the semantic layer for', 'The semantic layer draft for', 'Couldn’t draft the semantic layer for'],
 };
 
 const SKIPPED = 'line-through opacity-60';
@@ -69,6 +76,33 @@ function TestList({ tests, live, skipped }: {
   );
 }
 
+function SemanticResult({ p, skipped }: { p: AiProposalDto; skipped?: Set<string> }) {
+  const metrics = semanticItems(p).filter((i) => i.kind === 'metric');
+  const verify = p.result.verify;
+  return (
+    <div className="flex flex-col gap-1 mt-1">
+      <span className="text-gray-400">
+        Semantic model <code className="text-brand-300">{p.result.semantic_model}</code>
+        {p.result.spec && <span className="text-gray-500"> · {p.result.spec} YAML spec</span>}
+      </span>
+      <ul className="flex flex-col gap-1">
+        {metrics.map((m) => (
+          <li key={m.key} className={`text-gray-400 ${skipped?.has(m.key) ? SKIPPED : ''}`}>
+            <code className="text-brand-300">{m.name}</code> {m.definition}
+            {p.status === 'ready' && <SmokeRows smoke={m.smoke} summary />}
+          </li>
+        ))}
+      </ul>
+      {metrics.length === 0 && <p className="text-gray-500">No time column, so no metrics yet — the semantic model adds its entities and dimensions.</p>}
+      {p.result.note && <p className="text-gray-500">{p.result.note}</p>}
+      {(p.result.warnings ?? []).map((w) => <p key={w} className="text-amber-400/80">{w}</p>)}
+      {verify?.status === 'running' && <span className="flex items-center gap-1.5 text-gray-500"><Loader2 size={11} className="animate-spin" />Checking with dbt parse and MetricFlow…</span>}
+      {verify?.status === 'ok' && <span className="text-emerald-400">✓ {verify.output}</span>}
+      {verify?.status === 'error' && <pre className="whitespace-pre-wrap text-[11px] text-red-400">{verify.output}</pre>}
+    </div>
+  );
+}
+
 function Result({ projectId, p }: { projectId: number; p: AiProposalDto }) {
   if (p.kind === 'refactor') return <RefactorOutcome projectId={projectId} proposal={p} />;
   // once applied, items the user unticked are shown struck through
@@ -76,6 +110,7 @@ function Result({ projectId, p }: { projectId: number; p: AiProposalDto }) {
   const skipped = p.status === 'applied'
     ? new Set(proposalItems(p).map((i) => i.key).filter((k) => !keep.has(k)))
     : undefined;
+  if (p.kind === 'semantic') return <SemanticResult p={p} skipped={skipped} />;
   if (p.kind === 'tests') {
     return (
       <>
@@ -156,7 +191,7 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
             <Loader2 size={12} className="animate-spin text-brand-300" /> {doing} {nodeName(p)}
           </span>
           <span className="text-gray-500">{PHASE_COPY[p.kind]?.[progress?.phase ?? ''] ?? 'Starting…'}</span>
-          {progress?.text && (p.kind === 'tests'
+          {progress?.text && p.kind !== 'semantic' && (p.kind === 'tests'
             ? <TestList tests={parsePartialTests(progress.text)} live={progress.phase === 'writing'} />
             : <Docs docs={parsePartialDocs(progress.text)} />)}
         </>
@@ -166,7 +201,7 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
         <>
           <div className="flex items-center gap-2">
             {p.status === 'ready'
-              ? <><CheckCircle2 size={12} className="text-brand-300 shrink-0" /><span>{p.kind === 'refactor' ? <><InlineCode text={p.title} /> is ready to review.</> : <>{ready} {nodeName(p)} are ready to review.</>}</span></>
+              ? <><CheckCircle2 size={12} className="text-brand-300 shrink-0" /><span>{p.kind === 'refactor' ? <><InlineCode text={p.title} /> is ready to review.</> : <>{ready} {nodeName(p)} {p.kind === 'semantic' ? 'is' : 'are'} ready to review.</>}</span></>
               : <>{outcome!.icon}<span>{outcomeText}{paths && <span className="text-gray-500"> · {paths}</span>}</span></>}
             {p.status === 'ready' && (
               <>

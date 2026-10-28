@@ -53,6 +53,20 @@ Switch the chat box from **Ask** to **Query data**, then ask a question about th
 
 Only single `SELECT` queries can run: wickd checks the SQL and refuses anything that writes, changes settings or uses Jinja other than `ref()` / `source()`. Small models do best with one question at a time.
 
+### With your defined metrics
+
+When the project has metrics and MetricFlow can query it, Wicky first tries to answer with them: "weekly revenue by channel since August" becomes the `revenue` metric grouped by `metric_time` (week) and `order__channel`, from August. The answer says **Answered with your defined metrics** and shows the metrics, group-bys, filters and period as chips. The SQL is what MetricFlow generates, so the numbers match the metric definitions everyone else uses. Wicky can only pick metrics and dimensions that exist, and it never writes the filter SQL itself.
+
+- **Run** runs it through the semantic layer (same as the Metrics page).
+- **Open in explorer** opens the same query on the Metrics page, to chart it or change it.
+- **Edit as SQL** makes the SQL editable; once you change it, it runs as plain SQL instead.
+
+Questions your metrics don't cover fall back to Wicky writing SQL, as above.
+
+## Add a model to the semantic layer
+
+**Add to semantic layer** (under **Quick actions** for a model, in the side pane, or **Draft from this model** on an empty Metrics page) drafts a semantic model and starting metrics for it. See [Use the semantic layer → Draft with Wicky](semantic-layer.md#draft-a-semantic-model-with-wicky-pro).
+
 ## Refactor
 
 Switch the chat box to **Refactor** (or click **Refactor…** under Quick actions) and describe a rename or an extraction ("rename customer_id to customer_key"). Wicky shows the refactor it understood; click **Prepare refactor** and review every edit before it's written. See [Refactor models and columns](refactor.md).

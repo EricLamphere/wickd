@@ -203,3 +203,73 @@ async def test_follow_up_history_includes_sql(client, db_session, tmp_path, mode
     history = ai_chat.chat_history(conv)
     assert history[0] == {"role": "user", "content": "q"}
     assert history[1]["role"] == "assistant" and "```sql" in history[1]["content"]
+
+
+# ── metric route (defined metrics answer the question) ───────────────────────
+
+
+@pytest.fixture
+def metrics(monkeypatch):
+    """MetricFlow can query and the model maps the question onto metrics (set .request)."""
+    from types import SimpleNamespace
+
+    from app.semantic.query_service import MetricQueryOutcome
+
+    state = {"request": {"metrics": ["revenue"], "group_by": ["metric_time__week"], "where": [],
+                         "order_by": ["-metric_time__week"], "limit": 100, "explanation": "Weekly revenue."},
+             "ran": [], "explained": []}
+    monkeypatch.setattr(pro, "supports_metric_query", lambda: True)
+    monkeypatch.setattr(pro, "metric_query_prompt", lambda c, h, q: {"messages": [], "schema": {}, "max_tokens": 5})
+    monkeypatch.setattr(pro, "parse_metric_query", lambda raw, catalog: dict(state["request"]))
+
+    async def status(session, project, want_cli=False):
+        return SimpleNamespace(can_query=True, counts={"metrics": 3}, adapter_type="duckdb")
+
+    async def explain(project, request, adapter):
+        state["explained"].append(request)
+        return {"sql": "SELECT metric_time__week, SUM(x) AS revenue FROM t GROUP BY 1", "columns": []}
+
+    async def run(session, project, request, adapter, *, rows):
+        from datetime import UTC, datetime
+        state["ran"].append((request, rows))
+        return MetricQueryOutcome(sql="s", sql_hash="h", columns=["metric_time__week", "revenue"],
+                                  rows=[["2026-10-19", 10]], truncated=False, ran_at=datetime.now(UTC),
+                                  elapsed_ms=5, target=None, profile_name=None, source="warehouse")
+
+    monkeypatch.setattr(ai_query, "semantic_status", status)
+    monkeypatch.setattr(ai_query.semantic_service, "catalog", AsyncMock(return_value={"metrics": [{"name": "revenue"}]}))
+    monkeypatch.setattr(ai_query, "explain_checked", explain)
+    monkeypatch.setattr(ai_query, "run_metric_query", run)
+    return state
+
+
+async def test_question_covered_by_metrics_becomes_a_metricflow_query(client, db_session, tmp_path, model, metrics):
+    pid, cid = await _setup(client, db_session, tmp_path)
+    _, query = (await client.post(f"/api/projects/{pid}/ai/conversations/{cid}/query",
+                                  json={"content": "weekly revenue"})).json()
+    payload = query["payload"]
+    assert query["content"] == "Weekly revenue." and payload["status"] == "proposed"
+    assert payload["metric_request"] == {k: v for k, v in metrics["request"].items() if k != "explanation"}
+    assert payload["sql"].startswith("SELECT metric_time__week")
+
+    r = await client.post(f"/api/projects/{pid}/ai/messages/{query['id']}/run", json={"sql": payload["sql"]})
+    assert r.status_code == 202
+    done = await _wait(client, pid, cid, "done")
+    assert done["payload"]["rows"] == [["2026-10-19", 10]]
+    assert metrics["ran"] == [(payload["metric_request"], ai_query.ROW_LIMIT)]
+
+
+async def test_edited_metric_sql_runs_as_plain_sql(client, db_session, tmp_path, model, metrics, monkeypatch):
+    pid, cid = await _setup(client, db_session, tmp_path)
+    _, query = (await client.post(f"/api/projects/{pid}/ai/conversations/{cid}/query", json={"content": "q"})).json()
+    monkeypatch.setattr(runner, "run", AsyncMock(return_value=(0, json.dumps({"show": [{"a": 1}]}).encode(), b"")))
+    await client.post(f"/api/projects/{pid}/ai/messages/{query['id']}/run", json={"sql": "select 1 as a"})
+    done = await _wait(client, pid, cid, "done")
+    assert "metric_request" not in done["payload"] and metrics["ran"] == []
+
+
+async def test_questions_metrics_dont_cover_fall_back_to_sql(client, db_session, tmp_path, model, metrics):
+    pid, cid = await _setup(client, db_session, tmp_path)
+    metrics["request"] = {"fallback": "sql", "reason": "no defined metric answers this"}
+    _, query = (await client.post(f"/api/projects/{pid}/ai/conversations/{cid}/query", json={"content": "q"})).json()
+    assert "metric_request" not in query["payload"] and "{{ ref('orders') }}" in query["payload"]["sql"]

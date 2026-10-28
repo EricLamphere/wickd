@@ -8,6 +8,13 @@
    command holds it, `running`, then `done` / `error`. Each change → `ai_query_updated`.
 3. POST .../messages/{mid}/answer — streams an answer from the result rows (they're sent
    to the model, which matters when a remote endpoint is configured).
+
+With defined metrics (and MetricFlow able to query), step 1 first asks for a MetricFlow
+request over the catalog (wickd_pro.ai.metric_query): the payload then holds
+`metric_request` and the SQL MetricFlow renders, and Run executes the request through
+app/semantic/query_service.py, so the numbers match the metric definitions. If the user
+edits the SQL, it runs as plain SQL and the metric request is dropped. Questions the
+metrics don't cover fall back to raw SQL.
 """
 
 import asyncio
@@ -38,6 +45,13 @@ from app.dbt.runner import RunRequest, runner
 from app.dbt.show_parser import parse_show_json
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
+from app.semantic import service as semantic_service
+from app.semantic.execute import ExecutionError
+from app.semantic.query_service import explain_checked, run_metric_query
+from app.semantic.query_spec import QueryInvalid
+from app.semantic.runtime import RuntimeUnavailable as SemanticRuntimeUnavailable
+from app.semantic.service import SemanticError
+from app.semantic.status import semantic_status
 
 log = get_logger(__name__)
 
@@ -115,8 +129,12 @@ async def write_query(
     except DocumentationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    prompt = pro.query_prompt(manifest, dto.unique_id, chat_history(conversation), dto.content)
     config = await load_ai_config(session)
+    metric_payload = await _metric_route(session, project, config, chat_history(conversation), dto.content)
+    if metric_payload is not None:
+        return await _save_query(session, conversation, dto, metric_payload)
+
+    prompt = pro.query_prompt(manifest, dto.unique_id, chat_history(conversation), dto.content)
     try:
         raw = await _write_sql(config, prompt["messages"], prompt["schema"], prompt.get("max_tokens"))
         written = pro.parse_query(raw)
@@ -132,11 +150,15 @@ async def write_query(
     except QueryRejected as exc:
         payload.update(status="invalid", error=str(exc))
 
-    question = AiMessage(conversation_id=cid, role="user", content=dto.content, unique_id=dto.unique_id)
+    return await _save_query(session, conversation, dto, payload)
+
+
+async def _save_query(session: AsyncSession, conversation, dto: QueryQuestionDto, payload: dict) -> list[AiMessageDto]:
+    question = AiMessage(conversation_id=conversation.id, role="user", content=dto.content, unique_id=dto.unique_id)
     query = AiMessage(
-        conversation_id=cid,
+        conversation_id=conversation.id,
         role="query",
-        content=written["explanation"],
+        content=payload.get("explanation") or "",
         unique_id=dto.unique_id,
         payload_json=json.dumps(payload),
     )
@@ -146,6 +168,33 @@ async def write_query(
     conversation.updated_at = datetime.now(UTC)
     await session.commit()
     return [message_dto(question), message_dto(query)]
+
+
+async def _metric_route(session: AsyncSession, project, config, history: list[dict], question: str) -> dict | None:
+    """A `query` payload answering with defined metrics, or None to write SQL instead."""
+    if not pro.supports_metric_query():
+        return None
+    status = await semantic_status(session, project)
+    if not status.can_query or not status.counts.get("metrics"):
+        return None
+    try:
+        catalog = await semantic_service.catalog(Path(project.path))
+        prompt = pro.metric_query_prompt(catalog, history, question)
+        request = pro.parse_metric_query(
+            await _write_sql(config, prompt["messages"], prompt["schema"], prompt.get("max_tokens")), catalog,
+        )
+        if request.get("fallback"):
+            log.info("ai_query_metric_fallback", reason=request.get("reason"))
+            return None
+        explanation = request.pop("explanation", "")
+        explained = await explain_checked(project, request, status.adapter_type)
+    except (RuntimeUnavailable, LlmError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (SemanticError, SemanticRuntimeUnavailable, QueryInvalid) as exc:
+        log.info("ai_query_metric_route_failed", error=str(exc)[:300])
+        return None
+    return {"question": question, "sql": explained["sql"], "explanation": explanation, "status": "proposed",
+            "error": None, "metric_request": request}
 
 
 # ── 2. run it ────────────────────────────────────────────────────────────────
@@ -169,10 +218,17 @@ async def run_query(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     status = "waiting" if runner.is_project_busy(project_id) else "running"
+    request = payload.get("metric_request")
+    if request and sql != payload.get("sql"):  # edited: it's plain SQL now
+        payload.pop("metric_request", None)
+        request = None
     payload.update(sql=sql, status=status, error=None, columns=None, rows=None, truncated=False)
     message.payload_json = json.dumps(payload)
     await session.commit()
-    asyncio.create_task(_execute(project_id, Path(project.path), mid, runnable))
+    if request:
+        asyncio.create_task(_execute_metric(project_id, mid, request))
+    else:
+        asyncio.create_task(_execute(project_id, Path(project.path), mid, runnable))
     await _publish(project_id, mid, status)
     return message_dto(message)
 
@@ -238,6 +294,27 @@ async def _execute(project_id: int, project_path: Path, mid: int, sql: str) -> N
         project_id, mid,
         status="done", columns=columns, rows=rows[:ROW_LIMIT], truncated=len(rows) > ROW_LIMIT,
     )
+
+
+async def _execute_metric(project_id: int, mid: int, request: dict) -> None:
+    """Run a metric request through the semantic layer (validated, cached, shared runs)."""
+    from app.db import engine as db_engine  # patched in tests, like other background writers
+
+    try:
+        async with db_engine.SessionLocal() as session:
+            project = await _project(session, project_id)
+            status = await semantic_status(session, project)
+            outcome = await run_metric_query(session, project, request, status.adapter_type, rows=ROW_LIMIT)
+    except (SemanticError, SemanticRuntimeUnavailable, QueryInvalid, ExecutionError) as exc:
+        await _update(project_id, mid, status="error", error=getattr(exc, "message", None) or str(exc))
+        return
+    except Exception as exc:  # never leave the query stuck in running
+        log.exception("ai_query_metric_crashed", message_id=mid)
+        await _update(project_id, mid, status="error", error=f"unexpected error: {exc}")
+        return
+    assert outcome is not None
+    await _update(project_id, mid, status="done", columns=outcome.columns, rows=outcome.rows,
+                  truncated=outcome.truncated)
 
 
 # ── 3. answer from the results ───────────────────────────────────────────────

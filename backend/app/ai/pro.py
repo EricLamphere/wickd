@@ -15,6 +15,10 @@ other's types.
     parse_suggested_tests(raw, manifest, unique_id, columns, existing) -> [{column, test, reason, values?, to?, field?}]
     query_prompt(manifest, unique_id, history, question) -> {"messages", "schema", "max_tokens"}
     parse_query(raw) -> {"sql", "explanation"}
+    metric_query_prompt(catalog, history, question) -> {"messages", "schema", "max_tokens"}
+    parse_metric_query(raw, catalog) -> {metrics, group_by, where, order_by, limit, start?, end?,
+        explanation} | {"fallback": "sql", "reason"}
+        (Query data over defined metrics; supports_metric_query() is False on older wickd_pro)
     answer_messages(question, sql, columns, rows, truncated) -> list[message]
     refactor_prompt(manifest, unique_id, history, request) -> {"messages", "schema", "max_tokens"}
     parse_refactor_intent(raw, manifest, unique_id) -> {"op", "unique_id", "model", "new_name",
@@ -130,3 +134,19 @@ def refactor_prompt(manifest: dict, unique_id: str | None, history: list[dict], 
 def parse_refactor_intent(raw: str, manifest: dict, unique_id: str | None) -> dict:
     """Raises ValueError when the model's answer isn't a usable operation."""
     return _pro().parse_refactor_intent(raw, manifest, unique_id)
+
+
+def supports_metric_query() -> bool:
+    """Whether the installed wickd_pro can turn questions into MetricFlow requests."""
+    try:
+        return hasattr(_pro(), "metric_query_prompt")
+    except AiUnavailable:
+        return False
+
+
+def metric_query_prompt(catalog: dict, history: list[dict], question: str) -> dict:
+    return _pro().metric_query_prompt(catalog, history, question)
+
+
+def parse_metric_query(raw: str, catalog: dict) -> dict:
+    return _pro().parse_metric_query(raw, catalog)

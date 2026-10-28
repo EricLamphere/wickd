@@ -30,10 +30,12 @@ from app.ai.client import LlmError
 from app.ai.config import load_ai_config
 from app.ai.documentation import generate_documentation
 from app.ai.errors import NothingToPropose, ProposalError
-from app.ai.gating import REFACTOR_KIND, require_ai, require_proposal_access
+from app.ai.gating import REFACTOR_KIND, require_ai, require_proposal_access, require_semantic_draft
 from app.ai.pro import AiUnavailable
 from app.ai.runtime import RuntimeUnavailable
 from app.ai.selection import SelectionError, item_keys, rebuild
+from app.ai.semantic_draft import KIND as SEMANTIC_KIND
+from app.ai.semantic_draft import generate_semantic_draft, start_semantic_verify
 from app.ai.test_generation import generate_tests
 from app.api.ai_dtos import AiProposalDto, proposal_dto
 from app.api.init import load_project_env
@@ -45,6 +47,9 @@ from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.propagation import proposals as propagation
 from app.refactor.verify import start_verify
+from app.semantic.pro import SemanticDraftUnavailable
+from app.semantic.runtime import RuntimeUnavailable as SemanticRuntimeUnavailable
+from app.semantic.service import SemanticError
 from app.test_targets.service import targets_for_model
 
 log = get_logger(__name__)
@@ -106,6 +111,19 @@ async def document_with_ai(
         title=f"Documentation for {name}",
         action=f"Document {name}" + (" (rewrite all)" if dto.overwrite else ""),
         options={"overwrite": dto.overwrite},
+    )
+
+
+@router.post("/{project_id}/ai/semantic-draft", response_model=AiProposalDto, status_code=202)
+async def draft_semantic_model(
+    project_id: int, dto: AddTestsDto, session: AsyncSession = Depends(get_session)
+) -> AiProposalDto:
+    """Wicky drafts a semantic model + metrics for a model (needs MetricFlow running here)."""
+    await require_semantic_draft(session, project_id)
+    name = dto.unique_id.split(".")[-1]
+    return await _start(
+        session, project_id, dto.unique_id, dto.conversation_id,
+        kind=SEMANTIC_KIND, title=f"Semantic layer for {name}", action=f"Add {name} to the semantic layer", options={},
     )
 
 
@@ -218,7 +236,9 @@ async def _generate(
         if kind == "tests":  # lineage-backed suggestions (join keys, grain), when a scan has them
             options = {**options, "targets": await targets_for_model(project_id, project_path, unique_id)}
         # looked up per call (not a module-level dict) so tests can patch either generator
-        generator = {"document": generate_documentation, "tests": generate_tests}[kind]
+        generator = {
+            "document": generate_documentation, "tests": generate_tests, SEMANTIC_KIND: generate_semantic_draft,
+        }[kind]
         result = await generator(
             project_id=project_id,
             project_path=project_path,
@@ -229,26 +249,30 @@ async def _generate(
             on_text=progress.text,
             **options,
         )
-        error, change, summary = None, result.change, result.summary
+        error, summary = None, result.summary
+        changes = getattr(result, "changes", None) or [result.change]
     except NothingToPropose as exc:
-        status, error, change = "empty", str(exc), None
-    except (ProposalError, SchemaYamlError, RuntimeUnavailable, LlmError, AiUnavailable) as exc:
-        error, change = str(exc), None
+        status, error, changes = "empty", str(exc), []
+    except (ProposalError, SchemaYamlError, RuntimeUnavailable, LlmError, AiUnavailable,
+            SemanticError, SemanticRuntimeUnavailable, SemanticDraftUnavailable) as exc:
+        error, changes = str(exc), []
     except Exception as exc:  # never leave a proposal stuck in `generating`
         log.exception("ai_proposal_crashed", proposal_id=proposal_id, kind=kind)
-        error, change = f"unexpected error: {exc}", None
+        error, changes = f"unexpected error: {exc}", []
 
     async with db_engine.SessionLocal() as session:
         proposal = await session.get(AiProposal, proposal_id)
         if proposal is None or proposal.status != "generating":
             return  # dismissed while generating
-        if change is not None:
-            session.add(AiProposalFile(
-                proposal_id=proposal_id,
-                path=change.path,
-                original_text=change.original,
-                proposed_text=change.proposed,
-            ))
+        if changes:
+            for change in changes:
+                session.add(AiProposalFile(
+                    proposal_id=proposal_id,
+                    path=change.path,
+                    op="create" if change.original is None else "modify",
+                    original_text=change.original,
+                    proposed_text=change.proposed,
+                ))
             proposal.status = "ready"
             proposal.result_json = json.dumps(summary or {})
         else:
@@ -374,6 +398,8 @@ async def _decide(
     await _publish(proposal)
     if proposal.kind == REFACTOR_KIND and proposal.status == "applied":
         start_verify(proposal.id, project_id, Path(project.path))
+    if proposal.kind == SEMANTIC_KIND and proposal.status == "applied":
+        start_semantic_verify(proposal.id, project_id, Path(project.path), result)
 
     selector = _compile_selector(proposal, result, file.path) if accept else None
     if selector:  # refresh the manifest so docs / side pane pick it up
@@ -405,7 +431,7 @@ def finish_if_decided(proposal: AiProposal) -> None:
 def _compile_selector(proposal: AiProposal, result: dict, path: str) -> str | None:
     """The nodes an accepted file documents: the proposal's node, or (lineage
     propagation) every node with items in that file. Refactors run `dbt parse` instead."""
-    if proposal.kind == REFACTOR_KIND:
+    if proposal.kind in (REFACTOR_KIND, SEMANTIC_KIND):  # both run `dbt parse` once applied
         return None
     multi_file_items = (
         result.get("items") if proposal.kind == propagation.KIND

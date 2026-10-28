@@ -49,3 +49,9 @@ export function semanticNodesByType(graph: GraphDto): Record<SemanticType, Model
   for (const list of Object.values(groups)) list.sort((a, b) => a.name.localeCompare(b.name));
   return groups;
 }
+
+/** The semantic model built on `model` (a direct child in the graph), if any. */
+export function semanticModelOf(graph: GraphDto | null | undefined, model: ModelNode): ModelNode | null {
+  if (!graph || model.resource_type !== 'model') return null;
+  return childrenOfType(graph, model.unique_id, ['semantic_model'])[0] ?? null;
+}

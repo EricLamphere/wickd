@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exploreSearch, previewBody } from './exploreLink';
+import { exploreSearch, previewBody, requestSearch } from './exploreLink';
 import { stateFromParams, toRequest, type GroupByOption } from './metricQuery';
 
 const TIME: GroupByOption = { name: 'metric_time', kind: 'time', nativeGrain: 'day', label: null, description: null };
@@ -23,5 +23,20 @@ describe('exploreSearch', () => {
       const state = stateFromParams(new URLSearchParams(exploreSearch('metric', 'revenue', { grain }) as string));
       expect(toRequest(state, [TIME])).toEqual(previewBody('revenue', grain));
     }
+  });
+});
+
+describe('requestSearch', () => {
+  it('turns a MetricFlow request into the explorer state that rebuilds it', () => {
+    const body = {
+      metrics: ['revenue'], group_by: ['metric_time__week', 'customer__region'],
+      where: ["{{ Dimension('customer__region') }} = 'EMEA'"], order_by: ['-metric_time__week'], limit: 100, start: '2026-03-01',
+    };
+    const state = stateFromParams(new URLSearchParams(requestSearch(body)));
+    expect(state).toMatchObject({ metrics: ['revenue'], groupBy: ['metric_time', 'customer__region'], grain: 'week',
+      orderBy: ['-metric_time'], limit: 100, start: '2026-03-01' });
+    const options: GroupByOption[] = [TIME, { name: 'customer__region', kind: 'categorical', nativeGrain: null, label: null, description: null }];
+    expect(toRequest(state, options)).toEqual(body);
+    expect(requestSearch({ saved_query: 'weekly' })).toBe('saved=weekly');
   });
 });

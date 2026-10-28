@@ -1,7 +1,7 @@
 // "Explore" links into the Metrics page from the SidePane, Docs and the command palette.
 // Pure; unit-tested in exploreLink.test.ts.
 import type { MetricQueryBody } from '../../../../lib/semanticApi';
-import { DEFAULT_GRAIN, EMPTY_STATE, METRIC_TIME, writeState } from './metricQuery';
+import { DEFAULT_GRAIN, EMPTY_STATE, GRAIN_ORDER, METRIC_TIME, writeState } from './metricQuery';
 
 export const EXPLORABLE_TYPES = new Set(['metric', 'semantic_model', 'saved_query']);
 
@@ -26,4 +26,32 @@ export function exploreUrl(projectId: number, search: string): string {
 export function previewBody(metric: string, grain?: string | null): MetricQueryBody {
   const column = `${METRIC_TIME}__${grain || DEFAULT_GRAIN}`;
   return { metrics: [metric], group_by: [column], order_by: [`-${column}`] };
+}
+
+const GRAIN_SUFFIX = new RegExp(`^(.+)__(${GRAIN_ORDER.join('|')})$`);
+
+/** A MetricFlow request (e.g. Wicky's Query data answer) as a Metrics page search string.
+ *  A group-by ending in a grain (metric_time__week) is a time dimension at that grain. */
+export function requestSearch(body: MetricQueryBody): string {
+  if (body.saved_query) return writeState(new URLSearchParams(), { ...EMPTY_STATE, savedQuery: body.saved_query }).toString();
+  let grain = DEFAULT_GRAIN;
+  const base = (name: string) => {
+    const m = GRAIN_SUFFIX.exec(name);
+    if (!m) return name;
+    grain = m[2];
+    return m[1];
+  };
+  const groupBy = (body.group_by ?? []).map(base);
+  const orderBy = (body.order_by ?? []).map((o) => (o.startsWith('-') ? `-${base(o.slice(1))}` : base(o)));
+  return writeState(new URLSearchParams(), {
+    ...EMPTY_STATE,
+    metrics: body.metrics ?? [],
+    groupBy,
+    grain,
+    filters: body.where ?? [],
+    start: body.start ?? '',
+    end: body.end ?? '',
+    orderBy,
+    limit: body.limit ?? null,
+  }).toString();
 }

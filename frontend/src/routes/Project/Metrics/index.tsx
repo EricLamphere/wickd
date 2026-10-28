@@ -10,6 +10,7 @@ import { semanticApi, semanticErrorBody, type CatalogSavedQuery, type SemanticCa
 import { useSemanticStatus } from '../components/semantic/useSemantic';
 import NavRail from '../components/NavRail';
 import { useOpenInFiles } from '../lib/openInFiles';
+import { DraftFromModel } from './DraftFromModel';
 import { MetricsSidebar } from './MetricsSidebar';
 import { MetricsUnavailable } from './MetricsUnavailable';
 import { QueryBar } from './QueryBar';
@@ -51,7 +52,13 @@ function MetricsContent({ id }: { id: number }) {
   if (isLoading) return <p className="p-6 text-xs text-gray-500">Loading…</p>;
   if (error || !status) return <p className="p-6 text-xs text-red-400">Couldn't load the semantic layer status: {errorText(error)}</p>;
   if (status.counts.metrics === 0) {
-    return <p className="p-6 text-xs text-gray-500">This project has no metrics yet. Define some in YAML and they'll show up here after dbt parses.</p>;
+    return (
+      <div className="flex flex-col items-center justify-center gap-4 h-full p-8 text-center">
+        <h2 className="text-sm font-medium text-gray-200">No metrics yet</h2>
+        <p className="max-w-md text-xs text-gray-500">Define semantic models and metrics in YAML and they show up here after dbt parses.</p>
+        <DraftFromModel projectId={id} />
+      </div>
+    );
   }
   if (!ready) return <MetricsUnavailable projectId={id} status={status} />;
   if (catalogQuery.isLoading) return <p className="p-6 text-xs text-gray-500">Loading metrics…</p>;

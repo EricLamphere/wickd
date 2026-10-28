@@ -82,6 +82,19 @@ dbt-core versions.
 - **Per project**: `METRICFLOW_MODE` in **Environment → Settings → Project**: `auto`,
   `off`, or empty to use the global default.
 
+## Draft a semantic model with Wicky (Pro)
+
+Most projects don't have a semantic layer yet. **Add to semantic layer** (a model's side pane, Wicky's quick actions, or **Draft from this model** on an empty Metrics page) drafts one for a model:
+
+1. wickd reads the model's columns and types from the warehouse, a 500-row sample, its tests and your existing semantic models. The primary key comes from `unique` + `not_null` tests (or a column that's unique in the sample), joins from `relationships` tests or from column names that match existing entities (`customer_id` → `customer`), dimensions from date columns and low-cardinality text and booleans, measures from numeric columns.
+2. With an AI model set up, Wicky names things, writes descriptions and picks the measures and 3–8 metrics, including a ratio when one makes sense. It can only use real columns. Without an AI model, you get wickd's draft from the column facts.
+3. **Before you see it**, the draft is checked with MetricFlow against your project's real semantic layer (nothing is written), and each metric runs once with `LIMIT 5`. The review shows what every metric returns, or why it failed. If the AI's version breaks a MetricFlow rule, wickd falls back to its own draft.
+4. Review the YAML like any other Wicky change: accept or reject the semantic model and each metric. A metric whose inputs you reject is left out with them.
+
+The YAML matches your project: the legacy spec (`semantic_models:` + `metrics:` entries) unless you're on dbt 1.12+ and already use the latest spec (or have no semantic YAML yet), in which case it goes on the model's own entry and columns. It never mixes the two. A model with no date column gets entities and dimensions only (MetricFlow needs a time dimension for measures). If the project has no time spine, a `metricflow_time_spine` model (plus its `time_spine:` config on dbt 1.9+) is proposed as separate files you can reject.
+
+After you accept, wickd runs `dbt parse` and MetricFlow's validation, and shows the result under the change in the chat.
+
 ## Query your metrics
 
 The **Metrics** page lets you pick metrics, group-bys, a grain and filters, see MetricFlow's SQL, run it and chart the result. See [Explore metrics](explore-metrics.md).

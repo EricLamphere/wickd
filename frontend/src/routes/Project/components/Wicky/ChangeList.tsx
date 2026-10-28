@@ -1,5 +1,6 @@
 import { Check, RotateCcw, X } from 'lucide-react';
 import type { ProposalItem } from './proposalItems';
+import { SmokeRows } from './SmokeRows';
 
 export type ItemState = 'pending' | 'accepted' | 'rejected';
 
@@ -45,6 +46,7 @@ export function ChangeList({ items, stateOf, focused, disabled, onFocus, onDecid
                 <span className="ml-1 text-amber-400">✗ {failures} failing</span>
               )}
               {item.why && <span className="block text-gray-500 break-words">{item.why}</span>}
+              {item.semantic?.kind === 'metric' && <SmokeRows smoke={item.semantic.smoke} />}
             </span>
             <span className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
               {state === 'pending' ? (

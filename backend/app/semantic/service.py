@@ -7,7 +7,8 @@ in dbt_project.yml works (the `mf` CLI hard-codes `target/`).
 import asyncio
 import hashlib
 import json
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ log = get_logger(__name__)
 
 DEFAULT_TARGET = "target"
 EXPLAIN_TIMEOUT_S = 120.0  # the first call may build the sidecar venv
+DRAFT_TIMEOUT_S = 180.0  # validation + one explain per metric
 
 
 class SemanticError(Exception):
@@ -184,6 +186,30 @@ async def explain(project_path: Path, query: dict[str, Any]) -> dict:
 async def dimension_values_sql(project_path: Path, metrics: list[str], dimension: str) -> dict:
     payload = {"metrics": metrics, "dimension": dimension}
     return await _call(await manifest_info(project_path), "dimension_values", payload)
+
+
+EMPTY_SEMANTIC_MANIFEST = {
+    "semantic_models": [], "metrics": [], "saved_queries": [],
+    "project_configuration": {"time_spine_table_configurations": [], "time_spines": [], "metadata": None},
+}
+
+
+async def validate_draft(
+    project_path: Path, extra: dict[str, Any], smoke: list[str], smoke_group_by: list[str]
+) -> dict:
+    """A draft checked against the project's semantic manifest in the sidecar, nothing written:
+    {errors, warnings (only what the draft adds), smoke: {metric: {sql} | {error}}}.
+
+    A project without semantic_manifest.json yet (no semantic YAML) is checked against an
+    empty one."""
+    info = await manifest_info(project_path)
+    payload = {"extra": extra, "smoke": smoke, "smoke_group_by": smoke_group_by}
+    if info.semantic_manifest.exists():
+        return await _call(info, "validate_draft", payload, timeout=DRAFT_TIMEOUT_S)
+    with tempfile.TemporaryDirectory(prefix="wickd-semantic-") as tmp:
+        empty = Path(tmp) / "semantic_manifest.json"
+        empty.write_text(json.dumps(EMPTY_SEMANTIC_MANIFEST), encoding="utf-8")
+        return await _call(replace(info, semantic_manifest=empty), "validate_draft", payload, timeout=DRAFT_TIMEOUT_S)
 
 
 async def catalog(project_path: Path) -> dict:

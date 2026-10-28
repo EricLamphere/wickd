@@ -1,4 +1,4 @@
-import type { AiProposalDto, AiSuggestedTest, PropagationItem } from '../../../../lib/aiApi';
+import { semanticItems, type AiProposalDto, type AiSuggestedTest, type PropagationItem, type SemanticDraftItem } from '../../../../lib/aiApi';
 import { describeTest, testSubject, testWhy } from '../../../../lib/partialTests';
 
 /** One separately acceptable piece of a proposal: a test, a description, or inherited tags. */
@@ -13,6 +13,28 @@ export interface ProposalItem {
   /** Lineage propagation / batch tests: the item's schema file. */
   file?: string;
   propagation?: PropagationItem;
+  /** "Add to semantic layer": the semantic model, a metric (with its smoke query) or the time spine. */
+  semantic?: SemanticDraftItem;
+}
+
+function semanticDetail(i: SemanticDraftItem): string {
+  if (i.kind === 'semantic_model') {
+    const parts = [
+      i.entities?.length ? `entities ${i.entities.join(', ')}` : '',
+      i.dimensions?.length ? `${i.dimensions.length} dimension${i.dimensions.length === 1 ? '' : 's'}` : '',
+      i.measures?.length ? `measures ${i.measures.map((m) => m.split(' = ')[0]).join(', ')}` : '',
+      i.agg_time_dimension ? `time: ${i.agg_time_dimension}` : '',
+    ];
+    return parts.filter(Boolean).join(' · ');
+  }
+  if (i.kind === 'metric') return `${i.type ?? 'metric'}: ${i.definition ?? ''}`;
+  return i.description;
+}
+
+function semanticTitle(i: SemanticDraftItem): string {
+  if (i.kind === 'semantic_model') return `semantic model ${i.name}`;
+  if (i.kind === 'metric') return i.label && i.label !== i.name ? `${i.name} (${i.label})` : i.name;
+  return i.file;
 }
 
 const KIND_LABELS: Record<string, string> = { identity: 'same column', rename: 'renamed', cast: 'cast', derived: 'derived' };
@@ -27,6 +49,12 @@ function propagationDetail(item: PropagationItem): string {
 }
 
 export function proposalItems(p: AiProposalDto): ProposalItem[] {
+  if (p.kind === 'semantic') {
+    return semanticItems(p).map((i) => ({
+      key: i.key, title: semanticTitle(i), detail: semanticDetail(i),
+      why: i.kind === 'time_spine' ? undefined : i.description || undefined, file: i.file, semantic: i,
+    }));
+  }
   if (p.kind === 'propagate') {
     return (p.result.items ?? []).map((i) => ({
       key: i.key, title: `${i.name}.${i.column}`, detail: propagationDetail(i), file: i.file, propagation: i,
@@ -76,6 +104,9 @@ interface Locator {
 
 /** Where an item sits: the entry it belongs to, and the line to find inside it. */
 function locator(p: AiProposalDto, item: ProposalItem): Locator {
+  if (item.semantic) {  // the entry named after it (semantic model / metric / time spine)
+    return { anchor: item.semantic.name, marker: /\S/, direct: false };
+  }
   if (item.propagation) {
     const marker = item.propagation.field === 'tags' ? /^\s*(-\s+)?tags:/ : /^\s*(-\s+)?description:/;
     return { parent: item.propagation.name, anchor: item.propagation.column, marker, direct: true };

@@ -56,10 +56,10 @@ export function WickyPane({ projectId, graph, selectedNodeId }: WickyPaneProps) 
 
   useEffect(() => {
     const onOpen = (e: Event) => {
-      const { question = '', chatMode, uniqueId, mode = 'ask' } = (e as CustomEvent<OpenWickyDetail>).detail ?? {};
+      const { question = '', chatMode, uniqueId, mode = 'ask', action } = (e as CustomEvent<OpenWickyDetail>).detail ?? {};
       setOpen(true);
       if (uniqueId) setContextNodeId(uniqueId);
-      setRequest({ nonce: Date.now(), text: question, mode, chatMode });
+      setRequest({ nonce: Date.now(), text: question, mode, chatMode, action });
     };
     window.addEventListener(OPEN_WICKY_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_WICKY_EVENT, onOpen);

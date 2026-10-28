@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Loader2, MessageSquareText, Play } from 'lucide-react';
+import { AlertTriangle, LineChart, Loader2, MessageSquareText, Pencil, Play, Sigma } from 'lucide-react';
 import { DataTable } from '../../../../components/DataTable';
 import { aiApi, aiErrorMessage, type AiMessageDto, type AiQueryPayload } from '../../../../lib/aiApi';
+import type { MetricQueryBody } from '../../../../lib/semanticApi';
+import { exploreUrl, requestSearch } from '../../Metrics/lib/exploreLink';
+import { filterLabel } from '../../Metrics/lib/metricQuery';
 
 interface QueryEntryProps {
   projectId: number;
@@ -14,6 +18,29 @@ interface QueryEntryProps {
 }
 
 const RUNNING = new Set(['waiting', 'running']);
+const CHIP = 'px-1.5 py-0.5 rounded border border-gray-700 bg-gray-800/60 font-mono text-[10px] text-gray-300';
+
+/** What a metric answer asks MetricFlow for: metrics, group-bys, filters, period. */
+function MetricRequest({ request, onExplore }: { request: MetricQueryBody; onExplore: () => void }) {
+  const period = [request.start, request.end].some(Boolean) ? `${request.start || '…'} – ${request.end || '…'}` : null;
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="flex items-center gap-1.5 text-[11px] text-brand-300">
+        <Sigma size={12} /> Answered with your defined metrics, so the numbers match their definitions.
+      </span>
+      <div className="flex flex-wrap items-center gap-1">
+        {(request.metrics ?? []).map((m) => <span key={m} className={`${CHIP} text-brand-200`}>{m}</span>)}
+        {(request.group_by ?? []).length > 0 && <span className="text-[10px] text-gray-500">by</span>}
+        {(request.group_by ?? []).map((g) => <span key={g} className={CHIP}>{g}</span>)}
+        {(request.where ?? []).map((w) => <span key={w} className={CHIP} title={w}>{filterLabel(w)}</span>)}
+        {period && <span className={CHIP}>{period}</span>}
+        <button onClick={onExplore} className="ml-auto flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-200">
+          <LineChart size={11} /> Open in explorer
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /**
  * SQL Wicky wrote for a data question: review (and edit) it, run it, see the rows,
@@ -21,8 +48,12 @@ const RUNNING = new Set(['waiting', 'running']);
  */
 export function QueryEntry({ projectId, message, onAnswer, busy }: QueryEntryProps) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const payload = message.payload as AiQueryPayload;
+  const request = payload.metric_request;
   const [sql, setSql] = useState(payload.sql);
+  // a metric answer's SQL is MetricFlow's: read-only until the user chooses to edit it as SQL
+  const [editing, setEditing] = useState(!request);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const status = useQuery({ queryKey: ['ai-status'], queryFn: aiApi.status }).data;
@@ -58,10 +89,11 @@ export function QueryEntry({ projectId, message, onAnswer, busy }: QueryEntryPro
   return (
     <div className="flex flex-col gap-1.5 px-2.5 py-2 rounded-lg border border-gray-800 bg-surface-elevated/40 text-gray-300">
       {message.content && <p>{message.content}</p>}
+      {request && <MetricRequest request={request} onExplore={() => navigate(exploreUrl(projectId, requestSearch(request)))} />}
       <textarea
         value={sql}
         onChange={(e) => setSql(e.target.value)}
-        readOnly={running}
+        readOnly={running || !editing}
         spellCheck={false}
         rows={Math.min(12, sql.split('\n').length + 1)}
         className="w-full resize-y px-2 py-1.5 rounded bg-surface-panel border border-gray-800 font-mono text-[11px] text-gray-200 focus:outline-none focus:border-brand-500"
@@ -76,6 +108,15 @@ export function QueryEntry({ projectId, message, onAnswer, busy }: QueryEntryPro
           {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
           {payload.status === 'done' || payload.status === 'error' ? 'Run again' : 'Run'}
         </button>
+        {request && !editing && (
+          <button
+            onClick={() => setEditing(true)}
+            title="Edit the SQL by hand; it then runs as plain SQL instead of through the metric definitions"
+            className="flex items-center gap-1 px-2 py-1 rounded border border-gray-700 text-gray-300 hover:bg-gray-700"
+          >
+            <Pencil size={11} /> Edit as SQL
+          </button>
+        )}
         <span className="text-gray-500">
           {payload.status === 'waiting' && 'Waiting for the current dbt command to finish…'}
           {payload.status === 'running' && 'Running in the warehouse…'}

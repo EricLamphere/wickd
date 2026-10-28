@@ -9,7 +9,7 @@ Protocol: one JSON object per line on stdin, one reply per line on stdout.
   reply    {"id": "...", "ok": true, "result": {...}}
          | {"id": "...", "ok": false, "error": {"code": "...", "message": "..."}}
 
-Ops: ping, load, catalog, explain, dimension_values, validate. MetricFlow prints
+Ops: ping, load, catalog, explain, dimension_values, validate, validate_draft. MetricFlow prints
 warnings with print(), so stdout is reserved for replies and sys.stdout points at
 stderr while requests run.
 """
@@ -316,6 +316,77 @@ def op_validate(req: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _merged(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    """`base` (semantic_manifest.json) with the draft's objects added (same names replaced)."""
+    merged = dict(base)
+    for key in ("semantic_models", "metrics"):
+        new = [x for x in extra.get(key) or [] if isinstance(x, dict)]
+        names = {x.get("name") for x in new}
+        merged[key] = [x for x in base.get(key) or [] if x.get("name") not in names] + new
+    spines = extra.get("time_spines") or []
+    config = dict(base.get("project_configuration") or {})
+    if spines and not config.get("time_spines") and not config.get("time_spine_table_configurations"):
+        merged["project_configuration"] = {**config, "time_spines": spines}
+    return merged
+
+
+def _new_issues(issues: Any, known: set[str]) -> list[dict[str, Any]]:
+    return [_issue(i) for i in issues if str(i.message) not in known]
+
+
+def op_validate_draft(req: dict[str, Any]) -> dict[str, Any]:
+    """A draft (semantic models / metrics in manifest JSON) checked against the project's
+    semantic manifest without writing anything: MetricFlow's validations (only issues the
+    draft adds), then the SQL of a LIMIT smoke query per metric in `smoke`.
+
+    request: extra {semantic_models, metrics, time_spines?}, smoke [metric], smoke_group_by [name]
+    result:  {errors, warnings, smoke: {metric: {sql} | {error}}}
+    """
+    from metricflow_semantic_interfaces.validations.semantic_manifest_validator import (
+        SemanticManifestValidator,
+    )
+
+    path = Path(_require_str(req, "manifest_path"))
+    base_manifest, _ = _manifest(str(path))
+    extra = req.get("extra")
+    if not isinstance(extra, dict):
+        raise WorkerError("bad_request", "`extra` must be an object")
+    validator = SemanticManifestValidator()
+    try:
+        base_results = validator.validate_semantic_manifest(base_manifest)
+        merged = _merged(json.loads(path.read_text()), extra)
+        manifest = parse_manifest_from_dbt_generated_manifest(manifest_json_string=json.dumps(merged))
+        results = validator.validate_semantic_manifest(manifest)
+    except Exception as exc:  # noqa: BLE001 — the draft doesn't even load: report it
+        message = f"MetricFlow couldn't read the draft: {exc}".strip()
+        return {"errors": [{"level": "error", "message": message[:2000], "object_type": None, "object_name": None,
+                            "element_type": None, "element_name": None}], "warnings": [], "smoke": {}}
+    errors = _new_issues(results.errors, {str(i.message) for i in base_results.errors})
+    warnings = _new_issues(results.warnings, {str(i.message) for i in base_results.warnings})
+    if errors:
+        return {"errors": errors, "warnings": warnings, "smoke": {}}
+    smoke: dict[str, dict[str, str]] = {}
+    dialect = str(req.get("dialect") or "").lower()
+    metrics = _str_list(req, "smoke") or []
+    if metrics and dialect in _DIALECTS:
+        try:
+            engine = MetricFlowEngine(semantic_manifest_lookup=SemanticManifestLookup(manifest),
+                                      sql_client=RenderOnlyClient(dialect))
+        except Exception as exc:  # noqa: BLE001 — reported per metric, validation still stands
+            return {"errors": [], "warnings": warnings, "smoke": {m: {"error": str(exc)} for m in metrics}}
+        group_by = _str_list(req, "smoke_group_by") or []
+        for metric in metrics:
+            try:
+                result = engine.explain(MetricFlowQueryRequest.create(
+                    metric_names=[metric], group_by_names=group_by,
+                    order_by_names=[f"-{g}" for g in group_by[:1]], limit=5,
+                ))
+                smoke[metric] = {"sql": result.sql_statement.sql}
+            except Exception as exc:  # noqa: BLE001 — MetricFlow raises many kinds; reported per metric
+                smoke[metric] = {"error": str(exc).strip()[:1500]}
+    return {"errors": [], "warnings": warnings, "smoke": smoke}
+
+
 OPS = {
     "ping": op_ping,
     "load": op_load,
@@ -323,6 +394,7 @@ OPS = {
     "explain": op_explain,
     "dimension_values": op_dimension_values,
     "validate": op_validate,
+    "validate_draft": op_validate_draft,
 }
 
 

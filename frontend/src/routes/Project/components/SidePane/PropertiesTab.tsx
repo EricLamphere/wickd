@@ -8,6 +8,7 @@ import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsBut
 import { childrenOfType, isSemanticType } from '../../lib/semantic';
 import { SemanticDetails } from './SemanticDetails';
 import { ExploreButton } from '../../Metrics/ExploreButton';
+import { AddToSemanticLayerButton } from '../semantic/AddToSemanticLayerButton';
 import { startRefactor } from '../../lib/refactorEvents';
 
 type RunCommand = 'run' | 'build' | 'test';
@@ -596,6 +597,7 @@ export function PropertiesTab({
           <DocumentModelButton key={model.unique_id} projectId={projectId} model={model} />
         )}
         {canDocument(model) && <InheritDescriptionsButton projectId={projectId} uniqueId={model.unique_id} />}
+        <AddToSemanticLayerButton model={model} graph={graph} />
         {model.resource_type === 'model' && model.original_file_path && (
           <button
             onClick={() => startRefactor({ op: 'rename_model', uniqueId: model.unique_id, model: model.name })}

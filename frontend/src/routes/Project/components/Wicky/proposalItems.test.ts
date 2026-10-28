@@ -126,3 +126,32 @@ models:
     expect(findItemLine(MULTI, p, combo)).toBe(10);
   });
 });
+
+describe('semantic drafts', () => {
+  const items = [
+    { key: 'semantic_model', file: 'models/schema.yml', kind: 'semantic_model', name: 'payments', description: 'Payments.',
+      entities: ['payment (primary)'], dimensions: ['paid_at', 'method'], measures: ['paid = sum(amount)'], agg_time_dimension: 'paid_at' },
+    { key: 'metric:paid', file: 'models/schema.yml', kind: 'metric', name: 'paid', label: 'Paid', description: '',
+      type: 'simple', definition: 'sum(amount)', smoke: { columns: ['d', 'paid'], rows: [['2026-10-27', 3]] } },
+    { key: 'time_spine_model', file: 'models/metricflow_time_spine.sql', kind: 'time_spine', name: 'metricflow_time_spine',
+      description: 'Time spine model (one row per day)' },
+  ];
+  const p = proposal('semantic', { items: items as never });
+
+  it('lists the semantic model, each metric and the time spine, per file', () => {
+    const listed = proposalItems(p);
+    expect(listed.map((i) => [i.key, i.title, i.detail])).toEqual([
+      ['semantic_model', 'semantic model payments', 'entities payment (primary) · 2 dimensions · measures paid · time: paid_at'],
+      ['metric:paid', 'paid (Paid)', 'simple: sum(amount)'],
+      ['time_spine_model', 'models/metricflow_time_spine.sql', 'Time spine model (one row per day)'],
+    ]);
+    expect(itemsInFile(listed, 'models/schema.yml').map((i) => i.key)).toEqual(['semantic_model', 'metric:paid']);
+  });
+
+  it('finds an item by its entry name', () => {
+    const yaml = 'semantic_models:\n  - name: payments\n    model: ref(\'x\')\nmetrics:\n  - name: paid\n    type: simple\n';
+    const [model, metric] = proposalItems(p);
+    expect(findItemLine(yaml, p, model)).toBe(3);
+    expect(findItemLine(yaml, p, metric)).toBe(6);
+  });
+});

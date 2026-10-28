@@ -12,6 +12,14 @@ files: each item names its file, and only that file's items are rebuilt.
 
 from pathlib import PurePosixPath
 
+from app.ai.semantic_draft import KIND as SEMANTIC_KIND
+from app.ai.semantic_draft import (
+    SPINE_SQL,
+    SPINE_SQL_KEY,
+    SPINE_YAML,
+    SPINE_YAML_KEY,
+    render_semantic,
+)
 from app.dbt.schema_descriptions import set_descriptions
 from app.dbt.schema_yaml import node_text
 from app.propagation import proposals as propagation
@@ -27,7 +35,7 @@ class SelectionError(ValueError):
 
 def item_keys(kind: str, result: dict, path: str | None = None) -> list[str]:
     """The proposal's items (for a multi-file proposal, those in the file at `path`)."""
-    if kind == propagation.KIND:
+    if kind in (propagation.KIND, SEMANTIC_KIND):
         return [i["key"] for i in result.get("items") or [] if path is None or i.get("file") == path]
     if kind == "tests":
         return [
@@ -51,6 +59,8 @@ def rebuild(kind: str, result: dict, original: str | None, path: str, keys: list
         chosen = set(keys)
         items = [i for i in result["items"] if i.get("file") == path and i["key"] in chosen]
         return propagation.render_file(original, filename, items)
+    if kind == SEMANTIC_KIND:
+        return _rebuild_semantic(result, original, path, keys)
     if kind == "tests" and result.get("batch"):
         return _rebuild_batch_tests(result, original, path, filename, keys)
 
@@ -95,3 +105,16 @@ def _rebuild_batch_tests(result: dict, original: str | None, path: str, filename
     for (resource_key, name), tests in by_node.items():
         text = render_tests(text, filename, resource_key, name, tests, result.get("dbt_version"))
     return text if text is not None else ""
+
+
+def _rebuild_semantic(result: dict, original: str | None, path: str, keys: list[str]) -> str:
+    """The YAML file re-rendered for the chosen items; a time spine file is all or nothing."""
+    available = item_keys(SEMANTIC_KIND, result, path)
+    unknown = set(keys) - set(available)
+    if not available or unknown:
+        raise SelectionError(f"unknown items: {', '.join(sorted(unknown))}" if unknown else "no items in this file")
+    if available == [SPINE_SQL_KEY]:
+        return SPINE_SQL if keys else ""
+    if available == [SPINE_YAML_KEY]:
+        return SPINE_YAML if keys else ""
+    return render_semantic(result["plan"], original, path, keys)

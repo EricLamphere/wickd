@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai import file_ops
 from app.ai.gating import REFACTOR_KIND, require_proposal_access
 from app.ai.selection import item_keys
+from app.ai.semantic_draft import KIND as SEMANTIC_KIND
 from app.api import ai_proposals
 from app.api.ai_dtos import AiProposalDto, proposal_dto
 from app.api.ai_proposals import _compile_selector, _load, _publish, finish_if_decided
@@ -104,6 +105,8 @@ async def accept_all(
     await _publish(proposal)
     if proposal.kind == REFACTOR_KIND and proposal.status == "applied":
         start_verify(proposal.id, project_id, root)
+    elif proposal.kind == SEMANTIC_KIND and proposal.status == "applied":
+        ai_proposals.start_semantic_verify(proposal.id, project_id, root, json.loads(proposal.result_json or "{}"))
     elif names := _applied_nodes(proposal, pending):
         # refresh the manifest so docs / side pane pick it up (as accepting one file does)
         asyncio.create_task(ai_proposals._compile_model(project_id, str(root), " ".join(names)))

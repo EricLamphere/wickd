@@ -53,6 +53,14 @@ class AiProposalResultDto(BaseModel):
     manual: list[dict] = []
     notes: list[str] = []
     verify: dict | None = None
+    # semantic (Add to semantic layer): items above are [{key, file, kind: semantic_model |
+    # metric | time_spine, name, label?, description, definition?, type?, smoke?: {columns,
+    # rows} | {error}, entities? / dimensions? / measures?}]; the spec written (legacy |
+    # latest), the model, the semantic model's name and MetricFlow warnings for the draft
+    spec: str | None = None
+    model: str | None = None
+    semantic_model: str | None = None
+    warnings: list[str] = []
 
 
 class AiProposalDto(BaseModel):

@@ -8,6 +8,7 @@ import { useAiProposals, useAiStatus, useWickyConversation } from './useAi';
 import { AiSetup } from './AiSetup';
 import { QuickActions } from './QuickActions';
 import { AiChat } from './AiChat';
+import { semanticModelOf } from '../../lib/semantic';
 
 interface WickyContentProps {
   projectId: number;
@@ -85,6 +86,8 @@ function WickyReady({ projectId, model, graph, request: external, onRequestTaken
           proposals={proposals}
           ensureConversation={chat.ensure}
           failing={isFailing(model, graph)}
+          inSemanticLayer={!!semanticModelOf(graph, model)}
+          autoStart={request?.action ? { nonce: request.nonce, action: request.action } : null}
           onExplainFailure={() => setRequest({
             nonce: Date.now(),
             text: `Explain why ${model.name} is failing`,

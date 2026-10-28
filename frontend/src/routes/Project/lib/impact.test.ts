@@ -111,7 +111,7 @@ describe('computeImpact', () => {
     expect(summary.testsOnSeeds).toBe(1);
     expect(summary.testsDownstream).toBe(2);
     expect(summary.unitTests).toBe(1);
-    expect(summary.flagCounts).toEqual({ untested: 0, exposure: 1, incremental: 1, failing: 1, stale: 0 });
+    expect(summary.flagCounts).toEqual({ untested: 0, exposure: 1, metric: 0, incremental: 1, failing: 1, stale: 0 });
   });
 
   it('merges several seeds, keeping seeds out of the downstream levels', () => {
@@ -209,5 +209,44 @@ describe('buildExactSelector', () => {
     const g = sampleGraph();
     const nodes = g.nodes.filter((n) => ['model.p.int', 'model.p.stg', 'exposure.p.dash', 'source.p.raw_orders'].includes(n.unique_id));
     expect(buildExactSelector(nodes)).toBe('int source:shop.raw_orders stg');
+  });
+});
+
+describe('semantic layer nodes', () => {
+  function semanticGraph(): GraphDto {
+    const g = sampleGraph();
+    return {
+      ...g,
+      nodes: [
+        ...g.nodes,
+        node('semantic_model.p.orders', { materialized: null }),
+        node('metric.p.revenue', { materialized: null }),
+        node('saved_query.p.weekly', { materialized: null }),
+      ],
+      edges: [
+        ...g.edges,
+        e('model.p.fct', 'semantic_model.p.orders'),
+        e('semantic_model.p.orders', 'metric.p.revenue'),
+        e('metric.p.revenue', 'saved_query.p.weekly'),
+      ],
+    };
+  }
+
+  it('reaches semantic models, metrics and saved queries and flags metrics', () => {
+    const impact = computeImpact(semanticGraph(), ['model.p.fct']);
+    const downstream = impact.levels.flatMap((l) => l.nodes);
+    expect(ids(downstream)).toEqual(
+      expect.arrayContaining(['semantic_model.p.orders', 'metric.p.revenue', 'saved_query.p.weekly']),
+    );
+    expect(impact.summary.flagCounts.metric).toBe(2);
+    expect(formatImpactCounts(impact.summary)).toBe('1 exposure · 1 semantic model · 1 metric · 1 saved query · 2 tests');
+  });
+
+  it('leaves semantic nodes out of build selectors', () => {
+    const g = semanticGraph();
+    const pick = (id: string) => g.nodes.find((n) => n.unique_id === id)!;
+    expect(buildImpactSelector([pick('model.p.fct'), pick('metric.p.revenue')])).toBe('fct+');
+    expect(buildExactSelector([pick('semantic_model.p.orders'), pick('model.p.fct')])).toBe('fct');
+    expect(selectorFor(pick('metric.p.revenue'))).toBe('metric:revenue');
   });
 });

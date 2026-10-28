@@ -39,6 +39,8 @@ class Project(Base):
     last_init_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_init_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_init_failed_step: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # MetricFlow for this project: '' = the global default (app_settings metricflow_mode), auto, off
+    metricflow_mode: Mapped[str] = mapped_column(String(16), default="", server_default="")
 
     init_steps: Mapped[list["InitStep"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="InitStep.order"
@@ -163,6 +165,27 @@ class DriftSnapshot(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # {materialization: count} of models the scan skipped (views, ephemeral, …)
     skipped_json: Mapped[str] = mapped_column(Text, default="{}")
+
+
+class SemanticCheckSnapshot(Base):
+    """One Health → Semantic layer run (MetricFlow validations), see app/api/semantic.py."""
+
+    __tablename__ = "semantic_check_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="running")  # running | done | error
+    # {errors, warnings, future_errors: [issue], warehouse: [{metric, ok, error}] | null}
+    results_json: Mapped[str] = mapped_column(Text, default="{}")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # sha1 of semantic_manifest.json when the check started (stale once it differs)
+    manifest_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class FreshnessSnapshot(Base):

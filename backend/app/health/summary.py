@@ -1,5 +1,6 @@
-"""Status of the Health page's three checks (connection, schema drift, source
-freshness), for the overview cards, tab badges and the nav-rail dot.
+"""Status of the Health page's checks (connection, schema drift, source freshness and,
+for projects with a semantic layer, MetricFlow validations), for the overview cards,
+tab badges and the nav-rail dot.
 
 Pure: callers load the stored results; nothing here touches the DB or dbt.
 """
@@ -21,6 +22,8 @@ class CheckSummary:
     finished_at: str | None
     target: str | None
     stale_reasons: tuple[str, ...] = ()
+    # False when the check can't run as things stand (MetricFlow off, or this dbt-core can't run it)
+    runnable: bool = True
 
 
 NOT_RUN = CheckSummary(status="not_run", headline="Not run yet", issues=0, finished_at=None, target=None)
@@ -120,6 +123,53 @@ def summarize_freshness(
         finished_at=_iso(finished),
         target=snap["target"],
         stale_reasons=_stale(snap["target"], current_target, finished, now),
+    )
+
+
+def summarize_semantic(
+    snap: dict[str, Any] | None,
+    *,
+    metricflow_off: bool,
+    manifest_hash: str | None,
+    blocked_reason: str | None = None,
+) -> CheckSummary:
+    """`snap` holds the latest semantic check's status, results, finished_at, manifest_hash;
+    `blocked_reason` says why this dbt-core can't run MetricFlow, if it can't."""
+    if metricflow_off:
+        return CheckSummary(status="not_run", headline="MetricFlow is off for this project", issues=0,
+                            finished_at=None, target=None, runnable=False)
+    if blocked_reason:
+        return CheckSummary(status="warn", headline=blocked_reason, issues=1, finished_at=None, target=None,
+                            runnable=False)
+    if snap is None:
+        return NOT_RUN
+    if snap["status"] == "running":
+        return CheckSummary(status="running", headline="Validating the semantic layer…", issues=0,
+                            finished_at=None, target=None)
+    finished = _iso(snap["finished_at"])
+    if snap["status"] == "error":
+        return CheckSummary(status="fail", headline="Check failed", issues=1, finished_at=finished, target=None)
+    results = snap["results"]
+    errors = len(results.get("errors") or [])
+    warnings = len(results.get("warnings") or []) + len(results.get("future_errors") or [])
+    warehouse = results.get("warehouse") or []
+    failed = sum(1 for w in warehouse if not w.get("ok"))
+    parts = [
+        f"{errors} error{_s(errors)}" if errors else "",
+        f"{failed} metric{_s(failed)} failed in the warehouse" if failed else "",
+        f"{warnings} warning{_s(warnings)}" if warnings else "",
+    ]
+    reasons = ()
+    recorded = snap.get("manifest_hash")
+    if recorded and manifest_hash and manifest_hash != recorded:
+        reasons = ("The semantic layer changed since this check",)
+    return CheckSummary(
+        status="fail" if errors or failed else "warn" if warnings else "ok",
+        headline=" · ".join(p for p in parts if p) or "Semantic layer is valid",
+        issues=errors + failed + warnings,
+        finished_at=finished,
+        target=None,
+        stale_reasons=reasons,
     )
 
 

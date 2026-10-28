@@ -5,6 +5,8 @@ import { api, type ModelNode, type GraphDto, type RunOpts } from '../../../../li
 import { DocumentModelButton, canDocument } from './DocumentModelButton';
 import { ImpactSummary } from './ImpactSummary';
 import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
+import { childrenOfType, isSemanticType } from '../../lib/semantic';
+import { SemanticDetails } from './SemanticDetails';
 import { startRefactor } from '../../lib/refactorEvents';
 
 type RunCommand = 'run' | 'build' | 'test';
@@ -299,6 +301,7 @@ export function PropertiesTab({
   }
 
   const isTest = model.resource_type === 'test';
+  const isSemantic = isSemanticType(model.resource_type);
 
   return (
     <div className="flex-1 p-4 flex flex-col gap-4">
@@ -308,9 +311,12 @@ export function PropertiesTab({
         <div className="flex flex-wrap items-center gap-1">
           <Chip label={model.resource_type} />
           {model.materialized && <Chip label={model.materialized} />}
-          <span className={`font-mono text-xs ${STATUS_COLORS[model.status] ?? 'text-gray-400'}`}>
-            {model.status}
-          </span>
+          {isSemantic && model.semantic?.type && <Chip label={model.semantic.type} />}
+          {!isSemantic && (
+            <span className={`font-mono text-xs ${STATUS_COLORS[model.status] ?? 'text-gray-400'}`}>
+              {model.status}
+            </span>
+          )}
         </div>
       </div>
 
@@ -479,6 +485,18 @@ export function PropertiesTab({
         })()}
       </div>
 
+      {isSemantic && (
+        <SemanticDetails
+          resourceType={model.resource_type}
+          name={model.name}
+          label={model.label}
+          semantic={model.semantic}
+          usedBy={graph && model.resource_type === 'metric'
+            ? childrenOfType(graph, model.unique_id, ['metric', 'saved_query']).map((n) => n.name)
+            : []}
+        />
+      )}
+
       {/* Tags */}
       {model.tags.length > 0 && (
         <Row label="Tags">
@@ -493,7 +511,7 @@ export function PropertiesTab({
       <div className="border-t border-gray-800" />
 
       {/* Run controls */}
-      {!isTest && (
+      {!isTest && !isSemantic && (
         <div className="flex flex-col gap-3">
           <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Run</span>
 

@@ -41,21 +41,27 @@ const BRIDGED_EDGE_STYLE = { strokeDasharray: '5 4' };
 
 const filterStorageKey = (projectId: number) => `node-dag-filter-${projectId}`;
 
-function readStoredFilter(projectId: number): NodeDagFilter {
+function readStoredFilter(projectId: number): NodeDagFilter | null {
   try {
-    return deserializeNodeDagFilter(sessionStorage.getItem(filterStorageKey(projectId)));
+    const raw = sessionStorage.getItem(filterStorageKey(projectId));
+    return raw ? deserializeNodeDagFilter(raw) : null;
   } catch {
-    return defaultNodeDagFilter();
+    return null;
   }
 }
 
-/** Type/Materialization/Status filters, persisted per project for the session. */
-function useNodeDagFilter(projectId: number) {
-  const [filter, setFilterState] = useState<NodeDagFilter>(() => readStoredFilter(projectId));
+/**
+ * Type/Materialization/Status filters, persisted per project for the session.
+ * Until the user changes them, the default follows the selected node's type
+ * (semantic nodes bring their semantic neighbours along).
+ */
+function useNodeDagFilter(projectId: number, selectedType: string | undefined) {
+  const [stored, setStored] = useState<NodeDagFilter | null>(() => readStoredFilter(projectId));
   const setFilter = useCallback((next: NodeDagFilter) => {
-    setFilterState(next);
+    setStored(next);
     try { sessionStorage.setItem(filterStorageKey(projectId), serializeNodeDagFilter(next)); } catch {}
   }, [projectId]);
+  const filter = useMemo(() => stored ?? defaultNodeDagFilter(selectedType), [stored, selectedType]);
   return [filter, setFilter] as const;
 }
 
@@ -88,7 +94,11 @@ function NodeDagPanelInner({ projectId, graph, selectedNodeId }: NodeDagPanelPro
   const height = useStore((s) => s.height);
   const { handleClick: openInFilesClick } = useOpenInFiles(projectId);
 
-  const [filter, setFilter] = useNodeDagFilter(projectId);
+  const selectedType = useMemo(
+    () => graph?.nodes.find((n) => n.unique_id === selectedNodeId)?.resource_type,
+    [graph, selectedNodeId],
+  );
+  const [filter, setFilter] = useNodeDagFilter(projectId, selectedType);
   const [closeDropdownsSignal, setCloseDropdownsSignal] = useState(0);
 
   const fullLineage = useMemo(

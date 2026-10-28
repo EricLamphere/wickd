@@ -1,0 +1,92 @@
+models:
+  - name: stg_orders
+    semantic_model:
+      enabled: true
+      name: orders
+    agg_time_dimension: order_date
+    columns:
+      - name: order_id
+        entity:
+          type: primary
+          name: order_id
+      - name: customer_id
+        entity:
+          type: foreign
+          name: customer
+      - name: order_date
+        granularity: day
+        dimension:
+          type: time
+      - name: status
+        dimension:
+          type: categorical
+    metrics:
+      - name: revenue
+        label: Revenue
+        type: simple
+        agg: sum
+        expr: amount
+      - name: order_count
+        label: Orders
+        type: simple
+        agg: count
+        expr: order_id
+      - name: buyers
+        label: Buyers
+        type: simple
+        agg: count_distinct
+        expr: customer_id
+      - name: completed_revenue
+        label: Completed revenue
+        type: simple
+        agg: sum
+        expr: amount
+        filter: "{{ Dimension('order_id__status') }} = 'completed'"
+  - name: dim_customers
+    semantic_model:
+      enabled: true
+      name: customers
+    agg_time_dimension: signup_date
+    columns:
+      - name: customer_id
+        entity:
+          type: primary
+          name: customer
+      - name: region
+        dimension:
+          type: categorical
+      - name: signup_date
+        granularity: day
+        dimension:
+          type: time
+    metrics:
+      - name: new_customers
+        type: simple
+        agg: count
+        expr: customer_id
+
+metrics:
+  - name: avg_order_value
+    label: Average order value
+    type: ratio
+    numerator: revenue
+    denominator: order_count
+  - name: cumulative_revenue
+    label: Cumulative revenue
+    type: cumulative
+    input_metric: revenue
+  - name: revenue_per_buyer
+    label: Revenue per buyer
+    type: derived
+    expr: revenue / buyers
+    input_metrics:
+      - name: revenue
+      - name: buyers
+
+saved_queries:
+  - name: weekly_revenue_by_region
+    query_params:
+      metrics: [revenue, order_count]
+      group_by:
+        - TimeDimension('metric_time', 'week')
+        - Dimension('customer__region')

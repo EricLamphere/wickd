@@ -49,11 +49,13 @@ if importlib.util.find_spec("wickd_pro") is not None:
 # re-execs "python", which resolves to this whole frozen app rather than a
 # real interpreter. See app/dbt/venv.py.
 
+# The MetricFlow worker runs under the sidecar venv's own Python (app/semantic/runtime.py),
+# never imported by the backend, so it ships as a plain file next to app/semantic.
 a = Analysis(
     ["../app/__main__.py"],
     pathex=[".."],
     binaries=[],
-    datas=[],
+    datas=[("../app/semantic/worker_main.py", "app/semantic")],
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},

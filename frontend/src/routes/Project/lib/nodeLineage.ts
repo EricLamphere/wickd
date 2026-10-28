@@ -1,5 +1,6 @@
 import type { Edge, GraphDto, ModelNode } from '../../../lib/api';
 import { matchesDropdownFilters, type DropdownFilters } from './dagFilter';
+import { isSemanticType } from './semantic';
 
 /** A lineage edge; `bridged` means it skips over one or more filtered-out nodes. */
 export interface LineageEdge extends Edge {
@@ -13,10 +14,16 @@ export interface NodeLineage {
 
 export type NodeDagFilter = Pick<DropdownFilters, 'resourceTypes' | 'materializations' | 'statuses'>;
 
-/** Initial filter: everything except tests, which as leaf nodes would swamp the view. */
-export function defaultNodeDagFilter(): NodeDagFilter {
+/**
+ * Initial filter: everything except tests, which as leaf nodes would swamp the view.
+ * Semantic nodes are only included when the selected node is one of them.
+ */
+export function defaultNodeDagFilter(selectedType?: string): NodeDagFilter {
+  const semantic = selectedType && isSemanticType(selectedType)
+    ? ['semantic_model', 'metric', ...(selectedType === 'saved_query' ? ['saved_query'] : [])]
+    : [];
   return {
-    resourceTypes: new Set(['seed', 'source', 'model', 'exposure']),
+    resourceTypes: new Set(['seed', 'source', 'model', 'exposure', ...semantic]),
     materializations: new Set(),
     statuses: new Set(),
   };

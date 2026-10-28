@@ -112,6 +112,7 @@ function SettingsTab() {
     { key: 'ai_model', label: 'WICKD_AI_MODEL', value: appSettings?.ai_model, hint: 'bundled local model (Pro)', example: 'qwen3.5-4b' },
     { key: 'ai_endpoint_url', label: 'WICKD_AI_ENDPOINT_URL', value: appSettings?.ai_endpoint_url, hint: 'OpenAI-compatible server used instead', example: 'http://localhost:11434' },
     { key: 'ai_endpoint_model', label: 'WICKD_AI_ENDPOINT_MODEL', value: appSettings?.ai_endpoint_model, hint: 'model name on that server', example: 'qwen3:8b' },
+    { key: 'metricflow_mode', label: 'WICKD_METRICFLOW_MODE', value: appSettings?.metricflow_mode, hint: 'semantic layer: auto or off; projects can override', example: 'auto' },
   ];
 
   const handleSave = async (key: string) => {
@@ -121,6 +122,9 @@ function SettingsTab() {
       setEditingKey(null);
       qc.invalidateQueries({ queryKey: ['app-settings'] });
       if (key.startsWith('ai_')) qc.invalidateQueries({ queryKey: ['ai-status'] });
+      if (key === 'metricflow_mode') {
+        for (const k of ['semantic-status', 'health-summary']) qc.invalidateQueries({ queryKey: [k] });
+      }
       // Both decide which dbt-core is expected, so the installed-version check changes
       if (key === 'global_requirements_path' || key === 'dbt_core_version') {
         qc.invalidateQueries({ queryKey: ['dbt-core-status'] });

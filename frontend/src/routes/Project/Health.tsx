@@ -4,6 +4,7 @@ import NavRail from './components/NavRail';
 import HealthCheckPanel from './components/HealthCheckPanel';
 import DriftPanel from './components/DriftPanel';
 import FreshnessPanel from './components/FreshnessPanel';
+import SemanticLayerPanel from './components/semantic/SemanticLayerPanel';
 import HealthOverview from './components/health/HealthOverview';
 import TestGapsPanel from './components/health/TestGapsPanel';
 import { TONE_BADGE, TONE_DOT, type Tone, tabBadge } from './components/health/healthStatus';
@@ -11,7 +12,7 @@ import { testGapsBadge } from './components/health/testGapsView';
 import { useTestGaps } from './components/health/useTestGaps';
 import { type HealthCheckKind, useHealthSummary } from './components/health/useHealth';
 
-type HealthTab = 'overview' | 'connection' | 'schema-drift' | 'test-gaps' | 'source-freshness';
+type HealthTab = 'overview' | 'connection' | 'schema-drift' | 'test-gaps' | 'source-freshness' | 'semantic-layer';
 
 const TABS: { id: HealthTab; label: string; kind?: HealthCheckKind }[] = [
   { id: 'overview', label: 'Overview' },
@@ -19,6 +20,7 @@ const TABS: { id: HealthTab; label: string; kind?: HealthCheckKind }[] = [
   { id: 'schema-drift', label: 'Schema Drift', kind: 'drift' },
   { id: 'test-gaps', label: 'Test Gaps' },
   { id: 'source-freshness', label: 'Source Freshness', kind: 'freshness' },
+  { id: 'semantic-layer', label: 'Semantic Layer', kind: 'semantic' },
 ];
 
 const TAB_IDS = TABS.map((t) => t.id);
@@ -27,6 +29,7 @@ const TAB_FOR_KIND: Record<HealthCheckKind, HealthTab> = {
   connection: 'connection',
   drift: 'schema-drift',
   freshness: 'source-freshness',
+  semantic: 'semantic-layer',
 };
 
 export default function HealthPage() {
@@ -62,7 +65,7 @@ export default function HealthPage() {
           </div>
 
           <div className="flex gap-1">
-            {TABS.map((tab) => (
+            {TABS.filter((tab) => tab.kind !== 'semantic' || summary?.semantic || activeTab === tab.id).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => handleTabChange(tab.id)}
@@ -73,7 +76,7 @@ export default function HealthPage() {
                 }`}
               >
                 {tab.label}
-                {tab.kind && summary && <TabBadge badge={tabBadge(summary[tab.kind])} />}
+                {tab.kind && summary?.[tab.kind] && <TabBadge badge={tabBadge(summary[tab.kind]!)} />}
                 {tab.id === 'test-gaps' && <TabBadge badge={gapsBadge} />}
               </button>
             ))}
@@ -97,6 +100,7 @@ export default function HealthPage() {
           {activeTab === 'schema-drift' && <DriftPanel projectId={id} />}
           {activeTab === 'test-gaps' && <TestGapsPanel projectId={id} />}
           {activeTab === 'source-freshness' && <FreshnessPanel projectId={id} />}
+          {activeTab === 'semantic-layer' && <SemanticLayerPanel projectId={id} />}
         </div>
       </div>
     </div>

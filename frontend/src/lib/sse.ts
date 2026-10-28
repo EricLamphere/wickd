@@ -16,10 +16,11 @@ const PROJECT_EVENT_TYPES = [
   'freshness_started', 'freshness_finished',
   'column_lineage_compiling', 'column_lineage_started', 'column_lineage_progress', 'column_lineage_finished',
   'ai_proposal_updated', 'ai_proposal_progress', 'ai_query_updated',
+  'semantic_check_started', 'semantic_check_finished',
 ];
 
 /** Events on the `global` topic (not tied to a project). */
-const GLOBAL_EVENT_TYPES = ['ai_model_download'];
+const GLOBAL_EVENT_TYPES = ['ai_model_download', 'metricflow_env'];
 
 const RECONNECT_DELAY_MS = 3000;
 

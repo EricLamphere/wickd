@@ -39,6 +39,7 @@ from app.api import projects as projects_api
 from app.api import propagation as propagation_api
 from app.api import refactor as refactor_api
 from app.api import runs as runs_api
+from app.api import semantic as semantic_api
 from app.api import settings as settings_api
 from app.api import setup as setup_api
 from app.api import sql as sql_api
@@ -52,6 +53,7 @@ from app.dbt.python_env import load_python_setting
 from app.logging_setup import configure_logging, get_logger
 from app.logs.api_logger import append_api_log, configure_api_log
 from app.projects.service import begin_startup_scan, rescan_projects
+from app.semantic.runtime import metricflow_runtime
 from app.watcher.service import watcher_manager
 
 _api_log_path = configure_api_log(settings.data_dir)
@@ -89,6 +91,7 @@ async def lifespan(app: FastAPI):
     finally:
         await watcher_manager.stop()
         await llama_server.stop()
+        await metricflow_runtime.stop()
         log.info("shutdown")
 
 
@@ -115,6 +118,7 @@ app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)
 app.include_router(propagation_api.router)
 app.include_router(test_gaps_api.router)
+app.include_router(semantic_api.router)
 app.include_router(refactor_api.router)
 app.include_router(exports_api.router)
 app.include_router(exports_api.global_router)

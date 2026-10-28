@@ -21,6 +21,7 @@ Run these and stop with a clear message if any fail:
 - Compute the new version from the argument (semver: `patch` → X.Y.Z+1, `minor` → X.Y+1.0, `major` → X+1.0.0; an explicit version must be valid semver and greater than the current one).
 - `gh release view v<new>` must fail (no existing release with that tag).
 - `git status --short` — if there are uncommitted changes, list them for the user as a heads-up, but continue.
+- Refresh the MetricFlow compatibility table: `cd backend && .venv/bin/python scripts/metricflow_compat.py` (PyPI metadata → `app/semantic/compat_data.py`). If it changed, run `.venv/bin/pytest tests/test_semantic_compat.py -q` and tell the user the diff (new dbt-core patches or dbt-metricflow lines) so they can commit it before releasing. Bumping the pinned engine (`ENGINE_VERSION` in `app/semantic/sidecar_env.py`) is a separate, deliberate change: rerun the metricflow-bench kit in wickd-pro first.
 
 Tell the user in one line: `Releasing wickd <old> → <new>`.
 

@@ -19,12 +19,16 @@ describe('tabBadge', () => {
 });
 
 describe('navAlert', () => {
-  const summary = (c: CheckSummary, d: CheckSummary, f: CheckSummary): HealthSummary =>
-    ({ connection: c, drift: d, freshness: f, current_target: null });
+  const summary = (c: CheckSummary, d: CheckSummary, f: CheckSummary, s: CheckSummary | null = null): HealthSummary =>
+    ({ connection: c, drift: d, freshness: f, semantic: s, current_target: null });
 
   it('is the worst status across checks', () => {
     expect(navAlert(summary(check({}), check({ status: 'warn' }), check({ status: 'fail' })))).toBe('fail');
     expect(navAlert(summary(check({}), check({ status: 'warn' }), check({})))).toBe('warn');
+  });
+  it('includes the semantic layer check when the project has one', () => {
+    expect(navAlert(summary(check({}), check({}), check({}), check({ status: 'fail' })))).toBe('fail');
+    expect(navAlert(summary(check({}), check({}), check({}), null))).toBeNull();
   });
   it('is null when nothing is wrong (running and not run are not alerts)', () => {
     expect(navAlert(summary(check({ status: 'running' }), check({ status: 'not_run' }), check({})))).toBeNull();

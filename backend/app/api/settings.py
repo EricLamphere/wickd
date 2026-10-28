@@ -17,6 +17,9 @@ from app.dbt.core_version import DBT_CORE_VERSION_KEY, is_valid_version
 from app.dbt.python_env import PYTHON_PATH_KEY
 from app.dbt.runner import runner
 from app.logging_setup import get_logger
+from app.semantic.mode import GLOBAL_KEY as METRICFLOW_MODE_KEY
+from app.semantic.mode import MODES as METRICFLOW_MODES
+from app.semantic.mode import global_mode as metricflow_global_mode
 
 log = get_logger(__name__)
 
@@ -37,6 +40,8 @@ class SettingsUpdateDto(BaseModel):
     ai_endpoint_model: str | None = None
     # "" clears it (global setup installs the latest dbt-core)
     dbt_core_version: str | None = None
+    # default for projects without their own setting: auto | off
+    metricflow_mode: str | None = None
 
 
 class SettingsDto(BaseModel):
@@ -54,6 +59,8 @@ class SettingsDto(BaseModel):
     ai_endpoint_model: str | None
     # dbt-core global setup installs when no global requirements file is set; null = latest
     dbt_core_version: str | None
+    # semantic layer: MetricFlow default for projects (auto | off)
+    metricflow_mode: str
     configured: bool
     setup_completed: bool
 
@@ -111,6 +118,7 @@ async def get_settings(session: AsyncSession = Depends(get_session)) -> Settings
         ai_endpoint_url=await _get_override(session, AI_ENDPOINT_URL_KEY) or None,
         ai_endpoint_model=await _get_override(session, AI_ENDPOINT_MODEL_KEY) or None,
         dbt_core_version=await _get_override(session, DBT_CORE_VERSION_KEY) or None,
+        metricflow_mode=await metricflow_global_mode(session),
         setup_completed=setup_completed,
     )
 
@@ -209,6 +217,11 @@ async def put_settings(
                 "pin dbt-core in that file instead.",
             )
         await _upsert(session, DBT_CORE_VERSION_KEY, version)
+    if dto.metricflow_mode is not None:
+        mode = dto.metricflow_mode.strip().lower()
+        if mode not in METRICFLOW_MODES:
+            raise HTTPException(status_code=400, detail="metricflow_mode must be 'auto' or 'off'")
+        await _upsert(session, METRICFLOW_MODE_KEY, mode)
     await session.commit()
     return await get_settings(session)
 

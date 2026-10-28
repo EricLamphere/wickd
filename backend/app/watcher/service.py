@@ -23,6 +23,7 @@ from app.db.models import ModelStatus, Project
 from app.events.bus import Event, bus
 from app.git.repo import find_repo_root
 from app.logging_setup import get_logger
+from app.semantic import autoparse
 
 log = get_logger(__name__)
 
@@ -275,6 +276,8 @@ class WatcherManager:
                     data={"paths": stale_model_paths},
                 )
             )
+            if autoparse.is_yaml_change(stale_model_paths):
+                autoparse.schedule(project_id, project_path)
 
     async def _mark_stale_by_path(self, project_id: int, paths: list[str]) -> None:
         async with SessionLocal() as session:

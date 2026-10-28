@@ -89,6 +89,9 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `ai_proposal_updated` | project | `api/ai_proposals.py` — includes `proposal_id`, `status`, `unique_id` |
 | `ai_query_updated` | project | `api/ai_query.py` — includes `message_id`, `status` |
 | `ai_proposal_progress` | project | `api/ai_proposals.py` — throttled while generating; includes `proposal_id`, `unique_id`, `phase`, `text`. Also `api/test_gaps.py` per model of a batch (`unique_id` null, `phase` checking, plus `done`, `total`, `current`) |
+| `semantic_check_started` | project | `semantic/check.py` — includes `snapshot_id`, `warehouse` |
+| `semantic_check_finished` | project | `semantic/check.py` — includes `snapshot_id`, `ok`, `errors`, `warnings` |
+| `metricflow_env` | global | `semantic/runtime.py` — MetricFlow sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useGlobalEvents` in `components/semantic/useSemantic.ts`) |
 | `ai_model_download` | global | `ai/download.py` — includes `model_id`, `state`, `bytes_done`, `bytes_total`, `error` (frontend: `useGlobalEvents`) |
 
 ## Adding a New Event Type

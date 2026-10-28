@@ -13,6 +13,11 @@ export const FLAG_META: Record<ImpactFlag, { label: string; title: string; cls: 
     title: 'A dashboard, app or other consumer outside dbt',
     cls: 'bg-purple-950/40 text-purple-300 border-purple-900/60',
   },
+  metric: {
+    label: 'metric',
+    title: 'A metric or saved query in the semantic layer — its numbers may change',
+    cls: 'bg-sky-950/40 text-sky-300 border-sky-900/60',
+  },
   incremental: {
     label: 'incremental',
     title: 'Schema changes may need --full-refresh',

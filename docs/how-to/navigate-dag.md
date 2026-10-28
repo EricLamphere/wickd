@@ -76,7 +76,7 @@ Space-separated tokens are **unioned** — `+my_model my_other_model` shows ance
 ### Dropdown filters
 
 Four dropdown pills let you filter by:
-- **Type** — model, source, seed, snapshot, test
+- **Type** — model, source, seed, snapshot, test, and (for projects with a semantic layer) semantic_model, metric, saved_query. Semantic nodes are hidden by default; opening one from Docs or search turns them on. See [Use the semantic layer](semantic-layer.md)
 - **Materialization** — table, view, incremental, ephemeral
 - **Tag** — any tag defined in schema.yml
 - **Status** — idle, running, success, error, warn, stale
@@ -158,6 +158,7 @@ The **Downstream impact** card in the SidePane summarizes what sits downstream o
 
 - **untested**: downstream models or snapshots with no data or unit tests, where a break would go unnoticed
 - **exposure**: dashboards or apps that read from the node's lineage
+- **metric**: metrics or saved queries in the semantic layer whose numbers may change
 - **incremental**: incremental models that may need `--full-refresh` if the schema changes
 - **failing** / **stale**: nodes whose last run errored or warned, or that are out of date
 

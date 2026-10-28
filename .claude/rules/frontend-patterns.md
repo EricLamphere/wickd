@@ -75,6 +75,10 @@ When handling SSE events, invalidate the relevant query:
 | `column_lineage_finished`, `graph_changed`, `files_changed`, `ai_proposal_updated` | `['test-gaps', projectId]` (Health Test Gaps, `components/health/useTestGaps.ts`) |
 | `statuses_changed` | `['run-analysis', projectId]`, `['performance', projectId]` (Run History, `RunHistory/index.tsx`), `['node-durations', projectId]` (DAG Durations overlay, `lib/useDurationOverlay.ts`) |
 
+| `semantic_check_started`, `semantic_check_finished` | `['semantic-check-latest', projectId]`, `['health-summary', projectId]` (`components/semantic/useSemantic.ts`, `components/health/useHealth.ts`) |
+| `graph_changed`, `semantic_check_finished` | `['semantic-status', projectId]` |
+| `metricflow_env` (global stream) | `['semantic-status']` once the sidecar is ready or failed |
+
 When adding a new event type that signals stale data, add an entry here.
 
 ## Adding a New SSE Event Type (Frontend Side)

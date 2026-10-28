@@ -17,6 +17,7 @@ const CARDS: CardSpec[] = [
   { kind: 'connection', title: 'Connection', description: 'dbt debug: profile, credentials, warehouse connection and packages' },
   { kind: 'drift', title: 'Schema Drift', description: 'Columns in your YAML vs. the columns actually in the warehouse' },
   { kind: 'freshness', title: 'Source Freshness', description: 'How recently each source was loaded, against its freshness thresholds' },
+  { kind: 'semantic', title: 'Semantic Layer', description: 'MetricFlow validations of your semantic models, metrics and saved queries' },
 ];
 
 interface HealthOverviewProps {
@@ -32,8 +33,12 @@ export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: He
     connection: useIsStarting('connection', projectId),
     drift: useIsStarting('drift', projectId),
     freshness: useIsStarting('freshness', projectId),
+    semantic: useIsStarting('semantic', projectId),
   };
-  const anyRunning = CARDS.some(({ kind }) => starting[kind] || summary?.[kind].status === 'running');
+  // the Semantic Layer card only shows for projects with semantic models or metrics
+  const cards = CARDS.filter(({ kind }) => kind !== 'semantic' || summary?.semantic);
+  const semanticRunnable = !!summary?.semantic && summary.semantic.runnable !== false;
+  const anyRunning = cards.some(({ kind }) => starting[kind] || summary?.[kind]?.status === 'running');
 
   return (
     <div className="p-6 pb-12 max-w-[62rem] mx-auto w-full flex flex-col gap-4">
@@ -43,7 +48,7 @@ export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: He
             ? <>Checks run against target <span className="font-mono text-gray-300">{summary.current_target}</span></>
             : 'Checks run against the profile’s default target'}
         </p>
-        <RunButton running={anyRunning} onClick={runs.runAll} label="Run all" />
+        <RunButton running={anyRunning} onClick={() => runs.runAll(semanticRunnable)} label="Run all" />
       </div>
 
       {error && <p className="text-xs text-red-400">Couldn't load health status: {errorMessage(error)}</p>}
@@ -51,14 +56,14 @@ export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: He
 
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {CARDS.map((card) => (
+          {cards.map((card) => (
             <HealthCard
               key={card.kind}
               spec={card}
-              check={summary[card.kind]}
+              check={summary[card.kind]!}
               starting={starting[card.kind]}
               startError={runs[card.kind].error}
-              onRun={() => runs[card.kind].mutate()}
+              onRun={() => runs[card.kind].mutate(undefined)}
               onOpen={() => onOpen(card.kind)}
             />
           ))}

@@ -2,6 +2,7 @@ import asyncio
 import re
 import time
 from pathlib import Path
+from typing import Any
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,6 +59,8 @@ class ModelDto(BaseModel):
     column_name: str | None = None
     attached_node: str | None = None
     patch_path: str | None = None
+    label: str | None = None
+    semantic: dict[str, Any] | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -102,6 +105,8 @@ def _node_to_dto(node: ModelNode, status: ModelStatus | None) -> ModelDto:
         column_name=node.column_name,
         attached_node=node.attached_node,
         patch_path=node.patch_path,
+        label=node.label,
+        semantic=node.semantic,
     )
 
 

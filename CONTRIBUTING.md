@@ -64,6 +64,8 @@ The rules that matter most:
 | `WICKD_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `WICKD_AI_MODEL` | `qwen3.5-4b` | Bundled local model for AI features (Pro); set in Global Settings or the AI tab |
 | `WICKD_AI_ENDPOINT_URL` / `WICKD_AI_ENDPOINT_MODEL` | _(none)_ | OpenAI-compatible server (and model name) to use instead of the bundled model; Global Settings |
+| `WICKD_METRICFLOW_MODE` | `auto` | Semantic layer default for projects (`auto` or `off`); Global Settings, overridable per project (`METRICFLOW_MODE` on the Environment page) |
+| `WICKD_METRICFLOW_VENV_DIR` | `<data_dir>/metricflow-venv` | Where wickd builds MetricFlow's own environment (the pinned engine, no dbt) |
 | `WICKD_LLAMA_SERVER_PATH` | _(bundled copy, then `PATH`)_ | llama-server binary for local AI. `task ai:runtime` fetches the pinned build for dev |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment (sandbox/production) license checks talk to |
 | `POLAR_SANDBOX_ORGANIZATION_ID` / `POLAR_PRODUCTION_ORGANIZATION_ID` | _(none)_ | Polar org id used to validate license keys (not a secret) |

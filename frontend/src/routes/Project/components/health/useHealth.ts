@@ -1,19 +1,22 @@
 import { useCallback } from 'react';
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../../lib/api';
+import { semanticApi } from '../../../../lib/semanticApi';
 import { useProjectEvents } from '../../../../lib/sse';
 
-export type HealthCheckKind = 'connection' | 'drift' | 'freshness';
+export type HealthCheckKind = 'connection' | 'drift' | 'freshness' | 'semantic';
 
 /** Events after which the summary (statuses, counts, staleness) may have changed. */
 const SUMMARY_EVENTS = new Set([
   'health_check_started', 'health_check_finished',
   'drift_started', 'drift_finished',
   'freshness_started', 'freshness_finished',
+  'semantic_check_started', 'semantic_check_finished',
   'statuses_changed', // rebuilt models make a drift scan stale
+  'graph_changed', // a project gaining or losing its semantic layer, or a re-parse making a check stale
 ]);
 
-/** Status of all three checks; shared by the overview, tab badges and the nav rail dot. */
+/** Status of every check; shared by the overview, tab badges and the nav rail dot. */
 export function useHealthSummary(projectId: number) {
   const qc = useQueryClient();
   const query = useQuery({
@@ -55,15 +58,22 @@ export function useHealthRuns(projectId: number) {
     mutationFn: () => api.freshness.start(projectId),
     onSettled: settle('freshness-latest'),
   });
+  const semantic = useMutation({
+    mutationKey: runKey('semantic', projectId),
+    mutationFn: (warehouse?: boolean) => semanticApi.startCheck(projectId, warehouse ?? false),
+    onSettled: settle('semantic-check-latest', 'semantic-status'),
+  });
 
-  // dbt runs are serialized per project, so these queue up in this order
-  const runAll = () => {
+  // dbt runs are serialized per project, so these queue up in this order; the semantic
+  // check (no dbt) runs only for projects that have a semantic layer with MetricFlow on
+  const runAll = (withSemantic = false) => {
     connection.mutate();
     drift.mutate();
     freshness.mutate();
+    if (withSemantic) semantic.mutate(false);
   };
 
-  return { connection, drift, freshness, runAll };
+  return { connection, drift, freshness, semantic, runAll };
 }
 
 /** True while a check's start request is in flight anywhere in the app. */

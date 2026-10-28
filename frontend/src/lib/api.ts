@@ -126,6 +126,8 @@ export interface Project {
   last_init_started_at: string | null;
   last_init_finished_at: string | null;
   last_init_failed_step: string | null;
+  /** '' = use the global default (Settings), 'auto' or 'off' */
+  metricflow_mode: '' | 'auto' | 'off';
   readme: string | null;
   dbt_project_yml: string | null;
   profiles_yml: string | null;
@@ -156,6 +158,45 @@ export interface ModelNode {
   column_name: string | null;
   attached_node: string | null;
   patch_path: string | null;
+  /** semantic_model / metric / saved_query only */
+  label?: string | null;
+  semantic?: SemanticInfo | null;
+}
+
+export interface SemanticEntity { name: string; type: string | null; expr: string | null; description: string }
+export interface SemanticDimension {
+  name: string; type: string | null; expr: string | null; time_granularity: string | null; description: string;
+}
+export interface SemanticMeasure { name: string; agg: string | null; expr: string | null; description: string }
+
+/** `semantic` on a semantic_model / metric / saved_query node; fields depend on the type. */
+export interface SemanticInfo {
+  // semantic_model
+  model?: string | null;
+  relation_name?: string | null;
+  agg_time_dimension?: string | null;
+  primary_entity?: string | null;
+  entities?: SemanticEntity[];
+  dimensions?: SemanticDimension[];
+  measures?: SemanticMeasure[];
+  // metric
+  type?: string | null;
+  filter?: string | null;
+  measure?: string | null;
+  agg?: string | null;
+  expr?: string | null;
+  semantic_model?: string | null;
+  numerator?: string | null;
+  denominator?: string | null;
+  input_metrics?: string[];
+  window?: string | null;
+  grain_to_date?: string | null;
+  time_granularity?: string | null;
+  // saved_query
+  metrics?: string[];
+  group_by?: string[];
+  where?: string | null;
+  exports?: string[];
 }
 
 export interface ProfileColumn {
@@ -259,12 +300,16 @@ export interface CheckSummary {
   target: string | null;
   /** Why the last result may be out of date (target changed, models rebuilt, …) */
   stale_reasons: string[];
+  /** false when the check can't run as things stand (semantic layer: MetricFlow off or incompatible) */
+  runnable?: boolean;
 }
 
 export interface HealthSummary {
   connection: CheckSummary;
   drift: CheckSummary;
   freshness: CheckSummary;
+  /** null when the project has no semantic models or metrics */
+  semantic: CheckSummary | null;
   current_target: string | null;
 }
 
@@ -653,6 +698,9 @@ export interface DocsNodeDto {
   attached_node: string | null;
   column_name: string | null;
   test_metadata: { name: string; kwargs: Record<string, unknown> } | null;
+  // semantic_model / metric / saved_query only
+  label?: string | null;
+  semantic?: SemanticInfo | null;
 }
 
 export interface DocsMacroDto {
@@ -790,6 +838,8 @@ export interface SettingsDto {
   ai_endpoint_model: string | null;
   /** dbt-core global setup installs when no global requirements file is set; null = latest. */
   dbt_core_version: string | null;
+  /** Semantic layer: MetricFlow default for projects without their own setting. */
+  metricflow_mode: 'auto' | 'off';
   configured: boolean;
   setup_completed: boolean;
 }
@@ -862,6 +912,7 @@ export interface SettingsUpdateDto {
   ai_endpoint_model?: string;
   /** "" clears it (latest). */
   dbt_core_version?: string;
+  metricflow_mode?: 'auto' | 'off';
 }
 
 export const api = {
@@ -874,7 +925,7 @@ export const api = {
     listApplications: () => get<string[]>('/projects/applications'),
     openInApp: (appName: string, path: string) =>
       post<{ ok: boolean }>('/projects/open-in-app', { app_name: appName, path }),
-    updateSettings: (projectId: number, body: { init_script_path: string }) =>
+    updateSettings: (projectId: number, body: { init_script_path?: string; metricflow_mode?: '' | 'auto' | 'off' }) =>
       patch<Project>(`/projects/${projectId}/settings`, body),
     ensureProfilesYml: (projectId: number) =>
       post<{ created: boolean }>(`/projects/${projectId}/ensure-profiles-yml`),

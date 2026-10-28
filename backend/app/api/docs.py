@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.db.engine import get_session
 from app.db.models import Project
+from app.dbt.semantic_nodes import SEMANTIC_SECTIONS, semantic_info
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 
@@ -175,6 +176,22 @@ async def get_docs_data(project_id: int) -> dict[str, Any]:
             continue
         result_nodes.append(_merge_node(uid, raw))
 
+    for section, resource_type in SEMANTIC_SECTIONS.items():
+        raw_section = manifest.get(section)
+        if not isinstance(raw_section, dict):
+            continue
+        for uid, raw in raw_section.items():
+            if not isinstance(raw, dict):
+                continue
+            merged = _merge_node(uid, {**raw, "resource_type": resource_type, "columns": {}})
+            merged["relation_name"] = (raw.get("node_relation") or {}).get("relation_name")
+            merged["label"] = raw.get("label") or None
+            try:
+                merged["semantic"] = semantic_info(resource_type, raw)
+            except (TypeError, AttributeError, KeyError):
+                merged["semantic"] = None
+            result_nodes.append(merged)
+
     # Macros — only those with docs.show = true (default) and include all packages
     result_macros: list[dict[str, Any]] = []
     for uid, raw in macros_raw.items():
@@ -201,7 +218,10 @@ async def get_docs_data(project_id: int) -> dict[str, Any]:
         })
 
     # Sort nodes: models first, then seeds/snapshots/sources/tests, then by name
-    order = {"model": 0, "seed": 1, "snapshot": 2, "source": 3, "analysis": 4, "test": 5}
+    order = {
+        "model": 0, "seed": 1, "snapshot": 2, "source": 3, "analysis": 4, "test": 5,
+        "semantic_model": 6, "metric": 7, "saved_query": 8,
+    }
     result_nodes.sort(key=lambda n: (order.get(n["resource_type"], 9), n["name"]))
     result_macros.sort(key=lambda n: (n["package_name"] or "", n["name"]))
 

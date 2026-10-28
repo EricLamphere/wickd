@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.dbt.semantic_nodes import SEMANTIC_SECTIONS, semantic_info
 from app.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -37,6 +38,9 @@ class ModelNode:
     # path to the schema YAML file that defines this node's description/columns
     # format: "package_name://models/subdir/schema.yml"; None if no schema file exists
     patch_path: str | None = None
+    # semantic_model / metric / saved_query only
+    label: str | None = None
+    semantic: dict[str, Any] | None = field(default=None, hash=False, compare=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +62,8 @@ class ModelNode:
             "column_name": self.column_name,
             "attached_node": self.attached_node,
             "patch_path": self.patch_path,
+            "label": self.label,
+            "semantic": self.semantic,
         }
 
 
@@ -146,6 +152,36 @@ def _extract_unit_tests(raw_unit_tests: Any) -> tuple[UnitTestRef, ...]:
     return tuple(refs)
 
 
+def _extract_semantic_nodes(raw_section: Any, resource_type: str) -> list[ModelNode]:
+    if not isinstance(raw_section, dict):
+        return []
+    nodes: list[ModelNode] = []
+    for unique_id, raw in raw_section.items():
+        if not isinstance(raw, dict):
+            continue
+        try:
+            info = semantic_info(resource_type, raw)
+        except (TypeError, AttributeError, KeyError) as exc:
+            log.warning("semantic_node_parse_failed", unique_id=unique_id, error=str(exc))
+            info = None
+        config = raw.get("config") if isinstance(raw.get("config"), dict) else {}
+        nodes.append(ModelNode(
+            unique_id=unique_id,
+            name=raw.get("name") or unique_id.split(".")[-1],
+            resource_type=resource_type,
+            schema_=None,
+            database=None,
+            materialized=None,
+            tags=tuple(t for t in (raw.get("tags") or config.get("tags") or ()) if isinstance(t, str)),
+            description=raw.get("description") or "",
+            original_file_path=raw.get("original_file_path"),
+            raw_sql=None,
+            label=raw.get("label") or None,
+            semantic=info,
+        ))
+    return nodes
+
+
 def load_manifest(manifest_path: Path) -> Manifest | None:
     if not manifest_path.exists():
         return None
@@ -175,6 +211,9 @@ def load_manifest(manifest_path: Path) -> Manifest | None:
         node = _extract_node(unique_id, {**raw, "resource_type": "exposure"}, allowed_types={"exposure"})
         if node is not None:
             nodes.append(node)
+
+    for section, resource_type in SEMANTIC_SECTIONS.items():
+        nodes.extend(_extract_semantic_nodes(data.get(section), resource_type))
 
     # parent_map in manifest.json: { unique_id: [parent_ids] }
     parent_map = data.get("parent_map") or {}

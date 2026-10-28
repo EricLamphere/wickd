@@ -6,6 +6,9 @@ export const TYPE_ICON: Record<string, string> = {
   snapshot: '◈',
   test: '⬤',
   exposure: '◉',
+  semantic_model: '◇',
+  metric: '∑',
+  saved_query: '⧉',
 };
 
 export function typeIconFor(resourceType: string): string {

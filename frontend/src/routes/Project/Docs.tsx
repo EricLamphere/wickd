@@ -5,6 +5,7 @@ import {
   RefreshCw, BookOpen, Search, ChevronRight, ChevronDown,
   Database, FileCode2, Layers, FlaskConical, Sprout, Wrench,
   Copy, Check, Folder, FolderOpen, LayoutGrid, Package, ChevronsDownUp, Share2, Tag as TagIcon, Wand2,
+  Boxes, Sigma, Bookmark,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
@@ -17,6 +18,8 @@ import NavRail from './components/NavRail';
 import { InheritDescriptionsButton } from './components/propagation/InheritDescriptionsButton';
 import { TagBrowseList } from './components/propagation/TagBrowseList';
 import { TagFlowPanel } from './components/propagation/TagFlowPanel';
+import { SemanticDetails } from './components/SidePane/SemanticDetails';
+import { isSemanticType } from './lib/semantic';
 
 // ---- tree types ----
 
@@ -208,12 +211,14 @@ function expandedDirsForFilter(node: TreeDir, q: string): Set<string> {
 // ---- icons / colors ----
 
 const TYPE_ORDER: Record<string, number> = {
-  model: 0, seed: 1, snapshot: 2, source: 3, analysis: 4, test: 5, macro: 6,
+  model: 0, seed: 1, snapshot: 2, source: 3, analysis: 4, test: 5,
+  semantic_model: 6, metric: 7, saved_query: 8, macro: 9,
 };
 
 const TYPE_LABELS: Record<string, string> = {
   model: 'Models', seed: 'Seeds', snapshot: 'Snapshots',
   source: 'Sources', analysis: 'Analyses', test: 'Tests', macro: 'Macros',
+  semantic_model: 'Semantic models', metric: 'Metrics', saved_query: 'Saved queries',
 };
 
 function resourceIcon(type: string, cls = 'w-3.5 h-3.5 shrink-0') {
@@ -224,6 +229,9 @@ function resourceIcon(type: string, cls = 'w-3.5 h-3.5 shrink-0') {
     case 'snapshot': return <Layers className={cls} />;
     case 'test':     return <FlaskConical className={cls} />;
     case 'macro':    return <Wrench className={cls} />;
+    case 'semantic_model': return <Boxes className={cls} />;
+    case 'metric':   return <Sigma className={cls} />;
+    case 'saved_query': return <Bookmark className={cls} />;
     default:         return <FileCode2 className={cls} />;
   }
 }
@@ -236,6 +244,9 @@ function resourceColor(type: string) {
     case 'snapshot': return 'text-amber-400';
     case 'test':     return 'text-red-400';
     case 'macro':    return 'text-purple-400';
+    case 'semantic_model': return 'text-teal-400';
+    case 'metric':   return 'text-sky-400';
+    case 'saved_query': return 'text-indigo-400';
     default:         return 'text-gray-400';
   }
 }
@@ -1019,6 +1030,7 @@ function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDt
   const [codeView, setCodeView] = useState<'source' | 'compiled'>('source');
   const [copied, setCopied] = useState(false);
   const isTest = node.resource_type === 'test';
+  const isSemantic = isSemanticType(node.resource_type);
   const hasDependsOn = node.depends_on_nodes.length > 0 || node.depends_on_macros.length > 0;
 
   const tabs: { id: NodeTab; label: string }[] = [
@@ -1094,13 +1106,19 @@ function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDt
                 {node.access && <MetaCell label="Access" value={node.access} />}
                 {node.group && <MetaCell label="Group" value={node.group} />}
                 {node.materialized && <MetaCell label="Materialized" value={node.materialized} />}
-                <MetaCell label="Contract" value={node.contract ? 'Enforced' : 'Not Enforced'} />
+                {!isSemantic && <MetaCell label="Contract" value={node.contract ? 'Enforced' : 'Not Enforced'} />}
               </div>
             </section>
             {node.description && (
               <section>
                 <h2 className="text-sm font-semibold text-gray-200 mb-2">Description</h2>
                 <p className="text-sm text-gray-300 leading-relaxed">{node.description}</p>
+              </section>
+            )}
+            {isSemantic && (
+              <section>
+                <h2 className="text-sm font-semibold text-gray-200 mb-3">Definition</h2>
+                <SemanticDetails resourceType={node.resource_type} name={node.name} label={node.label} semantic={node.semantic} />
               </section>
             )}
             {node.columns.length > 0 && (
@@ -1459,7 +1477,7 @@ function TestBadge({ name }: { name: string }) {
   );
 }
 
-type DependsTab = 'models' | 'nodes' | 'macros';
+type DependsTab = 'models' | 'nodes' | 'macros' | 'semantic';
 
 function DependsOn({ dependsOnNodes, dependsOnMacros, allNodes, allMacros, onSelectNode }: {
   dependsOnNodes: string[];
@@ -1470,11 +1488,13 @@ function DependsOn({ dependsOnNodes, dependsOnMacros, allNodes, allMacros, onSel
 }) {
   const models = dependsOnNodes.filter((uid) => uid.startsWith('model.') || uid.startsWith('seed.') || uid.startsWith('snapshot.'));
   const sources = dependsOnNodes.filter((uid) => uid.startsWith('source.'));
+  const semantic = dependsOnNodes.filter((uid) => isSemanticType(uid.split('.')[0]));
   const macros = dependsOnMacros;
   const tabs: { id: DependsTab; label: string; count: number }[] = (
     [
       { id: 'models' as DependsTab, label: 'Models', count: models.length },
       { id: 'nodes' as DependsTab, label: 'Sources', count: sources.length },
+      { id: 'semantic' as DependsTab, label: 'Semantic', count: semantic.length },
       { id: 'macros' as DependsTab, label: 'Macros', count: macros.length },
     ] as { id: DependsTab; label: string; count: number }[]
   ).filter((t) => t.count > 0);
@@ -1482,7 +1502,7 @@ function DependsOn({ dependsOnNodes, dependsOnMacros, allNodes, allMacros, onSel
 
   if (tabs.length === 0) return <p className="text-xs text-gray-600 italic">No dependencies found.</p>;
 
-  const renderUids = tab === 'models' ? models : tab === 'nodes' ? sources : macros;
+  const renderUids = tab === 'models' ? models : tab === 'nodes' ? sources : tab === 'semantic' ? semantic : macros;
 
   return (
     <div>

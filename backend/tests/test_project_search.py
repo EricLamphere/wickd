@@ -66,6 +66,9 @@ MANIFEST = {
     "exposures": {
         "exposure.shop.orders_dashboard": {"name": "orders_dashboard", "package_name": "shop"},
     },
+    "semantic_models": {"semantic_model.shop.order_facts": {"name": "order_facts", "package_name": "shop"}},
+    "metrics": {"metric.shop.revenue": {"name": "revenue", "package_name": "shop", "label": "Revenue"}},
+    "saved_queries": {"saved_query.shop.weekly": {"name": "weekly", "package_name": "shop"}},
 }
 
 
@@ -83,6 +86,9 @@ def test_build_index_keeps_searchable_types_only() -> None:
         "seed.shop.country_codes": "seed",
         "source.shop.raw.orders": "source",
         "exposure.shop.orders_dashboard": "exposure",
+        "semantic_model.shop.order_facts": "semantic_model",
+        "metric.shop.revenue": "metric",
+        "saved_query.shop.weekly": "saved_query",
     }
 
 

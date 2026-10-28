@@ -1,6 +1,8 @@
+import asyncio
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,9 +12,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.debug import running_debug
 from app.db.engine import get_session
-from app.db.models import AppSetting, DriftSnapshot, FreshnessSnapshot, ModelStatus, Project
-from app.health.summary import summarize_connection, summarize_drift, summarize_freshness
+from app.db.models import (
+    AppSetting,
+    DriftSnapshot,
+    FreshnessSnapshot,
+    ModelStatus,
+    Project,
+    SemanticCheckSnapshot,
+)
+from app.health.summary import (
+    CheckSummary,
+    summarize_connection,
+    summarize_drift,
+    summarize_freshness,
+    summarize_semantic,
+)
 from app.logging_setup import get_logger
+from app.semantic.service import has_semantic_nodes, manifest_info
+from app.semantic.status import INCOMPATIBLE_REASONS, project_spec, semantic_status
 
 router = APIRouter(prefix="/api/projects", tags=["health"])
 log = get_logger(__name__)
@@ -25,12 +42,15 @@ class CheckSummaryDto(BaseModel):
     finished_at: str | None
     target: str | None
     stale_reasons: list[str]
+    runnable: bool = True
 
 
 class HealthSummaryDto(BaseModel):
     connection: CheckSummaryDto
     drift: CheckSummaryDto
     freshness: CheckSummaryDto
+    # null when the project has no semantic layer (the tab is hidden)
+    semantic: CheckSummaryDto | None = None
     current_target: str | None
 
 
@@ -39,7 +59,8 @@ async def get_health_summary(
     project_id: int,
     session: AsyncSession = Depends(get_session),
 ) -> HealthSummaryDto:
-    if await session.get(Project, project_id) is None:
+    project = await session.get(Project, project_id)
+    if project is None:
         raise HTTPException(status_code=404, detail="project not found")
 
     from app.api.init import load_project_env
@@ -61,9 +82,39 @@ async def get_health_summary(
             _freshness_input(freshness), current_target=current_target, now=now
         ),
     }
+    semantic = await _semantic_summary(session, project)
     return HealthSummaryDto(
         **{k: CheckSummaryDto(**asdict(v)) for k, v in summaries.items()},
+        semantic=CheckSummaryDto(**asdict(semantic)) if semantic else None,
         current_target=current_target,
+    )
+
+
+async def _semantic_summary(session: AsyncSession, project: Project) -> CheckSummary | None:
+    """MetricFlow validations; None for projects without a semantic layer.
+
+    A project whose YAML defines one but whose manifest doesn't (dbt < 1.12 can't parse
+    the latest spec) still gets the check, showing why MetricFlow can't run.
+    """
+    path = Path(project.path)
+    info = await manifest_info(path)
+    if not has_semantic_nodes(info):
+        spec = await asyncio.to_thread(project_spec, path, info.manifest_mtime)
+        if spec == "none":
+            return None
+    status = await semantic_status(session, project)
+    snap = await _latest(session, SemanticCheckSnapshot, project.id)
+    snap_input = None if snap is None else {
+        "status": snap.status,
+        "results": _load_json(snap.results_json, {}, "semantic_results"),
+        "finished_at": snap.finished_at,
+        "manifest_hash": snap.manifest_hash,
+    }
+    return summarize_semantic(
+        snap_input,
+        metricflow_off=status.mode == "off",
+        manifest_hash=info.semantic_hash,
+        blocked_reason=status.reason if status.reason_code in INCOMPATIBLE_REASONS else None,
     )
 
 

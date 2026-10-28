@@ -545,6 +545,36 @@ async def run_migrations() -> None:
             ))
             await session.commit()
 
+        # Semantic layer: per-project MetricFlow mode ('' = use the global default)
+        if not await _column_exists(session, "projects", "metricflow_mode"):
+            await session.execute(
+                text("ALTER TABLE projects ADD COLUMN metricflow_mode VARCHAR(16) NOT NULL DEFAULT ''")
+            )
+            await session.commit()
+
+        # Semantic layer Health check results (MetricFlow validations)
+        if not await _table_exists(session, "semantic_check_snapshots"):
+            await session.execute(text(
+                "CREATE TABLE semantic_check_snapshots ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "started_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "finished_at DATETIME, "
+                "status VARCHAR(32) NOT NULL DEFAULT 'running', "
+                "results_json TEXT NOT NULL DEFAULT '{}', "
+                "error_message TEXT, "
+                "manifest_hash TEXT)"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_semantic_check_snapshots_project_id ON semantic_check_snapshots (project_id)"
+            ))
+            await session.commit()
+
+        # Semantic check staleness by semantic_manifest.json content (was its mtime in early dev builds)
+        if not await _column_exists(session, "semantic_check_snapshots", "manifest_hash"):
+            await session.execute(text("ALTER TABLE semantic_check_snapshots ADD COLUMN manifest_hash TEXT"))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

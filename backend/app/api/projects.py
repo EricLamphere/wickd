@@ -14,6 +14,7 @@ from app.db.models import Project, RunInvocation
 from app.projects.search import ProjectIndex, manifest_index, search_nodes
 from app.projects.service import list_projects, rescan_projects, wait_for_startup_scan
 from app.projects.summary import manifest_node_counts
+from app.semantic.mode import PROJECT_MODES as METRICFLOW_PROJECT_MODES
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -57,6 +58,7 @@ class ProjectOut(BaseModel):
     last_init_started_at: datetime | None = None
     last_init_finished_at: datetime | None = None
     last_init_failed_step: str | None = None
+    metricflow_mode: str = ""
     readme: str | None = None
     dbt_project_yml: str | None = None
     profiles_yml: str | None = None
@@ -80,6 +82,7 @@ class ProjectOut(BaseModel):
             last_init_started_at=row.last_init_started_at,
             last_init_finished_at=row.last_init_finished_at,
             last_init_failed_step=row.last_init_failed_step,
+            metricflow_mode=row.metricflow_mode or "",
             readme=_read_readme(row.path) if include_files else None,
             dbt_project_yml=_read_file_text(root / "dbt_project.yml") if include_files else None,
             profiles_yml=_read_file_text(root / "profiles.yml") if include_files else None,
@@ -287,7 +290,9 @@ async def get_project_by_path(
 
 
 class ProjectSettingsDto(BaseModel):
-    init_script_path: str
+    init_script_path: str | None = None
+    # '' = use the global default, auto, off
+    metricflow_mode: str | None = None
 
 
 @router.patch("/{project_id}/settings", response_model=ProjectOut)
@@ -299,10 +304,16 @@ async def patch_project_settings(
     row = await session.get(Project, project_id)
     if row is None:
         raise HTTPException(status_code=404, detail="project not found")
-    normalized = dto.init_script_path.strip().rstrip("/")
-    if normalized and ".." in Path(normalized).parts:
-        raise HTTPException(status_code=400, detail="invalid init_script_path")
-    row.init_script_path = normalized
+    if dto.init_script_path is not None:
+        normalized = dto.init_script_path.strip().rstrip("/")
+        if normalized and ".." in Path(normalized).parts:
+            raise HTTPException(status_code=400, detail="invalid init_script_path")
+        row.init_script_path = normalized
+    if dto.metricflow_mode is not None:
+        mode = dto.metricflow_mode.strip().lower()
+        if mode not in METRICFLOW_PROJECT_MODES:
+            raise HTTPException(status_code=400, detail="metricflow_mode must be '', 'auto' or 'off'")
+        row.metricflow_mode = mode
     await session.commit()
     await session.refresh(row)
     return ProjectOut.from_row(row)

@@ -1376,7 +1376,6 @@ def _run_pip_in_thread(pip: Path, install_args: list[str], pip_env: dict) -> Non
 async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict[str, bool]:
     """Install the global requirements.txt into the dbt venv — or, when none is
     configured, dbt-core (the version chosen in setup, else the latest)."""
-    global _global_setup_thread, _global_setup_return_code, _global_setup_replay
     _dbg("main: run_global_setup")
     path_str = await _get_global_requirements_path(session)
     req_path = Path(path_str).expanduser() if path_str and path_str.strip() else None
@@ -1384,6 +1383,17 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
         raise HTTPException(status_code=404, detail=f"Requirements file not found: {path_str}")
     if global_setup_running():
         return {"ok": True}  # already running — idempotent
+    await start_global_install(
+        _global_setup_install_args(req_path, await _get_dbt_core_version(session)), session
+    )
+    return {"ok": True}
+
+
+async def start_global_install(install_args: list[str], session: AsyncSession) -> None:
+    """Run `pip install <install_args>` in the dbt venv on the global-setup thread,
+    streaming output on the `global-setup` topic (same as global setup itself). Also
+    used by the semantic layer's dbt-core version change (app/semantic/dbt_change.py)."""
+    global _global_setup_thread, _global_setup_return_code, _global_setup_replay
     try:
         # venv_pip() creates the dbt venv on first call (packaged app: there's
         # no install-time step like dev's `task install:backend` to have done
@@ -1405,7 +1415,7 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
                "PYTHON_KEYRING_BACKEND": "keyring.backends.null.Keyring"}
     _global_setup_thread = _threading.Thread(
         target=_run_pip_in_thread,
-        args=(pip, _global_setup_install_args(req_path, await _get_dbt_core_version(session)), pip_env),
+        args=(pip, install_args, pip_env),
         daemon=True,
     )
     _global_setup_thread.start()
@@ -1414,7 +1424,6 @@ async def run_global_setup(session: AsyncSession = Depends(get_session)) -> dict
     # Launch a background task that drains the queue and publishes output events.
     # This task is fire-and-forget; the frontend polls /status for completion.
     asyncio.create_task(_drain_and_publish())
-    return {"ok": True}
 
 
 async def _drain_and_publish() -> None:

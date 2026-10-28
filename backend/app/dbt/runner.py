@@ -1,4 +1,5 @@
 import asyncio
+import shlex
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -21,6 +22,14 @@ class RunRequest:
     extra: tuple[str, ...] = ()
     env: dict[str, str] | None = None  # if None, inherits process environment
     inject_profiles_dir: bool = True  # set False when extra already contains --profiles-dir
+
+
+def command_line(req: RunRequest) -> str:
+    """The command as a shell would need it typed, for the project log: arguments with
+    spaces, newlines or quotes (e.g. MetricFlow's multi-line `--inline` SQL) are quoted.
+    dbt itself is run without a shell, each argument passed as-is."""
+    parts = ["dbt", req.command, *(["--select", req.select] if req.select else []), *req.extra]
+    return shlex.join(parts)
 
 
 class DbtRunner:
@@ -89,9 +98,7 @@ class DbtRunner:
         async with lock:
             args = self.build_args(req)
             pid = req.project_id
-            selector_part = f" --select {req.select}" if req.select else ""
-            extra_part = (" " + " ".join(req.extra)) if req.extra else ""
-            append_project_log(str(req.project_path), f">>> dbt {req.command}{selector_part}{extra_part}", pid)
+            append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 cwd=str(req.project_path),
@@ -131,9 +138,7 @@ class DbtRunner:
             )
             log.info("dbt_invoke", project=req.project_id, args=args, cwd=str(req.project_path))
             pid = req.project_id
-            selector_part = f" --select {req.select}" if req.select else ""
-            extra_part = (" " + " ".join(req.extra)) if req.extra else ""
-            append_project_log(str(req.project_path), f">>> dbt {req.command}{selector_part}{extra_part}", pid)
+            append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
             try:
                 proc = await asyncio.create_subprocess_exec(
                     *args,

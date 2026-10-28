@@ -96,7 +96,14 @@ def build_index(data: dict) -> tuple[IndexedNode, ...]:
             node = _indexed(unique_id, raw, raw["resource_type"])
             if node is not None:
                 entries.append(node)
-    for key, resource_type in (("sources", "source"), ("exposures", "exposure")):
+    sections = (
+        ("sources", "source"),
+        ("exposures", "exposure"),
+        ("semantic_models", "semantic_model"),
+        ("metrics", "metric"),
+        ("saved_queries", "saved_query"),
+    )
+    for key, resource_type in sections:
         for unique_id, raw in _section(data, key).items():
             if isinstance(raw, dict):
                 node = _indexed(unique_id, raw, resource_type)

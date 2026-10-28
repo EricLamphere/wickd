@@ -28,6 +28,7 @@ import { ExportDagModal } from './components/DagExport/ExportDagModal';
 import { buildScene } from './lib/dagExport/scene';
 import { computeLayout, NODE_HEIGHT } from './lib/layout';
 import { type FilterState, defaultFilter, applyFilter, serializeFilter, deserializeFilter } from './lib/dagFilter';
+import { isSemanticType } from './lib/semantic';
 import { ColumnLineageContext, type ColumnLineageContextValue } from './lib/columnLineageContext';
 import { buildCoverageMap, getModelCoverageStats } from './lib/testCoverage';
 import CoverageLegend from './components/CoverageLegend';
@@ -199,6 +200,12 @@ export default function ModelsPage() {
     if (modelParam) {
       const node = graph.nodes.find((n) => n.unique_id === modelParam);
       if (node) setSelectedModel(node);
+      // Semantic nodes are hidden by the default Type filter; arriving at one (e.g. from
+      // Docs or search) shows the semantic layer so the selected node is on screen
+      if (node && changed && isSemanticType(node.resource_type)
+          && filter.resourceTypes.size > 0 && !filter.resourceTypes.has(node.resource_type)) {
+        handleFilterChange({ ...filter, resourceTypes: new Set([...filter.resourceTypes, 'semantic_model', 'metric', node.resource_type]) });
+      }
       return;
     }
     if (firstRun) {

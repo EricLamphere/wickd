@@ -6,7 +6,7 @@ import type { GraphDto, ModelNode } from '../../../lib/api';
  * Tests are not listed as impacted nodes; they're counted per node instead.
  */
 
-export const IMPACT_FLAGS = ['untested', 'exposure', 'incremental', 'failing', 'stale'] as const;
+export const IMPACT_FLAGS = ['untested', 'exposure', 'metric', 'incremental', 'failing', 'stale'] as const;
 export type ImpactFlag = (typeof IMPACT_FLAGS)[number];
 
 export interface ImpactNode {
@@ -46,7 +46,9 @@ export interface Impact {
 
 const TESTABLE_TYPES = new Set(['model', 'snapshot']);
 const FAILING_STATUSES = new Set(['error', 'warn']);
-const TYPE_ORDER = ['model', 'snapshot', 'seed', 'source', 'exposure'];
+const TYPE_ORDER = ['model', 'snapshot', 'seed', 'source', 'exposure', 'semantic_model', 'metric', 'saved_query'];
+/** Downstream-only nodes `dbt build` has nothing to do for. */
+const UNBUILDABLE_TYPES = new Set(['exposure', 'semantic_model', 'metric', 'saved_query']);
 
 function typeRank(type: string): number {
   const i = TYPE_ORDER.indexOf(type);
@@ -61,6 +63,7 @@ function flagsFor(node: ModelNode, totalTests: number): ImpactFlag[] {
   const has: Record<ImpactFlag, boolean> = {
     untested: TESTABLE_TYPES.has(node.resource_type) && totalTests === 0,
     exposure: node.resource_type === 'exposure',
+    metric: node.resource_type === 'metric' || node.resource_type === 'saved_query',
     incremental: node.materialized === 'incremental',
     failing: FAILING_STATUSES.has(node.status),
     stale: node.status === 'stale',
@@ -196,32 +199,39 @@ export function computeImpact(graph: GraphDto, seedIds: readonly string[], optio
 
 /**
  * `dbt build --select` value for exactly these nodes (no `+`), for column-level
- * impact where only some downstream nodes are affected. Exposures left out.
+ * impact where only some downstream nodes are affected. Exposures and semantic
+ * nodes left out.
  */
 export function buildExactSelector(nodes: readonly ModelNode[]): string {
-  const buildable = nodes.filter((n) => n.resource_type !== 'exposure');
+  const buildable = nodes.filter((n) => !UNBUILDABLE_TYPES.has(n.resource_type));
   return [...new Set(buildable.map(selectorFor))].sort().join(' ');
 }
 
 /** The dbt `--select` term for a single node. */
 export function selectorFor(node: ModelNode): string {
   if (node.resource_type === 'source' && node.source_name) return `source:${node.source_name}.${node.name}`;
-  if (node.resource_type === 'exposure') return `exposure:${node.name}`;
+  if (UNBUILDABLE_TYPES.has(node.resource_type)) return `${node.resource_type}:${node.name}`;
   return node.name;
 }
 
 /**
  * `dbt build --select` value covering the seeds and everything downstream.
- * Exposures are left out: they're leaves that dbt build has nothing to do for.
- * Empty when there's nothing buildable.
+ * Exposures and semantic nodes are left out: they're leaves that dbt build has
+ * nothing to do for. Empty when there's nothing buildable.
  */
 export function buildImpactSelector(seeds: readonly ModelNode[]): string {
-  const buildable = seeds.filter((n) => n.resource_type !== 'exposure');
+  const buildable = seeds.filter((n) => !UNBUILDABLE_TYPES.has(n.resource_type));
   return [...new Set(buildable.map((n) => `${selectorFor(n)}+`))].sort().join(' ');
 }
 
+const TYPE_NOUNS: Record<string, [string, string]> = {
+  semantic_model: ['semantic model', 'semantic models'],
+  saved_query: ['saved query', 'saved queries'],
+};
+
 function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+  const [one, many] = TYPE_NOUNS[noun] ?? [noun, `${noun}s`];
+  return `${count} ${count === 1 ? one : many}`;
 }
 
 /** Total tests a `dbt build` of the impact would run (data + unit). */

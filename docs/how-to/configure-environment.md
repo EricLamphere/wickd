@@ -114,6 +114,8 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 **PROPAGATE_TAGS** — the column tags the Docs **Tags** tab follows through lineage (wickd Pro), comma-separated. Defaults to `pii,sensitive`. See [Inherit docs and trace tagged columns](inherit-docs-and-trace-tags.md).
 
+**METRICFLOW_MODE** — whether MetricFlow runs for this project's semantic layer: `auto`, `off`, or empty to use the global default (`WICKD_METRICFLOW_MODE`). Choosing **Continue without MetricFlow** in the version dialog sets it to `off`. See [Use the semantic layer](semantic-layer.md).
+
 ### Global settings (read-only here)
 
 Global settings are shown for reference but can only be edited in the Global Settings modal:
@@ -122,6 +124,7 @@ Global settings are shown for reference but can only be edited in the Global Set
 - **WICKD_GLOBAL_REQUIREMENTS_PATH** — a global `requirements.txt` installed for every project
 - **WICKD_DBT_CORE_VERSION** — the dbt-core release **Run global setup** installs when there's no global requirements file (blank = latest)
 - **WICKD_LOG_LEVEL** — logging verbosity
+- **WICKD_METRICFLOW_MODE** — the semantic layer default for projects: `auto` (default) or `off`
 - **WICKD_PYTHON_PATH** — the Python interpreter dbt runs on (see below)
 
 To change these, click the lock icon area or open Global Settings from the Home page.

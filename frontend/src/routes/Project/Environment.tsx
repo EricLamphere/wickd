@@ -286,6 +286,17 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
   };
 
+  const { data: appSettings } = useQuery({ queryKey: ['app-settings'], queryFn: () => api.settings.get() });
+
+  const handleSaveMetricflowMode = async (val: string) => {
+    const mode = val.trim().toLowerCase();
+    if (mode !== '' && mode !== 'auto' && mode !== 'off') {
+      throw new Error("METRICFLOW_MODE must be 'auto', 'off', or empty to use the global default");
+    }
+    await api.projects.updateSettings(projectId, { metricflow_mode: mode });
+    for (const key of ['project', 'semantic-status', 'health-summary']) qc.invalidateQueries({ queryKey: [key, projectId] });
+  };
+
   const handleSavePropagateTags = async (val: string) => {
     const normalized = val.split(',').map((t) => t.trim()).filter(Boolean).join(',');
     if (normalized) {
@@ -338,6 +349,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               placeholder="pii,sensitive"
               kind="default"
               onSave={handleSavePropagateTags}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
+              label="METRICFLOW_MODE"
+              value={project.metricflow_mode ?? ''}
+              placeholder={`${appSettings?.metricflow_mode ?? 'auto'} (global default; auto or off)`}
+              kind="default"
+              onSave={handleSaveMetricflowMode}
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />

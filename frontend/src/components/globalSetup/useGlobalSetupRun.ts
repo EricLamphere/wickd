@@ -16,10 +16,12 @@ export interface GlobalSetupRun {
 
 /**
  * Starts global setup on mount and streams its output. Remount (e.g. via `key`) to retry.
+ * `start` replaces the request that kicks it off — e.g. the semantic layer's dbt-core
+ * change, which installs through the same stream.
  * SSE is the primary signal; the status endpoint is polled every 3s as a backstop for a
  * missed `global_setup_finished` event.
  */
-export function useGlobalSetupRun(): GlobalSetupRun {
+export function useGlobalSetupRun(start: () => Promise<unknown> = api.init.runGlobalSetup): GlobalSetupRun {
   const qc = useQueryClient();
   const [state, setState] = useState<GlobalSetupState>('starting');
   const [lines, setLines] = useState<string[]>([]);
@@ -30,6 +32,7 @@ export function useGlobalSetupRun(): GlobalSetupRun {
   const stateRef = useRef<GlobalSetupState>('starting');
   const startedRef = useRef(false);
   const lastOutputRef = useRef(Date.now());
+  const startRef = useRef(start);
 
   useEffect(() => {
     stateRef.current = state;
@@ -77,7 +80,7 @@ export function useGlobalSetupRun(): GlobalSetupRun {
 
     if (!startedRef.current) {
       startedRef.current = true;
-      api.init.runGlobalSetup().catch((e) => {
+      startRef.current().catch((e) => {
         setStartError(String(e));
         setState('error');
         es.close();

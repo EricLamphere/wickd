@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     dbt_venv_dir: Path = Field(default_factory=_default_dbt_venv_dir)
     # llama-server binary for local AI; unset → bundled copy, then PATH (app/ai/runtime.py)
     llama_server_path: Path | None = Field(default=None)
+    # MetricFlow sidecar venv (app/semantic/sidecar_env.py); unset → <data_dir>/metricflow-venv
+    metricflow_venv_dir: Path | None = Field(default=None)
+    # Default MetricFlow mode for projects without their own (auto | off); app_settings overrides
+    metricflow_mode: str = Field(default="auto")
 
     # Polar (polar.sh) licensing — organization ID is not a secret (it just
     # identifies which Polar org to validate license keys against), but the

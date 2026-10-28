@@ -24,6 +24,8 @@ export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
   const nothingDownstream = summary.downstreamCount === 0;
   if (impact.seeds.length === 0) return null;
   const seedNodes = impact.seeds.map((n) => n.node);
+  // empty for exposures / semantic nodes alone: dbt build has nothing to do for them
+  const buildSelectorText = buildImpactSelector(seedNodes);
 
   return (
     <div className="flex flex-col gap-2">
@@ -47,8 +49,8 @@ export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
           </button>
           <button
             onClick={() => build(seedNodes)}
-            disabled={building}
-            title={`dbt build --select ${buildImpactSelector(seedNodes)}`}
+            disabled={building || !buildSelectorText}
+            title={buildSelectorText ? `dbt build --select ${buildSelectorText}` : 'Nothing to build: only exposures or semantic nodes are selected'}
             className="flex items-center justify-center gap-1.5 py-1.5 text-xs rounded border bg-surface-elevated border-gray-700 text-gray-200 hover:border-brand-600 hover:text-brand-300 transition-colors disabled:opacity-50"
           >
             {building ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Hammer className="w-3.5 h-3.5" />}

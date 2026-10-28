@@ -41,6 +41,9 @@ include = ["app*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "slow: builds real environments over the network; run with WICKD_SLOW_TESTS=1",
+]
 
 [tool.ruff]
 line-length = 100

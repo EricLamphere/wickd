@@ -1,0 +1,973 @@
+{
+ "metadata": {
+  "dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json",
+  "dbt_version": "1.12.6",
+  "adapter_type": "duckdb",
+  "project_name": "mf_bench"
+ },
+ "nodes": {
+  "model.mf_bench.dim_customers": {
+   "name": "dim_customers",
+   "resource_type": "model",
+   "package_name": "mf_bench",
+   "original_file_path": "models/dim_customers.sql",
+   "unique_id": "model.mf_bench.dim_customers",
+   "schema": "main",
+   "database": "bench",
+   "config": {
+    "materialized": "view"
+   },
+   "description": "",
+   "columns": {},
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "seed.mf_bench.raw_customers"
+    ]
+   },
+   "patch_path": null,
+   "tags": []
+  },
+  "model.mf_bench.stg_orders": {
+   "name": "stg_orders",
+   "resource_type": "model",
+   "package_name": "mf_bench",
+   "original_file_path": "models/stg_orders.sql",
+   "unique_id": "model.mf_bench.stg_orders",
+   "schema": "main",
+   "database": "bench",
+   "config": {
+    "materialized": "view"
+   },
+   "description": "",
+   "columns": {},
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "seed.mf_bench.raw_orders"
+    ]
+   },
+   "patch_path": null,
+   "tags": []
+  },
+  "model.mf_bench.metricflow_time_spine": {
+   "name": "metricflow_time_spine",
+   "resource_type": "model",
+   "package_name": "mf_bench",
+   "original_file_path": "models/metricflow_time_spine.sql",
+   "unique_id": "model.mf_bench.metricflow_time_spine",
+   "schema": "main",
+   "database": "bench",
+   "config": {
+    "materialized": "table"
+   },
+   "description": "",
+   "columns": {},
+   "depends_on": {
+    "macros": [],
+    "nodes": []
+   },
+   "patch_path": null,
+   "tags": []
+  },
+  "seed.mf_bench.raw_customers": {
+   "name": "raw_customers",
+   "resource_type": "seed",
+   "package_name": "mf_bench",
+   "original_file_path": "seeds/raw_customers.csv",
+   "unique_id": "seed.mf_bench.raw_customers",
+   "schema": "main",
+   "database": "bench",
+   "config": {
+    "materialized": "seed"
+   },
+   "description": "",
+   "columns": {},
+   "depends_on": {
+    "macros": []
+   },
+   "patch_path": null,
+   "tags": []
+  },
+  "seed.mf_bench.raw_orders": {
+   "name": "raw_orders",
+   "resource_type": "seed",
+   "package_name": "mf_bench",
+   "original_file_path": "seeds/raw_orders.csv",
+   "unique_id": "seed.mf_bench.raw_orders",
+   "schema": "main",
+   "database": "bench",
+   "config": {
+    "materialized": "seed"
+   },
+   "description": "",
+   "columns": {},
+   "depends_on": {
+    "macros": []
+   },
+   "patch_path": null,
+   "tags": []
+  }
+ },
+ "sources": {},
+ "exposures": {},
+ "semantic_models": {
+  "semantic_model.mf_bench.orders": {
+   "name": "orders",
+   "resource_type": "semantic_model",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "semantic_model.mf_bench.orders",
+   "fqn": [
+    "mf_bench",
+    "orders"
+   ],
+   "model": "ref('stg_orders')",
+   "node_relation": {
+    "alias": "stg_orders",
+    "schema_name": "main",
+    "database": "bench",
+    "relation_name": "\"bench\".\"main\".\"stg_orders\""
+   },
+   "description": null,
+   "label": null,
+   "defaults": {
+    "agg_time_dimension": "order_date"
+   },
+   "entities": [
+    {
+     "name": "order_id",
+     "type": "primary",
+     "description": null,
+     "label": null,
+     "role": null,
+     "expr": null,
+     "config": {
+      "meta": {}
+     }
+    },
+    {
+     "name": "customer",
+     "type": "foreign",
+     "description": null,
+     "label": null,
+     "role": null,
+     "expr": "customer_id",
+     "config": {
+      "meta": {}
+     }
+    }
+   ],
+   "measures": [
+    {
+     "name": "revenue",
+     "agg": "sum",
+     "description": null,
+     "label": null,
+     "create_metric": false,
+     "expr": "amount",
+     "agg_params": null,
+     "non_additive_dimension": null,
+     "agg_time_dimension": null,
+     "config": {
+      "meta": {}
+     }
+    },
+    {
+     "name": "order_count",
+     "agg": "count",
+     "description": null,
+     "label": null,
+     "create_metric": false,
+     "expr": "order_id",
+     "agg_params": null,
+     "non_additive_dimension": null,
+     "agg_time_dimension": null,
+     "config": {
+      "meta": {}
+     }
+    },
+    {
+     "name": "buyers",
+     "agg": "count_distinct",
+     "description": null,
+     "label": null,
+     "create_metric": false,
+     "expr": "customer_id",
+     "agg_params": null,
+     "non_additive_dimension": null,
+     "agg_time_dimension": null,
+     "config": {
+      "meta": {}
+     }
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "order_date",
+     "type": "time",
+     "description": null,
+     "label": null,
+     "is_partition": false,
+     "type_params": {
+      "time_granularity": "day",
+      "validity_params": null
+     },
+     "expr": null,
+     "metadata": null,
+     "config": {
+      "meta": {}
+     },
+     "datatype": null
+    },
+    {
+     "name": "status",
+     "type": "categorical",
+     "description": null,
+     "label": null,
+     "is_partition": false,
+     "type_params": null,
+     "expr": null,
+     "metadata": null,
+     "config": {
+      "meta": {}
+     },
+     "datatype": null
+    }
+   ],
+   "metadata": null,
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.mf_bench.stg_orders"
+    ]
+   },
+   "refs": [
+    {
+     "name": "stg_orders",
+     "package": null,
+     "version": null
+    }
+   ],
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "primary_entity": null,
+   "group": null
+  },
+  "semantic_model.mf_bench.customers": {
+   "name": "customers",
+   "resource_type": "semantic_model",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "semantic_model.mf_bench.customers",
+   "fqn": [
+    "mf_bench",
+    "customers"
+   ],
+   "model": "ref('dim_customers')",
+   "node_relation": {
+    "alias": "dim_customers",
+    "schema_name": "main",
+    "database": "bench",
+    "relation_name": "\"bench\".\"main\".\"dim_customers\""
+   },
+   "description": null,
+   "label": null,
+   "defaults": {
+    "agg_time_dimension": "signup_date"
+   },
+   "entities": [
+    {
+     "name": "customer",
+     "type": "primary",
+     "description": null,
+     "label": null,
+     "role": null,
+     "expr": "customer_id",
+     "config": {
+      "meta": {}
+     }
+    }
+   ],
+   "measures": [
+    {
+     "name": "new_customers",
+     "agg": "count",
+     "description": null,
+     "label": null,
+     "create_metric": false,
+     "expr": "customer_id",
+     "agg_params": null,
+     "non_additive_dimension": null,
+     "agg_time_dimension": null,
+     "config": {
+      "meta": {}
+     }
+    }
+   ],
+   "dimensions": [
+    {
+     "name": "region",
+     "type": "categorical",
+     "description": null,
+     "label": null,
+     "is_partition": false,
+     "type_params": null,
+     "expr": null,
+     "metadata": null,
+     "config": {
+      "meta": {}
+     },
+     "datatype": null
+    },
+    {
+     "name": "signup_date",
+     "type": "time",
+     "description": null,
+     "label": null,
+     "is_partition": false,
+     "type_params": {
+      "time_granularity": "day",
+      "validity_params": null
+     },
+     "expr": null,
+     "metadata": null,
+     "config": {
+      "meta": {}
+     },
+     "datatype": null
+    }
+   ],
+   "metadata": null,
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "model.mf_bench.dim_customers"
+    ]
+   },
+   "refs": [
+    {
+     "name": "dim_customers",
+     "package": null,
+     "version": null
+    }
+   ],
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "primary_entity": null,
+   "group": null
+  }
+ },
+ "metrics": {
+  "metric.mf_bench.revenue": {
+   "name": "revenue",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.revenue",
+   "fqn": [
+    "mf_bench",
+    "revenue"
+   ],
+   "description": "",
+   "label": "Revenue",
+   "type": "simple",
+   "type_params": {
+    "measure": {
+     "name": "revenue",
+     "filter": null,
+     "alias": null,
+     "join_to_timespine": false,
+     "fill_nulls_with": null
+    },
+    "input_measures": [
+     {
+      "name": "revenue",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": null,
+    "denominator": null,
+    "expr": null,
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [],
+    "conversion_type_params": null,
+    "cumulative_type_params": null,
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": null,
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "semantic_model.mf_bench.orders"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  },
+  "metric.mf_bench.order_count": {
+   "name": "order_count",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.order_count",
+   "fqn": [
+    "mf_bench",
+    "order_count"
+   ],
+   "description": "",
+   "label": "Orders",
+   "type": "simple",
+   "type_params": {
+    "measure": {
+     "name": "order_count",
+     "filter": null,
+     "alias": null,
+     "join_to_timespine": false,
+     "fill_nulls_with": null
+    },
+    "input_measures": [
+     {
+      "name": "order_count",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": null,
+    "denominator": null,
+    "expr": null,
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [],
+    "conversion_type_params": null,
+    "cumulative_type_params": null,
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": null,
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "semantic_model.mf_bench.orders"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  },
+  "metric.mf_bench.completed_revenue": {
+   "name": "completed_revenue",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.completed_revenue",
+   "fqn": [
+    "mf_bench",
+    "completed_revenue"
+   ],
+   "description": "",
+   "label": "Completed revenue",
+   "type": "simple",
+   "type_params": {
+    "measure": {
+     "name": "revenue",
+     "filter": null,
+     "alias": null,
+     "join_to_timespine": false,
+     "fill_nulls_with": null
+    },
+    "input_measures": [
+     {
+      "name": "revenue",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": null,
+    "denominator": null,
+    "expr": null,
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [],
+    "conversion_type_params": null,
+    "cumulative_type_params": null,
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": {
+    "where_filters": [
+     {
+      "where_sql_template": "{{ Dimension('order_id__status') }} = 'completed'"
+     }
+    ]
+   },
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "semantic_model.mf_bench.orders"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  },
+  "metric.mf_bench.avg_order_value": {
+   "name": "avg_order_value",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.avg_order_value",
+   "fqn": [
+    "mf_bench",
+    "avg_order_value"
+   ],
+   "description": "",
+   "label": "Average order value",
+   "type": "ratio",
+   "type_params": {
+    "measure": null,
+    "input_measures": [
+     {
+      "name": "revenue",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     },
+     {
+      "name": "order_count",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": {
+     "name": "revenue",
+     "filter": null,
+     "alias": null,
+     "offset_window": null,
+     "offset_to_grain": null
+    },
+    "denominator": {
+     "name": "order_count",
+     "filter": null,
+     "alias": null,
+     "offset_window": null,
+     "offset_to_grain": null
+    },
+    "expr": null,
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [],
+    "conversion_type_params": null,
+    "cumulative_type_params": null,
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": null,
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "metric.mf_bench.revenue",
+     "metric.mf_bench.order_count"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  },
+  "metric.mf_bench.cumulative_revenue": {
+   "name": "cumulative_revenue",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.cumulative_revenue",
+   "fqn": [
+    "mf_bench",
+    "cumulative_revenue"
+   ],
+   "description": "",
+   "label": "Cumulative revenue",
+   "type": "cumulative",
+   "type_params": {
+    "measure": {
+     "name": "revenue",
+     "filter": null,
+     "alias": null,
+     "join_to_timespine": false,
+     "fill_nulls_with": null
+    },
+    "input_measures": [
+     {
+      "name": "revenue",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": null,
+    "denominator": null,
+    "expr": null,
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [],
+    "conversion_type_params": null,
+    "cumulative_type_params": {
+     "window": null,
+     "grain_to_date": null,
+     "period_agg": "first",
+     "metric": null
+    },
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": null,
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "semantic_model.mf_bench.orders"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  },
+  "metric.mf_bench.revenue_per_buyer": {
+   "name": "revenue_per_buyer",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.revenue_per_buyer",
+   "fqn": [
+    "mf_bench",
+    "revenue_per_buyer"
+   ],
+   "description": "",
+   "label": "Revenue per buyer",
+   "type": "derived",
+   "type_params": {
+    "measure": null,
+    "input_measures": [
+     {
+      "name": "revenue",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     },
+     {
+      "name": "buyers",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": null,
+    "denominator": null,
+    "expr": "revenue / buyers",
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [
+     {
+      "name": "revenue",
+      "filter": null,
+      "alias": null,
+      "offset_window": null,
+      "offset_to_grain": null
+     },
+     {
+      "name": "buyers",
+      "filter": null,
+      "alias": null,
+      "offset_window": null,
+      "offset_to_grain": null
+     }
+    ],
+    "conversion_type_params": null,
+    "cumulative_type_params": null,
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": null,
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "metric.mf_bench.revenue",
+     "metric.mf_bench.buyers"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  },
+  "metric.mf_bench.buyers": {
+   "name": "buyers",
+   "resource_type": "metric",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "metric.mf_bench.buyers",
+   "fqn": [
+    "mf_bench",
+    "buyers"
+   ],
+   "description": "",
+   "label": "Buyers",
+   "type": "simple",
+   "type_params": {
+    "measure": {
+     "name": "buyers",
+     "filter": null,
+     "alias": null,
+     "join_to_timespine": false,
+     "fill_nulls_with": null
+    },
+    "input_measures": [
+     {
+      "name": "buyers",
+      "filter": null,
+      "alias": null,
+      "join_to_timespine": false,
+      "fill_nulls_with": null
+     }
+    ],
+    "numerator": null,
+    "denominator": null,
+    "expr": null,
+    "window": null,
+    "grain_to_date": null,
+    "metrics": [],
+    "conversion_type_params": null,
+    "cumulative_type_params": null,
+    "metric_aggregation_params": null,
+    "fill_nulls_with": null,
+    "join_to_timespine": false,
+    "is_private": null
+   },
+   "filter": null,
+   "metadata": null,
+   "time_granularity": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {}
+   },
+   "unrendered_config": {},
+   "sources": [],
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "semantic_model.mf_bench.orders"
+    ]
+   },
+   "refs": [],
+   "metrics": [],
+   "group": null,
+   "meta": {},
+   "tags": []
+  }
+ },
+ "saved_queries": {
+  "saved_query.mf_bench.weekly_revenue_by_region": {
+   "name": "weekly_revenue_by_region",
+   "resource_type": "saved_query",
+   "package_name": "mf_bench",
+   "path": "semantic.yml",
+   "original_file_path": "models/semantic.yml",
+   "unique_id": "saved_query.mf_bench.weekly_revenue_by_region",
+   "fqn": [
+    "mf_bench",
+    "weekly_revenue_by_region"
+   ],
+   "query_params": {
+    "metrics": [
+     "revenue",
+     "order_count"
+    ],
+    "group_by": [
+     "TimeDimension('metric_time', 'week')",
+     "Dimension('customer__region')"
+    ],
+    "where": null,
+    "order_by": [],
+    "limit": null
+   },
+   "exports": [],
+   "description": null,
+   "label": null,
+   "metadata": null,
+   "config": {
+    "enabled": true,
+    "group": null,
+    "meta": {},
+    "export_as": null,
+    "schema": null,
+    "cache": {
+     "enabled": false
+    }
+   },
+   "unrendered_config": {},
+   "group": null,
+   "depends_on": {
+    "macros": [],
+    "nodes": [
+     "metric.mf_bench.revenue",
+     "metric.mf_bench.order_count"
+    ]
+   },
+   "refs": [],
+   "tags": []
+  }
+ },
+ "parent_map": {
+  "model.mf_bench.dim_customers": [
+   "seed.mf_bench.raw_customers"
+  ],
+  "model.mf_bench.stg_orders": [
+   "seed.mf_bench.raw_orders"
+  ],
+  "model.mf_bench.metricflow_time_spine": [],
+  "seed.mf_bench.raw_customers": [],
+  "seed.mf_bench.raw_orders": [],
+  "metric.mf_bench.revenue": [
+   "semantic_model.mf_bench.orders"
+  ],
+  "metric.mf_bench.order_count": [
+   "semantic_model.mf_bench.orders"
+  ],
+  "metric.mf_bench.completed_revenue": [
+   "semantic_model.mf_bench.orders"
+  ],
+  "metric.mf_bench.avg_order_value": [
+   "metric.mf_bench.order_count",
+   "metric.mf_bench.revenue"
+  ],
+  "metric.mf_bench.cumulative_revenue": [
+   "semantic_model.mf_bench.orders"
+  ],
+  "metric.mf_bench.revenue_per_buyer": [
+   "metric.mf_bench.buyers",
+   "metric.mf_bench.revenue"
+  ],
+  "metric.mf_bench.buyers": [
+   "semantic_model.mf_bench.orders"
+  ],
+  "semantic_model.mf_bench.orders": [
+   "model.mf_bench.stg_orders"
+  ],
+  "semantic_model.mf_bench.customers": [
+   "model.mf_bench.dim_customers"
+  ],
+  "saved_query.mf_bench.weekly_revenue_by_region": [
+   "metric.mf_bench.order_count",
+   "metric.mf_bench.revenue"
+  ]
+ }
+}

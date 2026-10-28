@@ -1,0 +1,97 @@
+semantic_models:
+  - name: orders
+    model: ref('stg_orders')
+    defaults:
+      agg_time_dimension: order_date
+    entities:
+      - name: order_id
+        type: primary
+      - name: customer
+        type: foreign
+        expr: customer_id
+    dimensions:
+      - name: order_date
+        type: time
+        type_params:
+          time_granularity: day
+      - name: status
+        type: categorical
+    measures:
+      - name: revenue
+        agg: sum
+        expr: amount
+      - name: order_count
+        agg: count
+        expr: order_id
+      - name: buyers
+        agg: count_distinct
+        expr: customer_id
+  - name: customers
+    model: ref('dim_customers')
+    defaults:
+      agg_time_dimension: signup_date
+    entities:
+      - name: customer
+        type: primary
+        expr: customer_id
+    dimensions:
+      - name: region
+        type: categorical
+      - name: signup_date
+        type: time
+        type_params:
+          time_granularity: day
+    measures:
+      - name: new_customers
+        agg: count
+        expr: customer_id
+
+metrics:
+  - name: revenue
+    label: Revenue
+    type: simple
+    type_params:
+      measure: revenue
+  - name: order_count
+    label: Orders
+    type: simple
+    type_params:
+      measure: order_count
+  - name: completed_revenue
+    label: Completed revenue
+    type: simple
+    type_params:
+      measure: revenue
+    filter: "{{ Dimension('order_id__status') }} = 'completed'"
+  - name: avg_order_value
+    label: Average order value
+    type: ratio
+    type_params:
+      numerator: revenue
+      denominator: order_count
+  - name: cumulative_revenue
+    label: Cumulative revenue
+    type: cumulative
+    type_params:
+      measure: revenue
+  - name: revenue_per_buyer
+    label: Revenue per buyer
+    type: derived
+    type_params:
+      expr: revenue / buyers
+      metrics:
+        - name: revenue
+        - name: buyers
+  - name: buyers
+    label: Buyers
+    type: simple
+    type_params:
+      measure: buyers
+
+saved_queries:
+  - name: weekly_revenue_by_region
+    query_params:
+      metrics: [revenue, order_count]
+      group_by:
+        - TimeDimension('metric_time', 'week')
+        - Dimension('customer__region')

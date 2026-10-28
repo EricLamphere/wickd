@@ -5,6 +5,7 @@ import { typeIconFor } from '../../lib/nodeTypeIcon';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE } from '../../lib/openInFiles';
 import type { AffectedColumnsLabel } from '../../lib/columnImpact';
 import { FlagBadge } from '../impact/impactUi';
+import { statusStyle, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
 
 interface ImpactTableProps {
   /** Depth 0 (the selected nodes) first, then each downstream depth. */
@@ -17,6 +18,8 @@ interface ImpactTableProps {
   reasons?: ReadonlyMap<string, string>;
   /** Column-level mode: affected columns per node, shown in an extra column. */
   affectedColumns?: ReadonlyMap<string, AffectedColumnsLabel>;
+  /** Monitored metrics' latest status by metric name (Pro; empty otherwise). */
+  monitorStatuses?: ReadonlyMap<string, MetricMonitorState>;
 }
 
 const GRID_BASE = 'grid items-center gap-4 px-4';
@@ -96,7 +99,7 @@ function CoverageCell({ item, coverage }: { item: ImpactNode; coverage: Coverage
   );
 }
 
-function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected }: {
+function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor }: {
   item: ImpactNode;
   coverage: CoverageMap;
   onNodeClick: ImpactTableProps['onNodeClick'];
@@ -104,6 +107,8 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected }: {
   grid: string;
   /** Present in column-level mode (undefined label = not computed for this row). */
   affected?: AffectedColumnsLabel | null;
+  /** a monitored metric's latest status (Pro) */
+  monitor?: MetricMonitorState;
 }) {
   const { node } = item;
   const rowFlags = item.flags.filter((f) => f !== 'exposure');
@@ -131,9 +136,19 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected }: {
       <TestsCell item={item} />
       <CoverageCell item={item} coverage={coverage} />
       <span className="flex items-center gap-1 overflow-hidden">
-        {rowFlags.length > 0 ? rowFlags.map((f) => <FlagBadge key={f} flag={f} />) : <Muted />}
+        {rowFlags.length > 0 || monitor ? rowFlags.map((f) => <FlagBadge key={f} flag={f} />) : <Muted />}
+        {monitor && <MonitorBadge monitor={monitor} />}
       </span>
     </div>
+  );
+}
+
+function MonitorBadge({ monitor }: { monitor: MetricMonitorState }) {
+  const style = statusStyle(monitor.status);
+  return (
+    <span title={`Monitored · ${monitor.headline}`} className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono ${style.pill}`}>
+      monitor: {style.label.toLowerCase()}
+    </span>
   );
 }
 
@@ -149,7 +164,7 @@ function GroupHeader({ depth, count, seedLabel }: { depth: number; count: number
   );
 }
 
-export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns }: ImpactTableProps) {
+export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses }: ImpactTableProps) {
   const grid = `${GRID_BASE} ${affectedColumns ? GRID_COLS_WITH_AFFECTED : GRID_COLS}`;
   const columns = affectedColumns ? COLUMNS_WITH_AFFECTED : COLUMNS;
   return (
@@ -169,6 +184,7 @@ export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons,
               reason={depth === 0 ? reasons?.get(item.node.unique_id) : undefined}
               grid={grid}
               affected={affectedColumns ? affectedColumns.get(item.node.unique_id) ?? null : undefined}
+              monitor={item.node.resource_type === 'metric' ? monitorStatuses?.get(item.node.name) : undefined}
             />
           ))}
         </div>

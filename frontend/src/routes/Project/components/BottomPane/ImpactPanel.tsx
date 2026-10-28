@@ -10,6 +10,7 @@ import { useBuildImpacted } from '../impact/impactUi';
 import { ImpactColumnBar } from './ImpactColumnBar';
 import { ImpactNotices } from './ImpactNotices';
 import { ImpactTable } from './ImpactTable';
+import { useMonitorStatuses } from '../../Metrics/monitors/useMonitors';
 import { ImpactToolbar } from './ImpactToolbar';
 import { useColumnLevelImpact } from './useColumnLevelImpact';
 
@@ -51,6 +52,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
     [mode, selectedColumns],
   );
   const { handleClick: openInFilesClick } = useOpenInFiles(projectId);
+  const monitorStatuses = useMonitorStatuses(projectId);
   const { buildSelector, building, error: buildError } = useBuildImpacted(projectId);
 
   const isChangeMode = mode !== 'selection';
@@ -124,6 +126,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
           seedLabel={isChangeMode ? 'Changed' : 'Selected'}
           reasons={reasons}
           affectedColumns={columnResult ? columns.labels : undefined}
+          monitorStatuses={monitorStatuses}
         />
         {impact.levels.length === 0 && (
           <div className="px-4 py-3 text-xs text-gray-600">Nothing downstream: only these nodes and their tests are affected.</div>
@@ -150,6 +153,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
         building={building}
         buildError={buildError}
         onBuild={() => buildSelector(selector)}
+        monitorStatuses={monitorStatuses}
       />
       {columnLevel && seedNodes.length > 0 && (
         <ImpactColumnBar

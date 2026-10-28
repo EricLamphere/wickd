@@ -19,6 +19,7 @@ Step-by-step guides for using wickd.
 | [Inherit docs and trace tagged columns (Pro)](inherit-docs-and-trace-tags.md) | Fill empty column descriptions from upstream columns, and follow tagged (e.g. `pii`) columns to every model and exposure they reach |
 | [Use the semantic layer (MetricFlow)](semantic-layer.md) | See semantic models, metrics and saved queries in the DAG, Docs and Impact; validate them in Health; pick a compatible dbt-core when MetricFlow can't run |
 | [Explore metrics](explore-metrics.md) | Query metrics by dimension, grain, filters and dates; see MetricFlow's SQL live, run it, chart the result, and save it as a saved query |
+| [Monitor metrics for anomalies (Pro)](metric-monitors.md) | Watch metrics for spikes, drops, level shifts, missing periods and restatements; checked after builds, on Check now, or on an interval while wickd is open |
 | [Find and fill test gaps (Pro)](find-test-gaps.md) | See the untested columns that matter most (join keys and each model's grain), with evidence, and add tests for many models in one reviewed change |
 | [Refactor models and columns (Pro)](refactor.md) | Rename a model or a column across the project, or extract a CTE into its own model; review every edit, then apply, check with dbt parse, and undo |
 | [Use Wicky, the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |

@@ -4,6 +4,7 @@ import { Check, Columns3, Copy, Hammer, Loader2 } from 'lucide-react';
 import { api } from '../../../../lib/api';
 import { formatImpactCounts, IMPACT_FLAGS, type Impact } from '../../lib/impact';
 import type { ImpactMode } from '../../lib/impactChanges';
+import { monitoredDownstream, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
 import { FlagBadge } from '../impact/impactUi';
 
 const MODES: { id: ImpactMode; label: string; title: string }[] = [
@@ -112,6 +113,8 @@ interface ImpactToolbarProps {
   building: boolean;
   buildError: string | null;
   onBuild: () => void;
+  /** monitored metrics' latest status (Pro; empty otherwise) */
+  monitorStatuses: ReadonlyMap<string, MetricMonitorState>;
 }
 
 export function ImpactToolbar(props: ImpactToolbarProps) {
@@ -120,6 +123,12 @@ export function ImpactToolbar(props: ImpactToolbarProps) {
   const summary = impact?.summary;
   const flags = summary ? IMPACT_FLAGS.filter((f) => summary.flagCounts[f] > 0) : [];
   const hasSeeds = !!impact && impact.seeds.length > 0;
+  const monitored = impact
+    ? monitoredDownstream(
+      [...impact.seeds, ...impact.levels.flatMap((l) => l.nodes)].filter((n) => n.node.resource_type === 'metric').map((n) => n.node.name),
+      props.monitorStatuses,
+    )
+    : null;
 
   return (
     <div className="flex items-center gap-3 h-9 px-4 border-b border-gray-800 shrink-0 select-none">
@@ -149,6 +158,13 @@ export function ImpactToolbar(props: ImpactToolbarProps) {
           {flags.length > 0 && (
             <span className="flex items-center gap-1 shrink-0">
               {flags.map((f) => <FlagBadge key={f} flag={f} count={summary.flagCounts[f]} />)}
+            </span>
+          )}
+          {monitored && monitored.count > 0 && (
+            <span className={`text-xs whitespace-nowrap truncate ${monitored.alarming.length ? 'text-red-300' : 'text-gray-400'}`}
+              title={monitored.alarming.map((m) => `${m}: ${props.monitorStatuses.get(m)?.headline}`).join('\n') || undefined}>
+              {monitored.count} monitored metric{monitored.count === 1 ? '' : 's'}
+              {monitored.alarming.length > 0 && ` · ${monitored.alarming.slice(0, 2).join(', ')}${monitored.alarming.length > 2 ? '…' : ''} look${monitored.alarming.length === 1 ? 's' : ''} wrong`}
             </span>
           )}
         </>

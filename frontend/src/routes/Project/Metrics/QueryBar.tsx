@@ -1,5 +1,6 @@
 // The Metrics page's query controls: metrics, group by, grain, filters, dates, order, limit, Run.
 import { Bookmark, Loader2, Play, Square, X } from 'lucide-react';
+import { ProFeatureButton } from '../../../components/ProFeatureButton';
 import { FilterDropdown } from '../components/FilterDropdown';
 import { FilterEditor } from './FilterEditor';
 import { DATE_PRESETS, allowedGrains, presetRange, type ExplorerState, type GroupByOption } from './lib/metricQuery';
@@ -15,6 +16,8 @@ interface Props {
   onRun: () => void;
   onCancel: () => void;
   onSave: (() => void) | null;
+  /** "Monitor this metric" (one metric picked); opens the Monitors tab pre-filled */
+  onMonitor: (() => void) | null;
 }
 
 const FIELD_CLS = 'px-2 py-1 bg-surface-app border border-gray-700 rounded text-xs text-gray-200 outline-none focus:border-brand-600';
@@ -39,7 +42,7 @@ function OrderSelect({ state, options, onChange }: Pick<Props, 'state' | 'option
   );
 }
 
-export function QueryBar({ state, options, labels, onChange, target, running, canRun, onRun, onCancel, onSave }: Props) {
+export function QueryBar({ state, options, labels, onChange, target, running, canRun, onRun, onCancel, onSave, onMonitor }: Props) {
   const timeSelected = state.groupBy.some((g) => options.find((o) => o.name === g)?.kind === 'time');
   const grains = allowedGrains(options, state.groupBy);
   const preset = presetFor(state.start, state.end);
@@ -65,6 +68,11 @@ export function QueryBar({ state, options, labels, onChange, target, running, ca
           ))}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {onMonitor && (
+            <ProFeatureButton onClick={onMonitor} title="Watch this metric for anomalies (wickd Pro)">
+              Monitor this metric
+            </ProFeatureButton>
+          )}
           {onSave && (
             <button onClick={onSave} title="Write this query to your YAML as a dbt saved query"
               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">

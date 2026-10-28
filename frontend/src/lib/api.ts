@@ -310,6 +310,8 @@ export interface HealthSummary {
   freshness: CheckSummary;
   /** null when the project has no semantic models or metrics */
   semantic: CheckSummary | null;
+  /** Metric monitors (Pro); null without monitors or without Pro */
+  monitors?: CheckSummary | null;
   current_target: string | null;
 }
 

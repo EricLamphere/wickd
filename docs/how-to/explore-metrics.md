@@ -41,3 +41,4 @@ Saved queries are listed under the metrics. Click one to run it. The pencil open
 
 - **Side pane** (DAG or Files) and **Docs**: metric, semantic model and saved query nodes have an **Explore** button. In Docs, a metric also shows its last stored result as a sparkline.
 - **Command palette** (⌘K): "Explore metric: …", "Run saved query: …" and "Go to Metrics".
+- **Monitor this metric** (Pro): with one metric picked, opens **Monitors** with the metric, grain and a categorical group-by filled in. See [Monitor metrics for anomalies](metric-monitors.md).

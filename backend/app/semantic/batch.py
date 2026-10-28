@@ -100,15 +100,17 @@ def _with_jinja(sqls: list[str]) -> set[int]:
 
 
 async def run_many(
-    project_id: int, project_path: Path, sqls: list[str], *, limit: int = MAX_ROW_LIMIT
+    project_id: int, project_path: Path, sqls: list[str], *, limit: int = MAX_ROW_LIMIT, target: str | None = None
 ) -> list[BatchResult]:
-    """One BatchResult per SQL, in order; a failing statement gets `error`, the others still run."""
+    """One BatchResult per SQL, in order; a failing statement gets `error`, the others still run.
+
+    `target` overrides the project's active dbt target (a monitor pinned to one)."""
     limit = max(1, min(limit, MAX_ROW_LIMIT))
     results: dict[int, BatchResult] = {
         i: BatchResult([], [], False, "Jinja isn't allowed in a batched query") for i in _with_jinja(sqls)
     }
     env = await load_project_env(project_id)
-    target = env.get("DBT_TARGET")
+    target = target or env.get("DBT_TARGET")
     start = 0
     while start < len(sqls):
         if start in results:

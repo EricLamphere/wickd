@@ -1,5 +1,6 @@
-import { FileCode2, Globe, Image, Lock, Sparkles } from 'lucide-react';
+import { FileCode2, Globe, Image, Lock } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { ProLabel } from '../../../../components/ProLabel';
 import { FORMAT_LABEL, type ExportFormat, type ExportTheme, type HtmlIncludes } from '../../lib/dagExport/config';
 
 const FORMAT_INFO: Record<ExportFormat, { icon: ReactNode; blurb: string }> = {
@@ -45,15 +46,6 @@ interface IncludesPickerProps {
   totalCount: number;
   columnLineageLocked: boolean;
   onUpgradeColumnLineage: () => void;
-}
-
-function ProTag() {
-  return (
-    <span className="inline-flex items-center gap-0.5 ml-1.5 px-1.5 rounded bg-brand-950/40 border border-brand-900/60 text-[10px] text-brand-300 font-medium">
-      <Sparkles size={9} />
-      Pro
-    </span>
-  );
 }
 
 function Checkbox({ checked, disabled, onChange, label, hint }: {
@@ -127,7 +119,7 @@ export function IncludesPicker(props: IncludesPickerProps) {
         checked={value.columnLineage && lineageReady && !columnLineageLocked}
         disabled={!lineageReady || columnLineageLocked}
         onChange={(v) => onChange({ ...value, columnLineage: v })}
-        label={<>Column lineage<ProTag /></>}
+        label={<ProLabel>Column lineage</ProLabel>}
         hint={columnHint}
       />
     </div>

@@ -5,6 +5,7 @@ import { useColumnLineage } from '../lib/columnLineageContext';
 import { bucketFor, badgeClassesFor, COVERAGE_CLASS, type NodeCoverageData } from '../lib/testCoverage';
 import { typeIconFor } from '../lib/nodeTypeIcon';
 import { DURATION_CLASS, durationLabel, durationTitle, type NodeDurationData } from '../lib/durationOverlay';
+import { statusStyle, type MetricMonitorState } from '../Metrics/monitors/monitorView';
 
 const STATUS_RING: Record<string, string> = {
   idle: 'ring-gray-700',
@@ -33,11 +34,13 @@ interface Props extends NodeProps {
     expanded?: boolean;
     coverage?: NodeCoverageData;
     duration?: NodeDurationData;
+    /** metric nodes with a monitor (Pro): worst latest status */
+    monitor?: MetricMonitorState;
   };
 }
 
 function ModelNodeComponent({ data, selected }: Props) {
-  const { model, dimmed, expanded, coverage, duration } = data;
+  const { model, dimmed, expanded, coverage, duration, monitor } = data;
   const { activeColumnSels, relatedColumnsMap, onColumnClick, onToggleExpand } = useColumnLineage();
 
   const ring = STATUS_RING[model.status] ?? STATUS_RING.idle;
@@ -86,6 +89,17 @@ function ModelNodeComponent({ data, selected }: Props) {
               ⏱ {durationLabel(duration)}
             </span>
           )}
+          {monitor && (() => {
+            const style = statusStyle(monitor.status);
+            return (
+              <span
+                className={`text-[9px] px-1 rounded border font-mono shrink-0 ${style.pill}`}
+                title={`Monitored · ${style.label}: ${monitor.headline}`}
+              >
+                ◉ {style.label}
+              </span>
+            );
+          })()}
           <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
         </div>
 

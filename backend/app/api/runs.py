@@ -29,6 +29,7 @@ from app.dbt.runner import RunRequest, runner
 from app.dbt.select import SelectMode, build_selector
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
+from app.semantic import monitors
 
 log = get_logger(__name__)
 
@@ -225,6 +226,10 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
 
     await bus.publish(
         Event(topic=f"project:{project.id}", type="statuses_changed", data={})
+    )
+    # Metric monitors downstream of what this run built (Pro; no-op without monitors)
+    monitors.schedule_after_run(
+        project.id, Path(project.path), {r.unique_id for r in results if r.status == "success"}
     )
 
     for r in results:

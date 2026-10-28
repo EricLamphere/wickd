@@ -16,6 +16,7 @@ from app.db.models import (
     AppSetting,
     DriftSnapshot,
     FreshnessSnapshot,
+    MetricMonitor,
     ModelStatus,
     Project,
     SemanticCheckSnapshot,
@@ -25,6 +26,7 @@ from app.health.summary import (
     summarize_connection,
     summarize_drift,
     summarize_freshness,
+    summarize_metric_monitors,
     summarize_semantic,
 )
 from app.logging_setup import get_logger
@@ -51,6 +53,8 @@ class HealthSummaryDto(BaseModel):
     freshness: CheckSummaryDto
     # null when the project has no semantic layer (the tab is hidden)
     semantic: CheckSummaryDto | None = None
+    # null without monitors or without Pro (statuses are Pro-derived)
+    monitors: CheckSummaryDto | None = None
     current_target: str | None
 
 
@@ -83,10 +87,31 @@ async def get_health_summary(
         ),
     }
     semantic = await _semantic_summary(session, project)
+    monitors = await _monitors_summary(session, project_id, current_target)
     return HealthSummaryDto(
         **{k: CheckSummaryDto(**asdict(v)) for k, v in summaries.items()},
         semantic=CheckSummaryDto(**asdict(semantic)) if semantic else None,
+        monitors=CheckSummaryDto(**asdict(monitors)) if monitors else None,
         current_target=current_target,
+    )
+
+
+async def _monitors_summary(session: AsyncSession, project_id: int, current_target: str | None) -> CheckSummary | None:
+    from app.licensing import entitlements
+    from app.semantic import anomaly
+    from app.semantic import monitors as metric_monitors
+
+    rows = (await session.execute(
+        select(MetricMonitor).where(MetricMonitor.project_id == project_id, MetricMonitor.enabled.is_(True))
+    )).scalars().all()
+    if not rows or not anomaly.is_available() or not (await entitlements.check_entitlement(session)).entitled:
+        return None
+    monitors = [
+        {"metric": m.metric, "target": m.target, "latest": _load_json(m.last_result_json or "null", None, "monitor")}
+        for m in rows
+    ]
+    return summarize_metric_monitors(
+        monitors, running=project_id in metric_monitors.running, current_target=current_target
     )
 
 

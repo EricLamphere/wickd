@@ -273,6 +273,7 @@ project_env_vars
   --   REQUIREMENTS_PATH path to project-specific requirements.txt
   --   WORKSPACE_PATH    relative path to SQL workspace dir (default "workspace")
   --   PROPAGATE_TAGS    comma-separated tags the Docs Tags tab traces through lineage (default "pii,sensitive")
+  --   MONITOR_INTERVAL_HOURS  metric monitors' automatic check while wickd is open (Pro; whole hours ≥ 1, unset = off)
   --   Any KEY=value exported by an init script is upserted here automatically
 
 app_settings
@@ -349,6 +350,28 @@ metric_query_results       -- Metrics page result cache (semantic/query_cache.py
   profile_name    TEXT       -- active global profile, for display
   metrics_json, group_by_json, columns_json, rows_json (≤ 5000 rows), truncated, ran_at, elapsed_ms
   UNIQUE(project_id, target, env_fingerprint, sql_hash); last 100 per project kept
+
+metric_monitors            -- Pro: metrics watched for anomalies (semantic/monitors.py)
+  project_id      INTEGER FK → projects (cascade)
+  metric, grain (day|week|month), dimension (nullable; slice by its top 10 values)
+  sensitivity     TEXT       -- low | normal | high
+  lookback        INTEGER    -- periods of history kept and loaded on the first check (default 180 / 52 / 24)
+  enabled         BOOLEAN
+  target          TEXT       -- pinned dbt target, NULL = the active one
+  slices_json, slices_refreshed_at  -- top slice values, recomputed weekly
+  last_result_json, last_checked_at -- latest detection summary (kept when a build-triggered check skips the monitor)
+  position        INTEGER    -- order on the Monitors tab (drag to reorder; new monitors go last)
+
+metric_monitor_points      -- a monitor's history per target and slice ('' = unsliced)
+  monitor_id      INTEGER FK → metric_monitors (cascade)
+  target, slice, period (YYYY-MM-DD, the period's start), value
+  previous_value  REAL       -- the value it replaced, set only when that one was stored after the period ended (a restatement)
+  suppressed      BOOLEAN    -- "mark as expected": never flagged, left out of baselines
+  observed_at     DATETIME
+  UNIQUE(monitor_id, target, slice, period); trimmed to the lookback
+
+metric_monitor_runs        -- one check: trigger build | manual | interval
+  project_id, target, status (running|done|error), trigger, monitors_json, results_json (per monitor summary + flagged points), error_message, started_at, finished_at
 
 semantic_check_snapshots
   id              INTEGER PK
@@ -526,7 +549,7 @@ POST   /api/projects/{id}/drift                          start async schema drif
 GET    /api/projects/{id}/drift                          get the latest DriftSnapshot for a project
 GET    /api/projects/{id}/drift/{snapshot_id}            get a specific DriftSnapshot by id
 POST   /api/projects/{id}/drift/{snapshot_id}/recheck    re-probe one model ({unique_id}) and update its row; 409 while a scan runs
-GET    /api/projects/{id}/health/summary                 status/headline/issue count/stale reasons for connection, drift and freshness (+ `semantic` for projects with a semantic layer, else null; `runnable` false while MetricFlow is off or incompatible)
+GET    /api/projects/{id}/health/summary                 status/headline/issue count/stale reasons for connection, drift and freshness (+ `semantic` for projects with a semantic layer, else null; `runnable` false while MetricFlow is off or incompatible; + `monitors` (Pro) for projects with enabled monitors, else null)
 GET    /api/projects/{id}/semantic/status?want_cli=       Semantic layer: {available, can_query, mode, mode_source, reason_code, reason, warning, dbt_core, python, engine_version, sidecar, spec, adapter_type, counts, compatible_dbt_versions, recommended_version, cli_release}
 GET    /api/projects/{id}/semantic/catalog               metrics with dimensions, and saved queries, as MetricFlow sees them; 409 {error, message, status} when unavailable
 POST   /api/projects/{id}/semantic/explain               body {metrics, group_by, where, order_by, limit, start, end, saved_query} → {sql, columns}; 400 invalid_query
@@ -535,6 +558,16 @@ POST   /api/projects/{id}/semantic/query/cached          same body as explain �
 POST   /api/projects/{id}/semantic/saved-queries         body = explain body + {name, label?, description?} → {path}: appends a `saved_queries:` entry to the project's YAML (422 yaml_edit_failed)
 POST   /api/projects/{id}/semantic/check                 body {warehouse}; starts the Health → Semantic Layer check (semantic_check_started / _finished)
 GET    /api/projects/{id}/semantic/check/latest          latest SemanticCheckSnapshot or null
+GET    /api/projects/{id}/metric-monitors                Pro: {monitors: [{…, latest}], running, interval_hours, max_monitors, active_target, last_run}
+POST   /api/projects/{id}/metric-monitors                Pro: body {metric, grain, dimension?, sensitivity?, lookback?, target?} → 201 monitor + a first check; 400 unknown metric / non-categorical dimension, 409 duplicate_monitor / too_many_monitors (25)
+PUT    /api/projects/{id}/metric-monitors/order          Pro: {ids} in their new order (drag to reorder) → 204; unlisted monitors follow in their old order; 400 bad_order
+PATCH  /api/projects/{id}/metric-monitors/{mid}          Pro: {sensitivity?, lookback?, enabled?, target? (null unpins)}
+DELETE /api/projects/{id}/metric-monitors/{mid}          Pro: 204; deletes its history
+POST   /api/projects/{id}/metric-monitors/refresh        Pro: Check now, body {ids?} → {run_id} or {queued: true} behind the running check
+GET    /api/projects/{id}/metric-monitors/latest         Pro: the latest MetricMonitorRun or null
+PUT    /api/projects/{id}/metric-monitors/settings       Pro: {interval_hours: 1–168 | null} → the MONITOR_INTERVAL_HOURS project env var
+GET    /api/projects/{id}/metric-monitors/{mid}/series?slice=&target=  Pro: stored history scored again → {monitor, slice, slices, target, points, summary, restatements}
+POST   /api/projects/{id}/metric-monitors/{mid}/points/suppress  Pro: {slice, period, suppressed} — mark a period as expected (404 when not stored)
 POST   /api/projects/{id}/metricflow/plan-dbt-change     body {version, want_cli}: pip dry run → {ok, previous_version, install, changes, pins, error}
 POST   /api/projects/{id}/metricflow/apply-dbt-change    body {version, want_cli, update_pins, replace_ranges}: rewrites pins, installs via the global-setup stream; 409 while dbt / setup / init runs
 POST   /api/projects/{id}/metricflow/verify-dbt-change   after the install: dbt --version, dbt parse, compatibility again
@@ -695,6 +728,9 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `ai_query_updated` | `ai_query.py` | A Query data query changed status (waiting/running/done/error); invalidates the Wicky conversation |
 | `semantic_check_started` | `semantic/check.py` | Invalidates `['semantic-check-latest', id]` and the health summary |
 | `semantic_check_finished` | `semantic/check.py` | Same, plus `['semantic-status', id]`; payload `snapshot_id`, `ok`, `errors`, `warnings` |
+| `metric_monitor_started` | `semantic/monitors.py` | A monitor check started (`run_id`, `count`, `trigger`); invalidates `['metric-monitors', id]` and the health summary |
+| `metric_monitor_progress` | `semantic/monitors.py` | `run_id`, `step` (slices / querying / detecting), `total`; the Monitors tab's Check now label |
+| `metric_monitor_finished` | `semantic/monitors.py` | `run_id`, `ok`, `counts` by status; invalidates `['metric-monitors', id]` and the health summary |
 | `ai_proposal_progress` | `ai_proposals.py` | Wicky chat renders descriptions / suggested tests as they stream (`phase`: columns, sampling, writing, checking; partial JSON `text`, throttled to ~4/s) |
 
 ### Init Session Event Types
@@ -954,6 +990,8 @@ The Global Settings modal's "Subscription" tab (`components/SubscriptionSection.
 - **Semantic drafts (plan 09, Pro):** `app/ai/semantic_draft.py` collects the facts' inputs (warehouse columns + types via the batch probe, a 500-row sample, the semantic manifest), wickd_pro drafts (heuristics, then the LLM under a JSON schema whose enums are the facts' columns), the sidecar's `validate_draft` op merges the draft into semantic_manifest.json in memory and reports only the errors it adds (falling back to the heuristic draft when the AI's breaks a rule), and `semantic/batch.py` runs every metric's LIMIT 5 smoke query in one `dbt show`. Files: the model's schema YAML (`dbt/schema_semantic.py`: legacy top-level entries or latest-spec keys on the model and its columns, re-parse verified) and optional time spine files; partial accept re-renders the YAML for the chosen items (`ai/selection.py`), dropping metrics whose inputs were rejected.
 - **Metric-aware Query data (plan 09, Pro):** `api/ai_query.py` first asks wickd_pro.ai.metric_query for a MetricFlow request (catalog names as schema enums; filters structured, rendered into `where` templates in wickd_pro) when the project has metrics and MetricFlow can query; the payload keeps `metric_request` and MetricFlow's SQL, and Run executes it through `semantic/query_service.py`. Edited SQL runs as plain SQL; questions the metrics don't cover fall back to written SQL.
 
+- **Metric monitors (plan 10, Pro):** `semantic/monitors.py` groups due monitors by target (pinned or active), refreshes weekly top slices in one batch (`totals_query` → `wickd_pro.anomaly.slice_values`), then explains every monitor's series (`metric_time__<grain>` + the slice dimension filtered to its top values, `start` = the lookback on a first check, else the trailing 35 days / 14 weeks / 14 months; `semantic/monitor_queries.py`) and runs them in one `dbt show` (`batch.run_many(target=)`). Rows are upserted into `metric_monitor_points` (periods gone from the window become gaps; `previous_value` only when the old value was stored after its period ended), then `wickd_pro.anomaly.detect()` (via the `semantic/anomaly.py` shim) scores the stored history: seasonal-median baseline, robust z on recent residuals, CUSUM level shifts, missing/zero periods, restatements, partial current period. Triggers: `schedule_after_run()` from `_persist_results_after_run()` (monitored metrics whose `parent_map` ancestors include a node the run built successfully; entitlement checked in the background task), Check now, and a scheduler loop (every 5 min) for projects with `MONITOR_INTERVAL_HOURS`. One check per project; requests during one merge into a single follow-up. `summarize_metric_monitors()` feeds the Health overview card and nav dot; the DAG and Impact read `['metric-monitors', id]`.
+
 ### 11. SQL Workspace
 
 `WorkspacePage` (`routes/Project/Workspace/`) is a standalone SQL scratchpad with its own file tree, editor, and results pane. It does **not** use `DbtRunner` — it calls `asyncio.create_subprocess_exec` directly to avoid publishing `run_started`/`run_finished` events and keep the Run panel quiet.
@@ -1133,6 +1171,7 @@ Per-project env vars (stored in `project_env_vars`, injected into every dbt subp
 | `dbt_target` | Target dropdown (UI) | Active dbt target; passed as `--target` on every dbt invocation |
 | `WORKSPACE_PATH` | Environment tab (UI) | Relative path to the SQL workspace directory inside the project (default `workspace`) |
 | `PROPAGATE_TAGS` | Environment tab (UI) | Comma-separated column tags traced through lineage on the Docs Tags tab (default `pii,sensitive`) |
+| `MONITOR_INTERVAL_HOURS` | Environment tab / Metrics → Monitors (UI) | Metric monitors' automatic check while wickd is open, in whole hours ≥ 1 (Pro; unset = off) |
 | _(any exported var)_ | Init scripts automatically | Any `export KEY=value` in a custom init script is captured and upserted here after the step succeeds; persists across restarts |
 
 `load_project_env()` builds the subprocess env as: `os.environ` + `project_env_vars` rows + active profile vars (from `env_profiles` / `profile_env_vars`).

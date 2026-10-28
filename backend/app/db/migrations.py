@@ -599,6 +599,72 @@ async def run_migrations() -> None:
             ))
             await session.commit()
 
+        # Metric monitors (plan 10, Pro): monitors, their per-target history, refresh runs
+        if not await _table_exists(session, "metric_monitors"):
+            await session.execute(text(
+                "CREATE TABLE metric_monitors ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "metric TEXT NOT NULL, "
+                "grain VARCHAR(16) NOT NULL, "
+                "dimension TEXT, "
+                "sensitivity VARCHAR(16) NOT NULL DEFAULT 'normal', "
+                "lookback INTEGER NOT NULL, "
+                "enabled BOOLEAN NOT NULL DEFAULT 1, "
+                "target TEXT, "
+                "slices_json TEXT NOT NULL DEFAULT '[]', "
+                "slices_refreshed_at DATETIME, "
+                "last_result_json TEXT, "
+                "last_checked_at DATETIME, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.execute(text("CREATE INDEX ix_metric_monitors_project_id ON metric_monitors (project_id)"))
+            await session.commit()
+
+        if not await _table_exists(session, "metric_monitor_points"):
+            await session.execute(text(
+                "CREATE TABLE metric_monitor_points ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "monitor_id INTEGER NOT NULL REFERENCES metric_monitors(id) ON DELETE CASCADE, "
+                "target TEXT NOT NULL DEFAULT '', "
+                "slice TEXT NOT NULL DEFAULT '', "
+                "period VARCHAR(10) NOT NULL, "
+                "value FLOAT, "
+                "previous_value FLOAT, "
+                "suppressed BOOLEAN NOT NULL DEFAULT 0, "
+                "observed_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "UNIQUE(monitor_id, target, slice, period))"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_metric_monitor_points_monitor_id ON metric_monitor_points (monitor_id)"
+            ))
+            await session.commit()
+
+        if not await _table_exists(session, "metric_monitor_runs"):
+            await session.execute(text(
+                "CREATE TABLE metric_monitor_runs ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "target TEXT NOT NULL DEFAULT '', "
+                "status VARCHAR(32) NOT NULL DEFAULT 'running', "
+                "trigger VARCHAR(16) NOT NULL DEFAULT 'manual', "
+                "monitors_json TEXT NOT NULL DEFAULT '[]', "
+                "results_json TEXT NOT NULL DEFAULT '[]', "
+                "error_message TEXT, "
+                "started_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "finished_at DATETIME)"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_metric_monitor_runs_project_id ON metric_monitor_runs (project_id)"
+            ))
+            await session.commit()
+
+        # Metric monitors: user-chosen order on the Monitors tab (existing rows keep their creation order)
+        if not await _column_exists(session, "metric_monitors", "position"):
+            await session.execute(text("ALTER TABLE metric_monitors ADD COLUMN position INTEGER NOT NULL DEFAULT 0"))
+            await session.execute(text("UPDATE metric_monitors SET position = id"))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

@@ -38,6 +38,7 @@ import { useReportSelectedColumns, useReportSelectedNode, useReportSelectedNodes
 import { useLiveRunStatuses, applyLiveStatuses } from './lib/useLiveRunStatuses';
 import { applyDraggedPositions, clearDraggedPositions, draggedPositionsFor, recordDraggedPositions } from './lib/draggedPositions';
 import { alertDialog, confirmDialog } from '../../lib/dialogs';
+import { useMonitorStatuses } from './Metrics/monitors/useMonitors';
 
 function FitViewOnFirstLoad({ trigger }: { trigger: unknown }) {
   const { fitView } = useReactFlow();
@@ -293,6 +294,8 @@ export default function ModelsPage() {
   // Derived from raw graph (not filtered) so coverage reflects all tests.
   // Recomputes automatically when graph_changed SSE fires and invalidates ['models', id].
   const coverageMap = useMemo(() => (graph ? buildCoverageMap(graph) : null), [graph]);
+  // monitored metric nodes get a status badge (Pro; empty otherwise)
+  const monitorStatuses = useMonitorStatuses(id);
 
   // Per-node heights for expanded nodes (used by dagre layout)
   const nodeHeights = useMemo(() => {
@@ -511,12 +514,13 @@ export default function ModelsPage() {
                 }
               : undefined,
             duration: durationOverlay.durations?.get(uid),
+            monitor: model?.resource_type === 'metric' ? monitorStatuses.get(model.name) : undefined,
           },
         };
       });
     });
     setEdges(layoutEdges);
-  }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, durationOverlay.durations, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, durationOverlay.durations, monitorStatuses, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedModel) return;

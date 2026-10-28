@@ -4,6 +4,7 @@ import { relativeTime } from '../../lib/relativeTime';
 import { TONE_DOT, TONE_TEXT, toneFor } from './healthStatus';
 import RunButton from './RunButton';
 import Spinner from './Spinner';
+import MonitorsCard from './MonitorsCard';
 import TestGapsCard from './TestGapsCard';
 import { type HealthCheckKind, errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from './useHealth';
 
@@ -67,6 +68,7 @@ export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: He
               onOpen={() => onOpen(card.kind)}
             />
           ))}
+          {summary.monitors && <MonitorsCard projectId={projectId} check={summary.monitors} />}
           <TestGapsCard projectId={projectId} onOpen={onOpenTestGaps} />
         </div>
       )}

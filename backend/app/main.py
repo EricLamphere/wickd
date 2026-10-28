@@ -33,6 +33,7 @@ from app.api import init as init_api
 from app.api import init_script_test as init_script_test_api
 from app.api import license as license_api
 from app.api import logs as logs_api
+from app.api import metric_monitors as metric_monitors_api
 from app.api import models as models_api
 from app.api import performance as performance_api
 from app.api import projects as projects_api
@@ -53,6 +54,7 @@ from app.dbt.python_env import load_python_setting
 from app.logging_setup import configure_logging, get_logger
 from app.logs.api_logger import append_api_log, configure_api_log
 from app.projects.service import begin_startup_scan, rescan_projects
+from app.semantic import monitors as metric_monitors
 from app.semantic.runtime import metricflow_runtime
 from app.watcher.service import watcher_manager
 
@@ -86,9 +88,11 @@ async def lifespan(app: FastAPI):
     )
     await watcher_manager.start()
     begin_startup_scan(_startup_scan())
+    metric_monitors.start_scheduler()
     try:
         yield
     finally:
+        await metric_monitors.stop_scheduler()
         await watcher_manager.stop()
         await llama_server.stop()
         await metricflow_runtime.stop()
@@ -119,6 +123,7 @@ app.include_router(column_lineage_api.router)
 app.include_router(propagation_api.router)
 app.include_router(test_gaps_api.router)
 app.include_router(semantic_api.router)
+app.include_router(metric_monitors_api.router)
 app.include_router(refactor_api.router)
 app.include_router(exports_api.router)
 app.include_router(exports_api.global_router)

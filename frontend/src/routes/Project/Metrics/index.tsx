@@ -1,7 +1,8 @@
-// Metrics page (/projects/:id/metrics): pick metrics, group-bys, grain, filters and dates;
-// see MetricFlow's SQL live, Run it on the warehouse, chart / table the result.
+// Metrics page (/projects/:id/metrics): Explore tab — pick metrics, group-bys, grain, filters
+// and dates; see MetricFlow's SQL live, Run it on the warehouse, chart / table the result.
 // The whole query lives in the URL (lib/metricQuery.ts), so back/forward steps through queries.
-import { useCallback, useEffect, useMemo } from 'react';
+// Monitors tab (?tab=monitors, Pro): metrics watched for anomalies (monitors/).
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
@@ -10,6 +11,10 @@ import { semanticApi, semanticErrorBody, type CatalogSavedQuery, type SemanticCa
 import { useSemanticStatus } from '../components/semantic/useSemantic';
 import NavRail from '../components/NavRail';
 import { useOpenInFiles } from '../lib/openInFiles';
+import { useUrlTab } from '../../../lib/useUrlTab';
+import type { MonitorDraft } from './monitors/CreateMonitorDialog';
+import { MonitorsTab } from './monitors/MonitorsTab';
+import { ProLabel } from '../../../components/ProLabel';
 import { DraftFromModel } from './DraftFromModel';
 import { MetricsSidebar } from './MetricsSidebar';
 import { MetricsUnavailable } from './MetricsUnavailable';
@@ -63,10 +68,39 @@ function MetricsContent({ id }: { id: number }) {
   if (!ready) return <MetricsUnavailable projectId={id} status={status} />;
   if (catalogQuery.isLoading) return <p className="p-6 text-xs text-gray-500">Loading metrics…</p>;
   if (!catalogQuery.data) return <p className="p-6 text-xs text-red-400">Couldn't load the metrics: {errorText(catalogQuery.error)}</p>;
-  return <Explorer projectId={id} catalog={catalogQuery.data} />;
+  return <MetricsTabs projectId={id} catalog={catalogQuery.data} />;
 }
 
-function Explorer({ projectId, catalog }: { projectId: number; catalog: SemanticCatalogDto }) {
+const TABS = ['explore', 'monitors'] as const;
+
+function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: SemanticCatalogDto }) {
+  const [tab, setTab] = useUrlTab('tab', TABS, 'explore');
+  const [draft, setDraft] = useState<MonitorDraft | null>(null);
+  const monitor = (next: MonitorDraft) => { setDraft(next); setTab('monitors'); };
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <div className="flex items-center gap-1 px-3 border-b border-gray-800 bg-surface-panel shrink-0" role="tablist">
+        {TABS.map((t) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
+            className={`flex items-center px-3 py-2 text-xs border-b-2 -mb-px ${tab === t ? 'border-brand-500 text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+            {t === 'explore' ? 'Explore' : <ProLabel>Monitors</ProLabel>}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto">
+        {tab === 'explore'
+          ? <Explorer projectId={projectId} catalog={catalog} onMonitor={monitor} />
+          : <MonitorsTab projectId={projectId} catalog={catalog} draft={draft} onDraftHandled={() => setDraft(null)} />}
+      </div>
+    </div>
+  );
+}
+
+const MONITOR_GRAINS = ['day', 'week', 'month'] as const;
+
+function Explorer({ projectId, catalog, onMonitor }: {
+  projectId: number; catalog: SemanticCatalogDto; onMonitor: (draft: MonitorDraft) => void;
+}) {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const state = useMemo(() => stateFromParams(params), [params]);
@@ -164,6 +198,11 @@ function Explorer({ projectId, catalog }: { projectId: number; catalog: Semantic
           onRun={() => run()}
           onCancel={result.cancel}
           onSave={body && !state.savedQuery ? save : null}
+          onMonitor={!state.savedQuery && state.metrics.length === 1 ? () => onMonitor({
+            metric: state.metrics[0],
+            grain: (MONITOR_GRAINS as readonly string[]).includes(grain) ? grain as MonitorDraft['grain'] : 'day',
+            dimension: shape.dimensionColumns.find((d) => options.find((o) => o.name === d)?.kind === 'categorical') ?? null,
+          }) : null}
         />
         <ResultsPane
           result={result.result}

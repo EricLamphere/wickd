@@ -12,6 +12,7 @@ const SUMMARY_EVENTS = new Set([
   'drift_started', 'drift_finished',
   'freshness_started', 'freshness_finished',
   'semantic_check_started', 'semantic_check_finished',
+  'metric_monitor_started', 'metric_monitor_finished',
   'statuses_changed', // rebuilt models make a drift scan stale
   'graph_changed', // a project gaining or losing its semantic layer, or a re-parse making a check stale
 ]);

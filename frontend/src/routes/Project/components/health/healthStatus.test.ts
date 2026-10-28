@@ -30,6 +30,11 @@ describe('navAlert', () => {
     expect(navAlert(summary(check({}), check({}), check({}), check({ status: 'fail' })))).toBe('fail');
     expect(navAlert(summary(check({}), check({}), check({}), null))).toBeNull();
   });
+  it('includes metric monitors (Pro) when present', () => {
+    const base = summary(check({}), check({}), check({}));
+    expect(navAlert({ ...base, monitors: check({ status: 'fail' }) })).toBe('fail');
+    expect(navAlert({ ...base, monitors: null })).toBeNull();
+  });
   it('is null when nothing is wrong (running and not run are not alerts)', () => {
     expect(navAlert(summary(check({ status: 'running' }), check({ status: 'not_run' }), check({})))).toBeNull();
     expect(navAlert(undefined)).toBeNull();

@@ -173,6 +173,52 @@ def summarize_semantic(
     )
 
 
+def summarize_metric_monitors(
+    monitors: list[dict[str, Any]], *, running: bool, current_target: str | None
+) -> CheckSummary:
+    """`monitors`: enabled monitors' {metric, target, latest: last result | None} (Pro).
+
+    Anomalies and refresh errors fail, warnings warn; a monitor never checked counts as
+    not run. Results from another target than the current one are flagged stale."""
+    if running:
+        return CheckSummary(status="running", headline=f"Checking {len(monitors)} monitor{_s(len(monitors))}…",
+                            issues=0, finished_at=None, target=current_target)
+    results = [m["latest"] for m in monitors if m.get("latest")]
+    if not results:
+        return NOT_RUN
+    statuses = [r.get("status") for r in results]
+    anomalies, errors, warns = statuses.count("anomaly"), statuses.count("error"), statuses.count("warn")
+    parts = [
+        f"{anomalies} anomalous" if anomalies else "",
+        f"{errors} failed to refresh" if errors else "",
+        f"{warns} warning{_s(warns)}" if warns else "",
+    ]
+    worst = next((r for r in results if r.get("status") == "anomaly"), None)
+    headline = " · ".join(p for p in parts if p) or f"All {len(results)} monitor{_s(len(results))} normal"
+    if worst is not None and anomalies == 1:
+        headline = f"{worst.get('metric')}: {worst.get('headline')}"
+    checked = [_parse_iso(r.get("checked_at")) for r in results]
+    finished = max((c for c in checked if c is not None), default=None)
+    targets = {r.get("target") or None for r in results}
+    unchecked = len(monitors) - len(results)
+    reasons = [f"{unchecked} monitor{_s(unchecked)} never checked"] if unchecked else []
+    # monitors that follow the active target but were last checked on another one
+    moved = {
+        m["latest"].get("target") or None for m in monitors
+        if m.get("latest") and not m.get("target") and (m["latest"].get("target") or None) != (current_target or None)
+    }
+    if moved:
+        reasons.extend(_target_changed(next(iter(moved)), current_target))
+    return CheckSummary(
+        status="fail" if anomalies or errors else "warn" if warns else "ok",
+        headline=headline,
+        issues=anomalies + errors + warns,
+        finished_at=_iso(finished),
+        target=next(iter(targets)) if len(targets) == 1 else None,
+        stale_reasons=tuple(reasons),
+    )
+
+
 def _stale(
     recorded_target: str | None, current_target: str | None, finished: datetime | None, now: datetime
 ) -> tuple[str, ...]:

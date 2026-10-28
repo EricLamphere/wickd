@@ -259,6 +259,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const requirementsPath = envVars.find((v) => v.key === 'REQUIREMENTS_PATH')?.value ?? '';
   const workspacePath = envVars.find((v) => v.key === 'WORKSPACE_PATH')?.value ?? '';
   const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
+  const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
@@ -306,6 +307,18 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     }
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     qc.invalidateQueries({ queryKey: ['tag-flow', projectId] });
+  };
+
+  // Metric monitors' automatic check while wickd is open (Pro): whole hours ≥ 1, empty = off
+  const handleSaveMonitorInterval = async (val: string) => {
+    const hours = Math.floor(Number(val.trim()));
+    if (val.trim() && Number.isFinite(hours) && hours >= 1) {
+      await api.init.setEnvVar(projectId, 'MONITOR_INTERVAL_HOURS', String(hours));
+    } else {
+      await api.init.deleteEnvVar(projectId, 'MONITOR_INTERVAL_HOURS');
+    }
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+    qc.invalidateQueries({ queryKey: ['metric-monitors', projectId] });
   };
 
   return (
@@ -361,6 +374,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />
+            <ProjectSettingRow
+              label="MONITOR_INTERVAL_HOURS"
+              value={monitorInterval}
+              placeholder="6 (metric monitors' auto-check while wickd is open; empty = off)"
+              kind="example"
+              onSave={handleSaveMonitorInterval}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
           </>
         )}
       </div>
@@ -369,7 +391,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'PROPAGATE_TAGS', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

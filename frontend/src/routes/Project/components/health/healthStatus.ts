@@ -14,7 +14,10 @@ export function tabBadge(check: CheckSummary): { label: string | null; tone: Ton
 /** Worst problem across the checks, for the dot on the nav rail's Health item. */
 export function navAlert(summary: HealthSummary | undefined): 'warn' | 'fail' | null {
   if (!summary) return null;
-  const checks = [summary.connection, summary.drift, summary.freshness, ...(summary.semantic ? [summary.semantic] : [])];
+  const checks = [
+    summary.connection, summary.drift, summary.freshness,
+    ...(summary.semantic ? [summary.semantic] : []), ...(summary.monitors ? [summary.monitors] : []),
+  ];
   const statuses = checks.map((c) => c.status);
   if (statuses.includes('fail')) return 'fail';
   if (statuses.includes('warn')) return 'warn';

@@ -431,3 +431,77 @@ class AiProposalFile(Base):
     applied_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     proposal: Mapped["AiProposal"] = relationship(back_populates="files")
+
+
+class MetricMonitor(Base):
+    """A metric watched for anomalies (wickd Pro), see app/semantic/monitors.py.
+
+    `target` pins a dbt target (NULL = the project's active one); `slices_json` holds
+    the top values of `dimension` (recomputed weekly); `last_result_json` is the latest
+    detection summary, so a monitor skipped by a build-triggered refresh keeps its status.
+    """
+
+    __tablename__ = "metric_monitors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    metric: Mapped[str] = mapped_column(Text)
+    grain: Mapped[str] = mapped_column(String(16))  # day | week | month
+    dimension: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sensitivity: Mapped[str] = mapped_column(String(16), default="normal")  # low | normal | high
+    lookback: Mapped[int] = mapped_column(Integer)  # periods of history
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    slices_json: Mapped[str] = mapped_column(Text, default="[]")
+    slices_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)  # order on the Monitors tab (drag to reorder)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MetricMonitorPoint(Base):
+    """One period of a monitor's history, per dbt target and slice ('' = unsliced).
+
+    `previous_value` is the value it replaced, set only when that value was stored after
+    the period had ended (a restatement); `suppressed` = "mark as expected".
+    """
+
+    __tablename__ = "metric_monitor_points"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    monitor_id: Mapped[int] = mapped_column(
+        ForeignKey("metric_monitors.id", ondelete="CASCADE"), index=True
+    )
+    target: Mapped[str] = mapped_column(Text, default="")
+    slice: Mapped[str] = mapped_column(Text, default="")
+    period: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD, the period's start
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    previous_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    suppressed: Mapped[bool] = mapped_column(Boolean, default=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("monitor_id", "target", "slice", "period", name="uq_metric_monitor_point"),
+    )
+
+
+class MetricMonitorRun(Base):
+    """One monitor refresh: `trigger` build | manual | interval; results per monitor."""
+
+    __tablename__ = "metric_monitor_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    target: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(32), default="running")  # running | done | error
+    trigger: Mapped[str] = mapped_column(String(16), default="manual")
+    monitors_json: Mapped[str] = mapped_column(Text, default="[]")
+    results_json: Mapped[str] = mapped_column(Text, default="[]")
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

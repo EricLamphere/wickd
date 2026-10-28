@@ -98,3 +98,7 @@ After you accept, wickd runs `dbt parse` and MetricFlow's validation, and shows 
 ## Query your metrics
 
 The **Metrics** page lets you pick metrics, group-bys, a grain and filters, see MetricFlow's SQL, run it and chart the result. See [Explore metrics](explore-metrics.md).
+
+## Watch metrics for anomalies (Pro)
+
+**Metrics → Monitors** watches metrics for spikes, drops, level shifts, missing periods and restated history, and checks them after builds that touch them. See [Monitor metrics for anomalies](metric-monitors.md).

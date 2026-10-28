@@ -1,5 +1,6 @@
-import { ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useColumnLineageData } from '../../lib/useColumnLineageData';
+import { ProLabel } from '../../../../components/ProLabel';
 import RunButton from './RunButton';
 import Spinner from './Spinner';
 import { TONE_DOT, TONE_TEXT } from './healthStatus';
@@ -34,10 +35,7 @@ export default function TestGapsCard({ projectId, onOpen }: { projectId: number;
       >
         <span className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full shrink-0 ${TONE_DOT[state.tone]}`} />
-          <span className="flex-1 text-sm font-semibold text-gray-100">Test Gaps</span>
-          <span className="flex items-center gap-0.5 text-[10px] font-medium text-brand-300">
-            <Sparkles className="w-3 h-3" /> Pro
-          </span>
+          <ProLabel className="flex-1 text-sm font-semibold text-gray-100">Test Gaps</ProLabel>
           <ChevronRight className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-300 transition-colors" />
         </span>
         <span className={`flex items-center gap-1.5 text-xs ${TONE_TEXT[state.tone]}`}>

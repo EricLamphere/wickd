@@ -17,6 +17,7 @@ const PROJECT_EVENT_TYPES = [
   'column_lineage_compiling', 'column_lineage_started', 'column_lineage_progress', 'column_lineage_finished',
   'ai_proposal_updated', 'ai_proposal_progress', 'ai_query_updated',
   'semantic_check_started', 'semantic_check_finished',
+  'metric_monitor_started', 'metric_monitor_progress', 'metric_monitor_finished',
 ];
 
 /** Events on the `global` topic (not tied to a project). */

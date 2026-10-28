@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, type RunInvocationDetailDto, type RunInvocationDto } from '../../../lib/api';
+import { useStickyTab } from '../../../lib/useUrlTab';
 import { logLineTone, type LogTone } from '../../../lib/logLineTone';
 import { CommandBadge } from '../components/CommandBadge';
 import { useOpenInFiles } from '../lib/openInFiles';
@@ -29,7 +30,6 @@ interface DetailPanelProps {
 
 export function DetailPanel({ projectId, invocation, onRerun, failedRowsCache, onFailedRowsCached }: DetailPanelProps) {
   const fileNav = useOpenInFiles(projectId);
-  const [tab, setTab] = useState<DetailTab>('nodes');
   const [nodeFilter, setNodeFilter] = useState('');
   const [kindFilter, setKindFilter] = useState<'all' | 'model' | 'test'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -37,12 +37,6 @@ export function DetailPanel({ projectId, invocation, onRerun, failedRowsCache, o
   const { data, isLoading } = useQuery<RunInvocationDetailDto>({
     queryKey: ['run-invocation', projectId, invocation.id],
     queryFn: () => api.runHistory.detail(projectId, invocation.id),
-  });
-
-  const { data: logData, isLoading: logLoading } = useQuery<{ lines: string[] }>({
-    queryKey: ['run-invocation-log', projectId, invocation.id],
-    queryFn: () => api.runHistory.log(projectId, invocation.id),
-    enabled: tab === 'log',
   });
 
   const filteredNodes = useMemo(() => {
@@ -69,6 +63,14 @@ export function DetailPanel({ projectId, invocation, onRerun, failedRowsCache, o
 
   const TAB_LABELS: Record<DetailTab, string> = { nodes: 'Nodes', timeline: 'Timeline', log: 'Log', failed_rows: 'Failed Rows' };
   const visibleTabs: DetailTab[] = failedTests.length > 0 ? ['nodes', 'timeline', 'log', 'failed_rows'] : ['nodes', 'timeline', 'log'];
+  // sticky across runs and visits; Failed Rows falls back to Nodes on a run without failures
+  const [tab, setTab] = useStickyTab(`run-detail-tab:${projectId}`, visibleTabs, 'nodes');
+
+  const { data: logData, isLoading: logLoading } = useQuery<{ lines: string[] }>({
+    queryKey: ['run-invocation-log', projectId, invocation.id],
+    queryFn: () => api.runHistory.log(projectId, invocation.id),
+    enabled: tab === 'log',
+  });
 
   return (
     <div className="flex flex-col h-full border-l border-gray-800 bg-surface-panel min-w-0">

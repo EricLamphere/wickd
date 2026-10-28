@@ -1,49 +1,49 @@
-import { useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useSearchParams, type SetURLSearchParams } from 'react-router-dom';
+import { createRestoreQueue, pickTab, readStored, urlTabKey, writeStored } from './stickyTab';
 
-function readStored(key: string): string | null {
-  try { return sessionStorage.getItem(key); } catch { return null; }
-}
-
-function writeStored(key: string, value: string): void {
-  try { sessionStorage.setItem(key, value); } catch { /* storage unavailable — tab just isn't remembered */ }
-}
+// The latest setSearchParams; every hook instance shares one router, so any of them can flush
+let latestSetter: SetURLSearchParams | null = null;
+const queueRestore = createRestoreQueue((entries) => {
+  latestSetter?.((prev) => {
+    const next = new URLSearchParams(prev);
+    for (const [param, value] of entries) next.set(param, value);
+    return next;
+  }, { replace: true });
+});
 
 /**
  * In-page tab state kept in a URL search param, so switching tabs pushes a
  * history entry the header back/forward arrows can step through.
  *
- * `rememberKey` (optional) restores the last-used tab from sessionStorage when
- * the URL has none; the param is then written back with `replace` so going
- * back to this entry later shows the same tab. Use it at most once per page —
- * concurrent replace writes from multiple hooks would clobber each other.
+ * Sticky: the tab is remembered for the session (per page path, which includes the
+ * project, and param), and restored when the URL has none, written back with
+ * `replace` so going back to this entry later shows the same tab. Pass
+ * `rememberKey` to choose the storage key, or `null` when the page restores its
+ * own view (Docs).
  */
 export function useUrlTab<T extends string>(
   param: string,
   allowed: readonly T[],
   fallback: T,
-  rememberKey?: string,
+  rememberKey?: string | null,
 ): [T, (next: T) => void] {
   const [searchParams, setSearchParams] = useSearchParams();
-  const isAllowed = (v: string | null): v is T => v !== null && (allowed as readonly string[]).includes(v);
+  const { pathname } = useLocation();
+  latestSetter = setSearchParams;
+  const key = rememberKey === undefined ? urlTabKey(pathname, param) : rememberKey;
 
   const raw = searchParams.get(param);
-  const stored = rememberKey ? readStored(rememberKey) : null;
-  const tab: T = isAllowed(raw) ? raw : isAllowed(stored) ? stored : fallback;
+  const tab = pickTab(allowed, fallback, raw, key ? readStored(key) : null);
   const missing = raw === null;
 
   useEffect(() => {
-    if (rememberKey) writeStored(rememberKey, tab);
-  }, [rememberKey, tab]);
+    if (key) writeStored(key, tab);
+  }, [key, tab]);
 
   useEffect(() => {
-    if (!rememberKey || !missing) return;
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.set(param, tab);
-      return next;
-    }, { replace: true });
-  }, [rememberKey, missing, param, tab, setSearchParams]);
+    if (key && missing) queueRestore(param, tab);
+  }, [key, missing, param, tab]);
 
   const setTab = useCallback((next: T) => {
     if (next === tab) return;
@@ -54,5 +54,20 @@ export function useUrlTab<T extends string>(
     });
   }, [param, tab, setSearchParams]);
 
+  return [tab, setTab];
+}
+
+/**
+ * An inner tab kept in local state (not in the URL) that's still sticky: remembered
+ * for the session under `key` (include the project id), and falling back when the
+ * remembered tab isn't offered here. `key` null = not remembered.
+ */
+export function useStickyTab<T extends string>(key: string | null, allowed: readonly T[], fallback: T): [T, (next: T) => void] {
+  const [chosen, setChosen] = useState<string | null>(() => (key ? readStored(key) : null));
+  const tab = pickTab(allowed, fallback, chosen);
+  const setTab = useCallback((next: T) => {
+    setChosen(next);
+    if (key) writeStored(key, next);
+  }, [key]);
   return [tab, setTab];
 }

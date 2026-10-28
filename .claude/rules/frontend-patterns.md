@@ -111,9 +111,20 @@ useProjectEvents(projectId, useCallback((event) => {
 
 The hooks themselves use `handlerRef` internally (so the ref is always up to date), but the `useEffect` dep array only includes `projectId` — this is intentional.
 
-## In-Page Tabs — Keep Them in the URL
+## In-Page Tabs — Keep Them in the URL, and Sticky
 
 Top-level tabs inside a page (Health, project home files, Docs browse/detail tabs) use `useUrlTab()` from `lib/useUrlTab.ts`, not `useState`, so switching tabs pushes a history entry the header back/forward arrows (`NavArrows`, `lib/navHistoryContext.tsx`) can step through. Tabs inside side/bottom panes stay local `useState` — they are deliberately excluded from navigation history. The same applies to in-page selections: the open file on Files (`?path=`), the selected DAG node (`?model=`) and the selected Docs node (`?node=`) live in the URL and push history entries.
+
+### MANDATORY: every tab is sticky
+
+Click a tab, leave the page, come back: you must still be on that tab. This applies to every tab on every page — top-level page tabs, sub-tabs inside them (Health → Test Gaps' Gaps/Ignored), and inner tabs kept in local state (Metrics Chart/Table/SQL, Run History detail tabs, Docs code/dependency tabs, Files code/compiled). Remembered per project for the browser session (sessionStorage).
+
+- **URL tabs** — `useUrlTab(param, allowed, fallback)` is sticky by default (key `url-tab:<page path>:<param>`; the path includes the project). Restores are written back to the URL with `replace`, and several restores in one render are merged into one write, so a page tab and its sub-tab can both use it. Pass `null` as `rememberKey` only when the page restores its own view (Docs: `lib/docsLastView.ts`).
+- **Local tabs** — never `useState` for a tab; use `useStickyTab(key, allowed, fallback)` from `lib/useUrlTab.ts` with a key that includes the project id (`metrics-results-tab:${projectId}`). A remembered tab the page doesn't offer right now (e.g. Failed Rows on a run without failures) falls back.
+- **Tabs that belong to one item** (a file's Code/Compiled) remember the item with the tab, so a different item starts on its default (`files-view-tab` in `FileExplorer/panes/ViewPane.tsx`).
+- Side/bottom pane tabs are already sticky (the panes live in `ProjectLayout`, which stays mounted across project pages).
+
+Pure helpers (`pickTab`, `urlTabKey`, `createRestoreQueue`) are in `lib/stickyTab.ts`, unit-tested.
 
 When updating search params on a page that has URL tabs, **merge** into the existing params (`setSearchParams((prev) => { const p = new URLSearchParams(prev); p.set(...); return p; })`) — passing a fresh object like `setSearchParams({ node })` wipes the tab params.
 

@@ -1,15 +1,18 @@
 // Results of a metric query: Chart / Table / SQL tabs (local state, like other panes).
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useParams } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { AlertTriangle, Copy, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
 import { DataTable } from '../../../components/DataTable';
 import type { MetricQueryResultDto } from '../../../lib/semanticApi';
 import { useTheme } from '../../../lib/useTheme';
+import { useStickyTab } from '../../../lib/useUrlTab';
 import { relativeTime } from '../lib/relativeTime';
 import { MetricPanels } from './MetricChart';
 import { buildPanels, type ShapeOptions } from './lib/metricSeries';
 
-type Tab = 'chart' | 'table' | 'sql';
+const TABS = ['chart', 'table', 'sql'] as const;
+type Tab = (typeof TABS)[number];
 
 interface Props {
   result: MetricQueryResultDto | null;
@@ -63,7 +66,8 @@ function SqlView({ sql, error, onOpenInWorkspace }: { sql: string | null; error:
 
 export function ResultsPane(props: Props) {
   const { result, loadingResult, sql, sqlError, runError, running, definitionsChanged, shape, grain, truncatedHint, onRun, onOpenInWorkspace } = props;
-  const [tab, setTab] = useState<Tab>('chart');
+  const { projectId } = useParams<{ projectId: string }>();
+  const [tab, setTab] = useStickyTab<Tab>(`metrics-results-tab:${projectId}`, TABS, 'chart');
   const panels = useMemo(() => (result ? buildPanels(result.columns, result.rows, shape) : []), [result, shape]);
 
   const body = () => {
@@ -82,7 +86,7 @@ export function ResultsPane(props: Props) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center gap-3 px-4 border-b border-gray-800">
-        {(['chart', 'table', 'sql'] as Tab[]).map((t) => (
+        {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`py-2 text-xs capitalize border-b-2 -mb-px ${tab === t ? 'border-brand-500 text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
             {t === 'sql' ? 'SQL' : t}

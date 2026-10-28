@@ -10,7 +10,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
-import { useUrlTab } from '../../lib/useUrlTab';
+import { useStickyTab, useUrlTab } from '../../lib/useUrlTab';
 import { buildMacroCall, macroCallName, wrapJinja } from './lib/macroCall';
 import { readSessionValue, restorableDocsView } from './lib/docsLastView';
 import { startRefactor } from './lib/refactorEvents';
@@ -348,7 +348,7 @@ export default function DocsPage() {
   const listResizing = useRef(false);
   const [generating, setGenerating] = useState(false);
   const [filter, setFilter] = useState('');
-  const [docsTab, setDocsTab] = useUrlTab<DocsTab>('browse', DOCS_TAB_IDS, 'project');
+  const [docsTab, setDocsTab] = useUrlTab<DocsTab>('browse', DOCS_TAB_IDS, 'project', null); // Docs restores its last view itself (docsLastView.ts)
   const selectNode = useSelectDocsNode();
   const autoGenerateTriggered = useRef(false);
 
@@ -954,7 +954,7 @@ function ProjectOverview({ projectId, projectName, description }: {
   projectName: string;
   description: string;
 }) {
-  const [tab, setTab] = useUrlTab<ProjectTab>('view', PROJECT_TAB_IDS, 'overview');
+  const [tab, setTab] = useUrlTab<ProjectTab>('view', PROJECT_TAB_IDS, 'overview', null);
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -1023,12 +1023,14 @@ function ProjectOverview({ projectId, projectName, description }: {
 
 // ---- NodeDetail ----
 
+const CODE_VIEWS = ['source', 'compiled'] as const;
+
 type NodeTab = 'details' | 'description' | 'columns' | 'depends_on' | 'referenced_by' | 'code';
 
 function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDto; allNodes: Map<string, DocsNodeDto>; allMacros: Map<string, DocsMacroDto>; projectId: number }) {
   const navigate = useNavigate();
   const selectNode = useSelectDocsNode();
-  const [codeView, setCodeView] = useState<'source' | 'compiled'>('source');
+  const [codeView, setCodeView] = useStickyTab(`docs-code-view:${projectId}`, CODE_VIEWS, 'source');
   const [copied, setCopied] = useState(false);
   const isTest = node.resource_type === 'test';
   const isSemantic = isSemanticType(node.resource_type);
@@ -1043,7 +1045,7 @@ function NodeDetail({ node, allNodes, allMacros, projectId }: { node: DocsNodeDt
     ...(!isTest && (node.raw_code || node.compiled_code) ? [{ id: 'code' as NodeTab, label: 'Code' }] : []),
   ];
   // ?view= drives the tab; selecting another node drops it, so each node opens on Details
-  const [tab, setTab] = useUrlTab<NodeTab>('view', tabs.map((t) => t.id), 'details');
+  const [tab, setTab] = useUrlTab<NodeTab>('view', tabs.map((t) => t.id), 'details', null);
 
   const handleCopy = () => {
     const code = codeView === 'compiled' ? node.compiled_code : node.raw_code;
@@ -1503,7 +1505,8 @@ function DependsOn({ dependsOnNodes, dependsOnMacros, allNodes, allMacros, onSel
       { id: 'macros' as DependsTab, label: 'Macros', count: macros.length },
     ] as { id: DependsTab; label: string; count: number }[]
   ).filter((t) => t.count > 0);
-  const [tab, setTab] = useState<DependsTab>(tabs[0]?.id ?? 'models');
+  const { projectId } = useParams<{ projectId: string }>();
+  const [tab, setTab] = useStickyTab<DependsTab>(`docs-depends-tab:${projectId}`, tabs.map((t) => t.id), tabs[0]?.id ?? 'models');
 
   if (tabs.length === 0) return <p className="text-xs text-gray-600 italic">No dependencies found.</p>;
 
@@ -1547,13 +1550,16 @@ function DependsOn({ dependsOnNodes, dependsOnMacros, allNodes, allMacros, onSel
   );
 }
 
+const REFERENCED_BY_TABS = ['models', 'tests'] as const;
+
 function ReferencedBy({ childModels, childTests, allNodes, onSelect }: {
   childModels: string[];
   childTests: string[];
   allNodes: Map<string, DocsNodeDto>;
   onSelect: (uid: string) => void;
 }) {
-  const [tab, setTab] = useState<'models' | 'tests'>('models');
+  const { projectId } = useParams<{ projectId: string }>();
+  const [tab, setTab] = useStickyTab(`docs-referenced-by-tab:${projectId}`, REFERENCED_BY_TABS, 'models');
   return (
     <div>
       <div className="flex items-center gap-0 mb-3 border-b border-gray-800">

@@ -4,6 +4,7 @@ import type * as MonacoEditor from 'monaco-editor';
 import { RotateCw, WrapText, Save, Trash2 } from 'lucide-react';
 import { format as sqlFormat } from 'sql-formatter';
 import { api, type FileContentDto, type GraphDto, type ModelNode } from '../../../../lib/api';
+import { readStored, writeStored } from '../../../../lib/stickyTab';
 import { useTheme } from '../../../../lib/useTheme';
 import { registerExtractCteAction } from './extractCteAction';
 
@@ -195,12 +196,21 @@ export function ViewPane({
   const [compiledError, setCompiledError] = useState<string | null>(null);
   const canCompile = !!modelUid && isSqlFile(openFile.path);
 
-  // Reset sub-tabs when file changes
+  // Sub-tabs belong to the open file: a new file starts on Code, but coming back to the
+  // page with the same file open restores its tab (sticky, `files-view-tab:<project>`)
+  const viewTabKey = `files-view-tab:${projectId}`;
   useEffect(() => {
-    setActiveTab('code');
+    setActiveTab(readStored(viewTabKey) === `${openFile.path}\ncompiled` ? 'compiled' : 'code');
     setCompiledSql(null);
     setCompiledError(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openFile.path]);
+
+  // A restored Compiled tab loads its SQL once the file's model is known
+  useEffect(() => {
+    if (activeTab === 'compiled' && canCompile && compiledSql === null && !compiledLoading && !compiledError) void fetchCompiledSql();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, canCompile, modelUid]);
 
   // Scroll editor to targetTestNode's line when it changes (e.g. DAG deep-link)
   useEffect(() => {
@@ -251,6 +261,7 @@ export function ViewPane({
 
   const handleTabChange = async (tab: ViewTab) => {
     setActiveTab(tab);
+    writeStored(viewTabKey, `${openFile.path}\n${tab}`);
     if (tab === 'compiled' && !compiledSql && canCompile && modelUid) {
       await fetchCompiledSql();
     }

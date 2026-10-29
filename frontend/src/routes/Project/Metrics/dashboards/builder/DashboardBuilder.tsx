@@ -10,6 +10,7 @@ import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
 import { statusesByMetric } from '../../monitors/monitorView';
 import { useMonitors } from '../../monitors/useMonitors';
+import { useOpenInFiles } from '../../../lib/openInFiles';
 import type { ExplorerState } from '../../lib/metricQuery';
 import {
   addMetric, canvasWidthOf, duplicateWidget, widthToPx, explorerStateFromBody, querySignature, insertWidget, metricsInUse, newWidget, removeWidget,
@@ -25,6 +26,8 @@ import { useBuilderDnd } from './useBuilderDnd';
 import { useDashboardEditor } from './useDashboardEditor';
 import { WidgetsRail, type RailTab } from './WidgetsRail';
 import { WidgetFrame } from '../widgets/WidgetFrame';
+import { aiApi, type AiProposalDto } from '../../../../../lib/aiApi';
+import { ProposalReviewModal } from '../../../components/Wicky/ProposalReviewModal';
 import { pickFilters, type Pick } from '../drill';
 
 /** The dragged copy glides into the widget's new spot on drop. */
@@ -68,10 +71,13 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
   const [running, setRunning] = useState<Set<string> | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Register as exposure: the proposal under review (nothing is written until it's accepted)
+  const [review, setReview] = useState<AiProposalDto | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const leftRail = useRailWidth(METRICS_RAIL);
   const rightRail = useRailWidth(WIDGETS_RAIL);
   const { data: monitorData } = useMonitors(projectId);
+  const { canOpen, open: openInFiles } = useOpenInFiles(projectId);
   const monitors = useMemo(() => monitorData?.monitors ?? [], [monitorData]);
   const monitorStatuses = useMemo(() => statusesByMetric(monitors), [monitors]);
 
@@ -156,14 +162,42 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
     if (title?.trim() && title.trim() !== doc.title) apply((d) => ({ ...d, title: title.trim() }));
   };
   const registerExposure = async () => {
-    const owner = await promptDialog('Owner of the exposure (shown in dbt docs). wickd writes a `type: dashboard` exposure that depends on every metric on this dashboard.',
-      '', { title: 'Register as exposure', confirmLabel: 'Register' });
+    const owner = await promptDialog('Owner of the exposure (shown in dbt docs). wickd drafts a `type: dashboard` exposure that depends on every metric on this dashboard, for you to review.',
+      '', { title: 'Register as exposure', confirmLabel: 'Review' });
     if (!owner?.trim()) return;
     try {
-      const { path, name } = await dashboardsApi.registerExposure(projectId, slug, owner.trim());
-      await alertDialog(`Added the exposure \`${name}\` to ${path}. It shows up in the DAG, Impact and Docs once dbt re-parses.`, { title: 'Registered as exposure' });
+      setReview(await dashboardsApi.proposeExposure(projectId, slug, owner.trim()));
     } catch (err) {
       await alertDialog(errorText(err) ?? 'Registering failed', { title: "Couldn't register the exposure" });
+    }
+  };
+  const updateExposure = async () => {
+    try {
+      const proposal = await dashboardsApi.proposeExposureUpdate(projectId, slug);
+      if (proposal.status === 'ready') setReview(proposal); else setNotice(proposal.error_message ?? 'The exposure is already up to date');
+    } catch (err) {
+      await alertDialog(errorText(err) ?? 'Updating failed', { title: "Couldn't update the exposure" });
+    }
+  };
+  const deleteExposure = async () => {
+    try {
+      setReview(await dashboardsApi.proposeExposureDelete(projectId, slug));
+    } catch (err) {
+      await alertDialog(errorText(err) ?? 'Deleting failed', { title: "Couldn't delete the exposure" });
+    }
+  };
+  const closeReview = async () => {
+    const shown = review;
+    setReview(null);
+    if (!shown) return;
+    const latest = await aiApi.proposal(projectId, shown.id).catch(() => shown);
+    const summary = latest.result.summary as { name?: string; path?: string; update?: boolean; delete?: boolean; file_deleted?: boolean } | undefined;
+    if (latest.status === 'applied' && summary?.delete) {
+      setNotice(`Deleted the exposure ${summary.name ?? ''}${summary.file_deleted ? ` and ${summary.path ?? 'its file'}` : ` from ${summary.path ?? 'your YAML'}`}, and unlinked the dashboard`);
+    } else if (latest.status === 'applied' && summary?.update) {
+      setNotice(`Updated the exposure ${summary.name ?? ''} in ${summary.path ?? 'your YAML'}`);
+    } else if (latest.status === 'applied') {
+      setNotice(`Registered as the exposure ${summary?.name ?? ''} in ${summary?.path ?? 'your YAML'}; it shows in the DAG, Impact and Docs after dbt re-parses`);
     }
   };
   const remove = async () => {
@@ -202,6 +236,19 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
       <div className="flex flex-col h-full min-h-0">
         <div className="flex flex-col gap-2 px-4 py-2.5 border-b border-gray-800 bg-surface-panel shrink-0">
           <BuilderHeader title={doc.title} path={detail.data.path} exposure={doc.exposure ?? null} save={editor.state} present={present}
+            exposureStatus={doc.exposure === detail.data.exposure ? detail.data.exposure_status : 'unknown'}
+            exposurePath={detail.data.exposure_path}
+            exposureDrift={detail.data.exposure_drift}
+            onUpdateExposure={updateExposure}
+            onDeleteExposure={deleteExposure}
+            canOpenExposure={!!detail.data.exposure_unique_id && canOpen(detail.data.exposure_unique_id)}
+            onOpenExposure={() => { if (detail.data?.exposure_unique_id) openInFiles(detail.data.exposure_unique_id); }}
+            onUnlinkExposure={() => {
+              apply((d) => Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'exposure')) as DashboardDoc);
+              setNotice(detail.data?.exposure_status === 'found'
+                ? `Unlinked. The exposure is still in ${detail.data.exposure_path ?? 'your YAML'}; delete it there if you don't need it.`
+                : 'Unlinked the exposure from this dashboard.');
+            }}
             canUndo={editor.canUndo} canRedo={editor.canRedo} running={!!running} target={results.data?.target ?? target}
             hasMetrics={hasMetrics} hasWidgets={doc.widgets.length > 0} onBack={onBack} onRename={rename} onUndo={editor.undo}
             onRedo={editor.redo} onPresent={() => { setPresent((p) => !p); setSelected(null); }} onExposure={registerExposure}
@@ -243,6 +290,7 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
           {notice}
         </div>
       )}
+      {review && <ProposalReviewModal projectId={projectId} proposal={review} onClose={closeReview} />}
       {exporting && (
         <ExportDashboardModal projectId={projectId} doc={doc} slug={slug} target={results.data?.target ?? target}
           results={results.data?.widgets ?? []} gridRef={gridRef} onClose={() => setExporting(false)} />

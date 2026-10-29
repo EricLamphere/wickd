@@ -5,6 +5,7 @@ The file format and store are app/semantic/dashboards.py; widget queries (the da
 period and filters merged in) are dashboard_plan.py; results are dashboard_refresh.py.
 """
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -14,10 +15,12 @@ from pydantic import BaseModel, Field, StringConstraints, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.ai_dtos import AiProposalDto, proposal_dto
+from app.api.ai_proposals import _publish
 from app.api.semantic import _http_error, _project, _require_available, _semantic_http
 from app.db.engine import get_session
-from app.db.models import Project, ProjectEnvVar
-from app.dbt.schema_exposures import ExposureSpec
+from app.db.models import AiProposal, AiProposalFile, Project, ProjectEnvVar
+from app.dbt.schema_exposures import ExposureSpec, remove_exposure, update_exposure_metrics
 from app.dbt.schema_yaml import SchemaYamlError
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
@@ -70,17 +73,36 @@ def _modified(entry: DashboardEntry) -> str | None:
     return datetime.fromtimestamp(entry.mtime, UTC).isoformat() if entry.mtime else None
 
 
-def _summary(entry: DashboardEntry) -> dict:
+def _exposure_state(dashboard: Dashboard | None, index: dashboard_exposure.ExposureIndex | None) -> dict:
+    """The linked exposure per dbt's manifest: status found / out_of_date (its metrics differ from
+    the dashboard's) / missing / unknown (no manifest), where it is, and what an update would change."""
+    empty = {"exposure_status": None, "exposure_path": None, "exposure_unique_id": None, "exposure_drift": None}
+    name = dashboard.exposure if dashboard else None
+    if not name or dashboard is None:
+        return empty
+    if index is None:
+        return {**empty, "exposure_status": "unknown"}
+    hit = index.exposures.get(name)
+    if not hit:
+        return {**empty, "exposure_status": "missing"}
+    drift = dashboard_exposure.exposure_drift(dashboard, hit, index.metrics)
+    return {"exposure_status": "out_of_date" if drift["add"] or drift["remove"] else "found",
+            "exposure_path": hit["path"] or None, "exposure_unique_id": hit["unique_id"], "exposure_drift": drift}
+
+
+def _summary(entry: DashboardEntry, index: dashboard_exposure.ExposureIndex | None = None) -> dict:
     d = entry.dashboard
+    exposure = d.exposure if d else None
     return {
         "slug": entry.slug, "path": entry.path, "title": d.title if d else entry.slug,
-        "widget_count": len(d.widgets) if d else 0, "exposure": d.exposure if d else None,
+        "widget_count": len(d.widgets) if d else 0, "exposure": exposure, **_exposure_state(d, index),
         "error": entry.error, "modified_at": _modified(entry),
     }
 
 
-def _detail(entry: DashboardEntry) -> dict:
-    return {**_summary(entry), "dashboard": store.to_data(entry.dashboard) if entry.dashboard else None}
+def _detail(entry: DashboardEntry, project_path: Path) -> dict:
+    exposures = dashboard_exposure.project_exposures(project_path) if entry.dashboard and entry.dashboard.exposure else None
+    return {**_summary(entry, exposures), "dashboard": store.to_data(entry.dashboard) if entry.dashboard else None}
 
 
 def _validated(data: dict[str, Any]) -> Dashboard:
@@ -117,11 +139,12 @@ async def list_dashboards(project_id: int, session: AsyncSession = Depends(get_s
     try:
         folder = store.dashboards_dir(Path(project.path), setting)
         entries = store.list_dashboards(Path(project.path), setting)
+        exposures = dashboard_exposure.project_exposures(Path(project.path)) if any(e.dashboard and e.dashboard.exposure for e in entries) else None
     except DashboardError as exc:
         raise _dashboard_http(exc) from exc
     return {
         "folder": folder.relative_to(Path(project.path).resolve()).as_posix(),
-        "dashboards": [_summary(e) for e in entries],
+        "dashboards": [_summary(e, exposures) for e in entries],
     }
 
 
@@ -136,14 +159,14 @@ async def create_dashboard(project_id: int, dto: CreateDto, session: AsyncSessio
         raise _dashboard_http(exc) from exc
     log.info("dashboard_created", project_id=project_id, slug=slug)
     await _changed(project_id, slug)
-    return _detail(entry)
+    return _detail(entry, Path(project.path))
 
 
 @router.get("/{project_id}/dashboards/{slug}")
 async def get_dashboard(project_id: int, slug: str, session: AsyncSession = Depends(get_session)) -> dict:
     project, setting = await _context(session, project_id)
     try:
-        return _detail(store.read(Path(project.path), setting, slug))
+        return _detail(store.read(Path(project.path), setting, slug), Path(project.path))
     except DashboardError as exc:
         raise _dashboard_http(exc) from exc
 
@@ -160,7 +183,7 @@ async def save_dashboard(project_id: int, slug: str, dto: SaveDto, session: Asyn
     except DashboardError as exc:
         raise _dashboard_http(exc) from exc
     await _changed(project_id, slug)
-    return _detail(entry)
+    return _detail(entry, Path(project.path))
 
 
 @router.delete("/{project_id}/dashboards/{slug}", status_code=204)
@@ -219,8 +242,133 @@ async def refresh_dashboard(
 # ── Register as exposure ─────────────────────────────────────────────────────
 
 
+EXPOSURE_KIND = "exposure"
+
+
+@router.post("/{project_id}/dashboards/{slug}/exposure/propose", response_model=AiProposalDto)
+async def propose_exposure(
+    project_id: int, slug: str, dto: ExposureDto, session: AsyncSession = Depends(get_session)
+) -> AiProposalDto:
+    """A `type: dashboard` exposure for the widgets' metrics, plus `exposure: <name>` in the
+    dashboard file, as a proposal to review (kind `exposure`): nothing is written until it's accepted."""
+    project, setting = await _context(session, project_id)
+    path = Path(project.path)
+    dashboard = _read(project, setting, slug)
+    dashboard_file = store.file_for(path, setting, slug)
+    dashboard_path = dashboard_file.relative_to(path.resolve()).as_posix()
+    await _require_available(session, project)
+    try:
+        metrics = dashboard_exposure.dashboard_metrics(dashboard, await service.catalog(path))
+    except (service.SemanticError, RuntimeUnavailable) as exc:
+        raise _semantic_http(exc) from exc
+    name = dto.name or dashboard_exposure.exposure_name(slug)
+    spec = ExposureSpec(name=name, owner=dto.owner, metrics=metrics, description=dashboard.title, dashboard_path=dashboard_path)
+    try:
+        planned = dashboard_exposure.plan_register(path, spec)
+    except SchemaYamlError as exc:
+        raise _http_error(422, "yaml_edit_failed", str(exc)) from exc
+    exposure_file = path / planned.path
+    original = exposure_file.read_text(encoding="utf-8") if exposure_file.is_file() else None
+    summary = {"name": name, "path": planned.path, "dashboard": dashboard_path, "metrics": list(metrics), "owner": dto.owner}
+    proposal = AiProposal(
+        project_id=project_id, kind=EXPOSURE_KIND, unique_id=None, title=f"Register {dashboard.title} as exposure `{name}`",
+        result_json=json.dumps({"summary": summary}), status="ready",
+    )
+    session.add(proposal)
+    await session.flush()
+    session.add(AiProposalFile(proposal_id=proposal.id, path=planned.path, op="create" if original is None else "modify",
+                               original_text=original, proposed_text=planned.text))
+    current = dashboard_file.read_text(encoding="utf-8")
+    linked = store.render(dashboard.model_copy(update={"exposure": name}))
+    if dashboard.exposure != name or linked != current:  # registering again after the exposure was deleted: already linked
+        session.add(AiProposalFile(proposal_id=proposal.id, path=dashboard_path, op="modify", original_text=current, proposed_text=linked))
+    await session.commit()
+    await session.refresh(proposal, attribute_names=["files"])
+    await _publish(proposal)
+    log.info("dashboard_exposure_proposed", project_id=project_id, slug=slug, exposure=name, path=planned.path)
+    return proposal_dto(proposal)
+
+
+@router.post("/{project_id}/dashboards/{slug}/exposure/update", response_model=AiProposalDto)
+async def propose_exposure_update(project_id: int, slug: str, session: AsyncSession = Depends(get_session)) -> AiProposalDto:
+    """The linked exposure's `depends_on` metrics set to the dashboard's current metrics (other
+    entries kept), as a proposal to review (kind `exposure`); 409 when it isn't in the project."""
+    project, setting = await _context(session, project_id)
+    path = Path(project.path)
+    dashboard = _read(project, setting, slug)
+    index = dashboard_exposure.project_exposures(path)
+    hit = index.exposures.get(dashboard.exposure or "") if index else None
+    if not dashboard.exposure or not hit or not hit["path"] or index is None:
+        raise _http_error(409, "exposure_missing", "This dashboard's exposure isn't in the project (any more): register it again.")
+    target = (path / hit["path"]).resolve()
+    if not target.is_relative_to(path.resolve()) or not target.is_file():
+        raise _http_error(409, "exposure_missing", f"{hit['path']} isn't in the project")
+    metrics = dashboard_exposure.dashboard_metric_names(dashboard, index.metrics)
+    original = target.read_text(encoding="utf-8")
+    try:
+        updated = update_exposure_metrics(original, target.name, dashboard.exposure, metrics)
+    except SchemaYamlError as exc:
+        raise _http_error(422, "yaml_edit_failed", str(exc)) from exc
+    drift = dashboard_exposure.exposure_drift(dashboard, hit, index.metrics)
+    proposal = AiProposal(
+        project_id=project_id, kind=EXPOSURE_KIND, unique_id=hit["unique_id"], title=f"Update the exposure `{dashboard.exposure}`",
+        result_json=json.dumps({"summary": {"name": dashboard.exposure, "path": hit["path"], "update": True, **drift}}),
+        status="ready" if updated != original else "empty",
+        error_message=None if updated != original else f"{hit['path']} already lists the dashboard's metrics.",
+    )
+    session.add(proposal)
+    await session.flush()
+    if updated != original:
+        session.add(AiProposalFile(proposal_id=proposal.id, path=hit["path"], op="modify", original_text=original, proposed_text=updated))
+    await session.commit()
+    await session.refresh(proposal, attribute_names=["files"])
+    await _publish(proposal)
+    log.info("dashboard_exposure_update_proposed", project_id=project_id, slug=slug, exposure=dashboard.exposure, **drift)
+    return proposal_dto(proposal)
+
+
+@router.post("/{project_id}/dashboards/{slug}/exposure/delete", response_model=AiProposalDto)
+async def propose_exposure_delete(project_id: int, slug: str, session: AsyncSession = Depends(get_session)) -> AiProposalDto:
+    """Unlink and delete: the linked exposure removed from its YAML (the file deleted when nothing
+    else is left in it) and `exposure:` removed from the dashboard, as a proposal to review."""
+    project, setting = await _context(session, project_id)
+    path = Path(project.path)
+    dashboard = _read(project, setting, slug)
+    index = dashboard_exposure.project_exposures(path)
+    hit = index.exposures.get(dashboard.exposure or "") if index else None
+    if not dashboard.exposure or not hit or not hit["path"]:
+        raise _http_error(409, "exposure_missing", "This dashboard's exposure isn't in the project (any more): unlink it instead.")
+    target = (path / hit["path"]).resolve()
+    if not target.is_relative_to(path.resolve()) or not target.is_file():
+        raise _http_error(409, "exposure_missing", f"{hit['path']} isn't in the project")
+    original = target.read_text(encoding="utf-8")
+    try:
+        removal = remove_exposure(original, target.name, dashboard.exposure)
+    except SchemaYamlError as exc:
+        raise _http_error(422, "yaml_edit_failed", str(exc)) from exc
+    dashboard_file = store.file_for(path, setting, slug)
+    dashboard_path = dashboard_file.relative_to(path.resolve()).as_posix()
+    summary = {"name": dashboard.exposure, "path": hit["path"], "delete": True, "file_deleted": removal.empty, "dashboard": dashboard_path}
+    proposal = AiProposal(
+        project_id=project_id, kind=EXPOSURE_KIND, unique_id=hit["unique_id"],
+        title=f"Unlink and delete the exposure `{dashboard.exposure}`", result_json=json.dumps({"summary": summary}), status="ready",
+    )
+    session.add(proposal)
+    await session.flush()
+    session.add(AiProposalFile(proposal_id=proposal.id, path=hit["path"], op="delete" if removal.empty else "modify",
+                               original_text=original, proposed_text="" if removal.empty else removal.text))
+    unlinked = dashboard.model_copy(update={"exposure": None})
+    session.add(AiProposalFile(proposal_id=proposal.id, path=dashboard_path, op="modify",
+                               original_text=dashboard_file.read_text(encoding="utf-8"), proposed_text=store.render(unlinked)))
+    await session.commit()
+    await session.refresh(proposal, attribute_names=["files"])
+    await _publish(proposal)
+    log.info("dashboard_exposure_delete_proposed", project_id=project_id, slug=slug, exposure=dashboard.exposure, file_deleted=removal.empty)
+    return proposal_dto(proposal)
+
+
 @router.post("/{project_id}/dashboards/{slug}/exposure")
-async def register_exposure(
+async def register_exposure(  # without review (scripts); the UI proposes instead
     project_id: int, slug: str, dto: ExposureDto, session: AsyncSession = Depends(get_session)
 ) -> dict:
     """Write a `type: dashboard` exposure depending on the widgets' metrics; {path, name}."""

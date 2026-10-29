@@ -23,7 +23,12 @@ function useDashboardEvents(projectId: number) {
       qc.invalidateQueries({ queryKey: slug ? ['dashboard', projectId, slug] : ['dashboard', projectId] });
       qc.invalidateQueries({ queryKey: slug ? ['dashboard-results', projectId, slug] : ['dashboard-results', projectId] });
     }
-    if (event.type === 'graph_changed') qc.invalidateQueries({ queryKey: ['dashboard-results', projectId] });
+    if (event.type === 'graph_changed') {
+      // definitions changed (new SQL), and a linked exposure may have appeared or gone
+      qc.invalidateQueries({ queryKey: ['dashboard-results', projectId] });
+      qc.invalidateQueries({ queryKey: ['dashboard', projectId] });
+      qc.invalidateQueries({ queryKey: ['dashboards', projectId] });
+    }
   }, [projectId, qc]));
 }
 

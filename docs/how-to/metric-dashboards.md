@@ -81,7 +81,7 @@ With wickd Pro, widgets show the status of [metric monitors](metric-monitors.md)
 
 ## Register as exposure
 
-**Register as exposure** writes a dbt exposure for the dashboard:
+**Register as exposure** asks for an owner, then opens the review window with the change: a dbt exposure for the dashboard, plus `exposure: <name>` in the dashboard's file. Nothing is written until you accept (all at once, or file by file); reject and nothing changes. The exposure looks like this:
 
 ```yaml
 exposures:
@@ -97,7 +97,14 @@ exposures:
       wickd_dashboard: "wickd/dashboards/revenue-overview.yml"
 ```
 
-It goes in your project's existing exposures file, or else a new `exposures.yml` in your first model path. wickd only adds lines, in the file's own indentation style, and checks the result before writing. After dbt re-parses (automatic), the dashboard appears in the DAG, Docs and Impact like any downstream consumer. If you later add widgets with new metrics, update `depends_on` in the YAML.
+It goes in your project's existing exposures file, or else a new `exposures.yml` in your first model path. wickd only adds lines, in the file's own indentation style, and checks the result before writing. After dbt re-parses (automatic), the dashboard appears in the DAG, Docs and Impact like any downstream consumer. The exposure's name shows next to the dashboard's title as a chip: **green** while the exposure lists exactly the dashboard's metrics, **yellow** ("out of date") when you've added a metric to the dashboard (or removed one), and **red** ("dead link") when the exposure isn't in the project any more (wickd re-parses automatically after YAML changes). When it's yellow, **Update exposure** opens the review window with the exposure's `depends_on` updated to the dashboard's metrics (other entries, like `ref('orders')`, are kept). Click the chip for:
+
+- **Open the exposure YAML**
+- **Update the exposure YAML** (when it's out of date)
+- **Unlink**: removes `exposure:` from the dashboard file and leaves the exposure itself alone (undoable like any edit)
+- **Unlink and delete exposure**: opens the review window with the exposure removed from its YAML (the file is deleted when nothing else is left in it) and the dashboard unlinked; nothing changes until you accept
+
+When the link is dead, **Register again** writes a new exposure.
 
 ## Export
 

@@ -3,6 +3,7 @@
 import {
   ArrowLeft, Check, CloudOff, Download, Link2, Loader2, Maximize2, Minimize2, Redo2, RefreshCw, Trash2, Undo2,
 } from 'lucide-react';
+import { driftText, ExposureChip, type ExposureStatus } from './ExposureChip';
 import type { SaveState } from './useDashboardEditor';
 
 const BTN = 'flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40';
@@ -12,6 +13,14 @@ interface Props {
   title: string;
   path: string;
   exposure: string | null;
+  exposureStatus: ExposureStatus;
+  exposurePath: string | null;
+  canOpenExposure: boolean;
+  exposureDrift: { add: string[]; remove: string[] } | null;
+  onOpenExposure: () => void;
+  onUpdateExposure: () => void;
+  onDeleteExposure: () => void;
+  onUnlinkExposure: () => void;
   save: SaveState;
   present: boolean;
   canUndo: boolean;
@@ -58,9 +67,8 @@ export function BuilderHeader(p: Props) {
       </button>
       {!p.present && <span className="hidden xl:inline text-[11px] font-mono text-gray-600 truncate">{p.path}</span>}
       {p.exposure && (
-        <span className="flex items-center gap-1 px-1.5 py-px text-[10px] rounded border border-gray-700 text-gray-400" title="Registered as a dbt exposure">
-          <Link2 className="w-3 h-3" />{p.exposure}
-        </span>
+        <ExposureChip name={p.exposure} status={p.exposureStatus} path={p.exposurePath} canOpen={p.canOpenExposure}
+          drift={p.exposureDrift} onOpen={p.onOpenExposure} onUpdate={p.onUpdateExposure} onUnlink={p.onUnlinkExposure} onDelete={p.onDeleteExposure} />
       )}
       {!p.present && <SaveStatus save={p.save} onReload={p.onReload} />}
       <div className="flex-1" />
@@ -74,9 +82,15 @@ export function BuilderHeader(p: Props) {
         <button onClick={p.onPresent} className={BTN} title={p.present ? 'Back to editing (Esc)' : 'Hide the rails'}>
           {p.present ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}{p.present ? 'Edit' : 'Present'}
         </button>
-        {!p.present && !p.exposure && (
+        {!p.present && p.exposure && p.exposureStatus === 'out_of_date' && (
+          <button onClick={p.onUpdateExposure} title={`Update the exposure: ${driftText(p.exposureDrift)}`}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-yellow-800 text-yellow-300 hover:border-yellow-600">
+            <RefreshCw className="w-3.5 h-3.5" />Update exposure
+          </button>
+        )}
+        {!p.present && (!p.exposure || p.exposureStatus === 'missing') && (
           <button onClick={p.onExposure} disabled={!p.hasMetrics} title="Write a dbt exposure for this dashboard" className={BTN}>
-            <Link2 className="w-3.5 h-3.5" />Register as exposure
+            <Link2 className="w-3.5 h-3.5" />{p.exposure ? 'Register again' : 'Register as exposure'}
           </button>
         )}
         <button onClick={p.onExport} disabled={!p.hasWidgets} className={BTN}><Download className="w-3.5 h-3.5" />Export</button>

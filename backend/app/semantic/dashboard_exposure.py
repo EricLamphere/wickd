@@ -20,6 +20,17 @@ from app.semantic.service import target_dir
 
 DEFAULT_FILE = "exposures.yml"
 
+@dataclass(frozen=True)
+class ExposureIndex:
+    """From dbt's manifest: the exposures by name, and every metric's name."""
+
+    exposures: dict[str, dict[str, Any]]  # name → {unique_id, path, metrics}
+    metrics: frozenset[str]
+
+
+# (manifest path, mtime_ns, size) → the index; rebuilt when dbt re-parses
+_index_cache: dict[tuple[str, int, int], ExposureIndex] = {}
+
 
 @dataclass(frozen=True)
 class ExposureWrite:
@@ -57,6 +68,46 @@ def choose_file(project_path: Path, manifest: Mapping[str, Any]) -> str:
         and (project_name is None or n.get("package_name") == project_name)
     )
     return existing[0] if existing else f"{_model_dir(project_path)}/{DEFAULT_FILE}"
+
+
+def project_exposures(project_path: Path) -> ExposureIndex | None:
+    """The project's exposures (with the metrics they depend on) and metric names, or None without a manifest."""
+    manifest_path = target_dir(project_path) / "manifest.json"
+    try:
+        stat = manifest_path.stat()
+    except OSError:
+        return None
+    key = (str(manifest_path), stat.st_mtime_ns, stat.st_size)
+    if key not in _index_cache:
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, ValueError):
+            return None
+        metric_names = {uid: m.get("name") for uid, m in (manifest.get("metrics") or {}).items() if isinstance(m, dict)}
+        exposures = {}
+        for uid, n in (manifest.get("exposures") or {}).items():
+            if not isinstance(n, dict) or not n.get("name"):
+                continue
+            nodes = (n.get("depends_on") or {}).get("nodes") or []
+            exposures[n["name"]] = {
+                "unique_id": uid, "path": str(n.get("original_file_path") or ""),
+                "metrics": [metric_names[d] for d in nodes if metric_names.get(d)],
+            }
+        _index_cache.clear()  # one project's manifest at a time is plenty
+        _index_cache[key] = ExposureIndex(exposures=exposures, metrics=frozenset(n for n in metric_names.values() if n))
+    return _index_cache[key]
+
+
+def exposure_drift(dashboard: Dashboard, linked: dict[str, Any], known_metrics: frozenset[str]) -> dict[str, list[str]]:
+    """Metrics on the dashboard that the exposure doesn't list (`add`) and ones it lists that
+    the dashboard no longer shows (`remove`). Metrics that don't exist (any more) are ignored."""
+    shown = list(dict.fromkeys(m for w in dashboard.widgets for m in w.metrics if m in known_metrics))
+    listed = list(linked.get("metrics") or [])
+    return {"add": [m for m in shown if m not in listed], "remove": [m for m in listed if m not in shown]}
+
+
+def dashboard_metric_names(dashboard: Dashboard, known_metrics: frozenset[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(m for w in dashboard.widgets for m in w.metrics if m in known_metrics))
 
 
 def _manifest(project_path: Path) -> dict[str, Any]:

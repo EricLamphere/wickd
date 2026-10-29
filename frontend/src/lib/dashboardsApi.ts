@@ -2,6 +2,7 @@
 // DASHBOARDS_PATH (default wickd/dashboards), cached widget results and batch refresh (plan 12).
 // Mirrors backend/app/api/dashboards.py and app/semantic/dashboards.py.
 import { del, get, post, put } from './api';
+import type { AiProposalDto } from './aiApi';
 import type { MetricQueryBody } from './semanticApi';
 
 export type WidgetType = 'summary' | 'timeseries' | 'bar' | 'table' | 'leaderboard' | 'text';
@@ -65,6 +66,12 @@ export interface DashboardSummaryDto {
   title: string;
   widget_count: number;
   exposure: string | null;
+  /** the linked exposure per dbt's manifest (null when not linked): out_of_date = its metrics differ from the dashboard's */
+  exposure_status: 'found' | 'out_of_date' | 'missing' | 'unknown' | null;
+  /** what Update exposure would change: dashboard metrics it lacks, metrics it lists that left the dashboard */
+  exposure_drift: { add: string[]; remove: string[] } | null;
+  exposure_path: string | null;
+  exposure_unique_id: string | null;
   /** why the file couldn't be read (it's still listed) */
   error: string | null;
   modified_at: string | null;
@@ -132,6 +139,11 @@ export const dashboardsApi = {
   dimensionValues: (projectId: number, metric: string, dimension: string) =>
     post<{ values: unknown[]; ran_at: string; source: 'warehouse' | 'cache' }>(
       `/projects/${projectId}/semantic/dimension-values`, { metric, dimension }),
-  registerExposure: (projectId: number, slug: string, owner: string) =>
-    post<{ path: string; name: string }>(`${one(projectId, slug)}/exposure`, { owner }),
+  /** the exposure + the dashboard's `exposure:` key as a proposal (kind `exposure`) to review; nothing is written yet */
+  proposeExposure: (projectId: number, slug: string, owner: string) =>
+    post<AiProposalDto>(`${one(projectId, slug)}/exposure/propose`, { owner }),
+  /** the linked exposure's `depends_on` metrics set to the dashboard's, as a proposal to review */
+  proposeExposureUpdate: (projectId: number, slug: string) => post<AiProposalDto>(`${one(projectId, slug)}/exposure/update`),
+  /** unlink and delete: the exposure removed from its YAML (the file deleted if that empties it) + the dashboard unlinked, to review */
+  proposeExposureDelete: (projectId: number, slug: string) => post<AiProposalDto>(`${one(projectId, slug)}/exposure/delete`),
 };

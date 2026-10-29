@@ -251,6 +251,108 @@ async def test_register_exposure(db, client, tmp_path, worker) -> None:
     assert again.status_code == 422
 
 
+async def test_propose_exposure_writes_nothing_until_accepted(db, client, tmp_path, worker) -> None:
+    project = await _project(db, tmp_path)
+    await _create(client, project)
+    base = f"/api/projects/{project.id}"
+    res = await client.post(f"{base}/dashboards/revenue-overview/exposure/propose", json={"owner": "Data team"})
+    assert res.status_code == 200, res.text
+    proposal = res.json()
+    assert proposal["kind"] == "exposure" and proposal["status"] == "ready"
+    files = {f["path"]: f for f in proposal["files"]}
+    assert set(files) == {"models/exposures.yml", "wickd/dashboards/revenue-overview.yml"}
+    assert files["models/exposures.yml"]["op"] == "create"
+    assert "metric('revenue')" in files["models/exposures.yml"]["proposed_text"]
+    assert "exposure: revenue_overview" in files["wickd/dashboards/revenue-overview.yml"]["proposed_text"]
+    assert not (Path(project.path) / "models" / "exposures.yml").exists()
+
+    accepted = await client.post(f"{base}/ai/proposals/{proposal['id']}/accept", json={})
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["status"] == "applied"
+    assert yaml.safe_load((Path(project.path) / "models" / "exposures.yml").read_text())["exposures"][0]["name"] == "revenue_overview"
+    detail = (await client.get(f"{base}/dashboards/revenue-overview")).json()
+    assert detail["exposure"] == "revenue_overview"
+
+
+async def test_exposure_status_follows_the_manifest(db, client, tmp_path, worker) -> None:
+    import json as _json
+
+    project = await _project(db, tmp_path)
+    await _create(client, project)
+    base = f"/api/projects/{project.id}/dashboards/revenue-overview"
+    created = (await client.get(base)).json()
+    linked = {**created["dashboard"], "exposure": "revenue_overview"}
+    await client.put(base, json={"dashboard": linked})
+    manifest_path = Path(project.path) / "target" / "manifest.json"
+    manifest = _json.loads(manifest_path.read_text())
+    manifest["exposures"] = {}
+    manifest_path.write_text(_json.dumps(manifest))
+    detail = (await client.get(base)).json()
+    assert detail["exposure"] == "revenue_overview" and detail["exposure_status"] == "missing"
+    listed = (await client.get(f"/api/projects/{project.id}/dashboards")).json()["dashboards"][0]
+    assert listed["exposure_status"] == "missing"
+
+    # registering again: only the exposure YAML changes (the dashboard is already linked)
+    proposal = (await client.post(f"{base}/exposure/propose", json={"owner": "x"})).json()
+    assert [f["path"] for f in proposal["files"]] == ["models/exposures.yml"]
+
+    manifest["exposures"] = {"exposure.mf_bench.revenue_overview": {
+        "name": "revenue_overview", "original_file_path": "models/exposures.yml",
+        "depends_on": {"nodes": ["metric.mf_bench.revenue", "metric.mf_bench.order_count"]}}}
+    manifest_path.write_text(_json.dumps(manifest))
+    detail = (await client.get(base)).json()
+    assert detail["exposure_status"] == "found" and detail["exposure_path"] == "models/exposures.yml"
+    assert detail["exposure_unique_id"] == "exposure.mf_bench.revenue_overview"
+    assert detail["exposure_drift"] == {"add": [], "remove": []}
+
+    # a new metric on the dashboard: the exposure is out of date, and an update is proposed
+    (Path(project.path) / "models" / "exposures.yml").write_text(
+        "version: 2\nexposures:\n  - name: revenue_overview\n    type: dashboard\n    owner:\n      name: x\n"
+        "    depends_on:\n      - ref('orders')\n      - metric('revenue')\n      - metric('order_count')\n")
+    more = {**linked, "widgets": [*linked["widgets"], {"id": "aov", "type": "summary", "metrics": ["avg_order_value"]}]}
+    detail = (await client.put(base, json={"dashboard": more})).json()
+    assert detail["exposure_status"] == "out_of_date" and detail["exposure_drift"] == {"add": ["avg_order_value"], "remove": []}
+    update = (await client.post(f"{base}/exposure/update")).json()
+    assert update["kind"] == "exposure" and update["status"] == "ready"
+    text = update["files"][0]["proposed_text"]
+    assert "- ref('orders')" in text and "- metric('avg_order_value')" in text
+    assert not (Path(project.path) / "models" / "exposures.yml").read_text().count("avg_order_value")
+
+    unlinked = {k: v for k, v in linked.items() if k != "exposure"}
+    detail = (await client.put(base, json={"dashboard": unlinked})).json()
+    assert detail["exposure"] is None and detail["exposure_status"] is None
+
+
+async def test_unlink_and_delete_exposure_is_reviewed(db, client, tmp_path, worker) -> None:
+    import json as _json
+
+    project = await _project(db, tmp_path)
+    await _create(client, project)
+    base = f"/api/projects/{project.id}"
+    created = (await client.post(f"{base}/dashboards/revenue-overview/exposure/propose", json={"owner": "x"})).json()
+    await client.post(f"{base}/ai/proposals/{created['id']}/accept", json={})
+    manifest_path = Path(project.path) / "target" / "manifest.json"
+    manifest = _json.loads(manifest_path.read_text())
+    manifest["exposures"] = {"exposure.mf_bench.revenue_overview": {"name": "revenue_overview", "original_file_path": "models/exposures.yml",
+                                                                    "depends_on": {"nodes": []}}}
+    manifest_path.write_text(_json.dumps(manifest))
+
+    res = await client.post(f"{base}/dashboards/revenue-overview/exposure/delete")
+    assert res.status_code == 200, res.text
+    files = {f["path"]: f for f in res.json()["files"]}
+    assert files["models/exposures.yml"]["op"] == "delete"  # it was the only thing in the file
+    assert "exposure:" not in files["wickd/dashboards/revenue-overview.yml"]["proposed_text"]
+    assert (Path(project.path) / "models" / "exposures.yml").exists()  # nothing written yet
+
+    accepted = await client.post(f"{base}/ai/proposals/{res.json()['id']}/accept", json={})
+    assert accepted.status_code == 200 and accepted.json()["status"] == "applied"
+    assert not (Path(project.path) / "models" / "exposures.yml").exists()
+    assert (await client.get(f"{base}/dashboards/revenue-overview")).json()["exposure"] is None
+
+    missing = await client.post(f"{base}/dashboards/revenue-overview/exposure/delete")
+    assert missing.status_code == 409
+
+
 # ── export ───────────────────────────────────────────────────────────────────
 
 

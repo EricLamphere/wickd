@@ -1,6 +1,9 @@
 // Filters for the Metrics page: chips for each `where`, a builder (dimension / operator /
-// value) and an Advanced free-text mode with Dimension() suggestions.
-import { useEffect, useRef, useState } from 'react';
+// value) and an Advanced free-text mode with Dimension() suggestions. The builder opens on
+// document.body next to the "+ Filter" button and stays inside the window, so a scrolling
+// panel (the dashboard's side rail) can't clip it.
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, X } from 'lucide-react';
 import { FILTER_OPS, buildFilter, filterLabel, type FilterOp, type GroupByOption } from './lib/metricQuery';
 
@@ -33,9 +36,35 @@ function useSuggestions(dimension: string, enabled: boolean, suggest?: Props['su
   return values;
 }
 
-function Builder({ options, grain, onAdd, onClose, suggest }: {
+const EDGE = 8;
+
+/** Where the builder goes: under the anchor, shifted left / flipped up to stay in the window. */
+function useAnchoredPosition(anchor: React.RefObject<HTMLElement | null>, popup: React.RefObject<HTMLElement | null>) {
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      if (!anchor.current || !popup.current) return;
+      const a = anchor.current.getBoundingClientRect();
+      const { offsetWidth: w, offsetHeight: h } = popup.current;
+      const left = Math.max(EDGE, Math.min(a.left, window.innerWidth - EDGE - w));
+      const below = a.bottom + 4;
+      const top = below + h <= window.innerHeight - EDGE ? below : Math.max(EDGE, a.top - 4 - h);
+      setPos({ top, left });
+    };
+    place();
+    // follow the button when the window or a panel around it resizes or scrolls
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true); };
+  }, [anchor, popup]);
+  return pos;
+}
+
+function Builder({ options, grain, onAdd, onClose, suggest, anchor, popupRef }: {
   options: GroupByOption[]; grain: string; onAdd: (w: string) => void; onClose: () => void; suggest?: Props['suggest'];
+  anchor: React.RefObject<HTMLElement | null>; popupRef: React.MutableRefObject<HTMLDivElement | null>;
 }) {
+  const pos = useAnchoredPosition(anchor, popupRef);
   const [advanced, setAdvanced] = useState(false);
   const [dimension, setDimension] = useState(options.find((o) => o.kind === 'categorical')?.name ?? options[0]?.name ?? '');
   const [op, setOp] = useState<FilterOp>('=');
@@ -51,8 +80,9 @@ function Builder({ options, grain, onAdd, onClose, suggest }: {
     onClose();
   };
 
-  return (
-    <div className="absolute z-30 top-full left-0 mt-1 w-[26rem] p-3 flex flex-col gap-2 bg-surface-elevated border border-gray-700 rounded shadow-xl"
+  return createPortal(
+    <div ref={popupRef} style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, visibility: pos ? 'visible' : 'hidden' }}
+      className="fixed z-[60] w-[26rem] max-w-[calc(100vw-16px)] p-3 flex flex-col gap-2 bg-surface-elevated border border-gray-700 rounded shadow-xl"
       onKeyDown={(e) => { if (e.key === 'Escape') onClose(); if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); add(); } }}>
       {advanced ? (
         <>
@@ -98,16 +128,22 @@ function Builder({ options, grain, onAdd, onClose, suggest }: {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 export function FilterEditor({ filters, options, grain, onChange, suggest }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (ref.current && !ref.current.contains(t) && !popupRef.current?.contains(t)) setOpen(false);
+    };
     window.addEventListener('mousedown', close);
     return () => window.removeEventListener('mousedown', close);
   }, [open]);
@@ -122,11 +158,14 @@ export function FilterEditor({ filters, options, grain, onChange, suggest }: Pro
           </button>
         </span>
       ))}
-      <button onClick={() => setOpen((o) => !o)} disabled={!options.length}
+      <button ref={addRef} onClick={() => setOpen((o) => !o)} disabled={!options.length}
         className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-dashed border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-40">
         <Plus className="w-3 h-3" />Filter
       </button>
-      {open && <Builder options={options} grain={grain} onAdd={(w) => onChange([...filters, w])} onClose={() => setOpen(false)} suggest={suggest} />}
+      {open && (
+        <Builder options={options} grain={grain} onAdd={(w) => onChange([...filters, w])} onClose={() => setOpen(false)}
+          suggest={suggest} anchor={addRef} popupRef={popupRef} />
+      )}
     </div>
   );
 }

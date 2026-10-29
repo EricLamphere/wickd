@@ -108,7 +108,13 @@ export function DashboardsTab({ projectId, catalog, labels, target, onOpenExplor
               </span>
             )}
             <span className="flex items-center gap-2 text-[10px] font-mono text-gray-600 truncate">
-              {d.path}{d.exposure && <span className="flex items-center gap-0.5 text-gray-500"><Link2 className="w-3 h-3" />{d.exposure}</span>}
+              {d.path}{d.exposure && (
+                <span className={`flex items-center gap-0.5 ${d.exposure_status === 'missing' ? 'text-red-400'
+                  : d.exposure_status === 'out_of_date' ? 'text-yellow-400' : d.exposure_status === 'found' ? 'text-emerald-400' : 'text-gray-500'}`}
+                  title={d.exposure_status === 'missing' ? "This exposure isn't in the project any more (dead link)"
+                    : d.exposure_status === 'out_of_date' ? "This exposure doesn't list all the dashboard's metrics" : undefined}>
+                  <Link2 className="w-3 h-3" />{d.exposure}{d.exposure_status === 'missing' && ' · dead link'}{d.exposure_status === 'out_of_date' && ' · out of date'}</span>
+              )}
             </span>
           </button>
         ))}

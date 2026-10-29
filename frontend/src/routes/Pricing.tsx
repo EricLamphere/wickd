@@ -50,6 +50,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Refactors — rename models & columns everywhere, extract CTEs into models', base: false, pro: true },
   { label: 'Smarter test suggestions — join keys & grain, ranked test gaps', base: false, pro: true },
   { label: 'Metric monitors — anomalies, level shifts & restatements, checked after builds, shown on dashboards', base: false, pro: true },
+  { label: 'Metric compare — your changes, branch, another target or metric vs before, with what moved', base: false, pro: true },
   { label: 'Semantic layer drafts — Wicky writes your semantic models & metrics; metric-aware Query data', base: false, pro: true },
   { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs & tests', base: false, pro: true },
   { label: 'Priority support', base: false, pro: true },

@@ -6,7 +6,7 @@ The page appears in the left nav for projects that define metrics. It needs Metr
 
 ## Browse your metrics
 
-The **Explore** tab opens on **All metrics**: a card per metric, grouped by semantic model, with its type, a sparkline of its last result for the chosen period, how many places use it, and a warning count when the last semantic check found issues (Pro: a monitor badge when a monitor flagged it). Nothing runs when the page opens; the sparklines are stored results. **Run all** runs every metric's chart for the period on your warehouse in one batch. Search matches names, labels, descriptions, types and semantic models.
+The **Metrics** tab (first on the Metrics page) opens on **All metrics**: a card per metric, grouped by semantic model, with its type, a sparkline of its last result for the chosen period, how many places use it, and a warning count when the last semantic check found issues (Pro: a monitor badge when a monitor flagged it). Nothing runs when the page opens; the sparklines are stored results. **Run all** runs every metric's chart for the period on your warehouse in one batch. Search matches names, labels, descriptions, types and semantic models.
 
 ## A metric's page
 

@@ -53,6 +53,9 @@ export function clearExplore(prev: URLSearchParams): URLSearchParams {
   const next = writeState(prev, EMPTY_STATE);
   next.delete(VIEW_PARAM);
   next.delete(WIDGET_PARAM);
+  // compare mode (lib/compareView.ts) belongs to the query view
+  next.delete('cmp');
+  next.delete('cmp_base');
   return next;
 }
 

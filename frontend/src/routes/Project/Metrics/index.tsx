@@ -27,6 +27,7 @@ import { MetricsUnavailable } from './MetricsUnavailable';
 import {
   clearExplore, emptyExploreWidget, isExploreView, readExploreWidget, widgetFromLegacy, writeExploreWidget,
 } from './lib/exploreWidget';
+import { readCompare, writeCompare, type CompareState } from './lib/compareView';
 import { ExploreView } from './explore/ExploreView';
 import { MetricIndex } from './explore/MetricIndex';
 import { MetricPage } from './explore/MetricPage';
@@ -79,7 +80,7 @@ function MetricsContent({ id }: { id: number }) {
 }
 
 const TABS = ['explore', 'dashboards', 'monitors'] as const;
-const TAB_LABELS = { explore: 'Explore', dashboards: 'Dashboards' } as const;
+const TAB_LABELS = { explore: 'Metrics', dashboards: 'Dashboards' } as const;
 
 function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: SemanticCatalogDto }) {
   const [tab, setTab] = useUrlTab('tab', TABS, 'explore');
@@ -170,7 +171,12 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
       return next;
     });
   }, [setParams]);
-  const explore = useCallback((next: DashboardWidget) => setParams((prev) => writeExploreWidget(prev, next)), [setParams]);
+  // a new query (from the index, a metric page, Impact): compare mode only when asked for
+  const explore = useCallback((next: DashboardWidget, cmp: CompareState | null = null) => {
+    setParams((prev) => writeCompare(writeExploreWidget(prev, next), cmp));
+  }, [setParams]);
+  const compare = useMemo(() => readCompare(params), [params]);
+  const setCompare = useCallback((next: CompareState | null) => setParams((prev) => writeCompare(prev, next)), [setParams]);
   // settings edits replace the history entry (one per change would bury Back under keystrokes)
   const editWidget = useCallback((next: DashboardWidget) => setParams((prev) => writeExploreWidget(prev, next), { replace: true }), [setParams]);
   const exploreSaved = (q: CatalogSavedQuery) => explore({ ...widgetFromQuery({ saved_query: q.name }, catalog, []), id: 'explore' });
@@ -226,7 +232,8 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
       {mode === 'explore' && widget && (
         <main className="flex-1 min-w-0 min-h-0">
           <ExploreView projectId={projectId} catalog={catalog} labels={labels} widget={widget} onChange={editWidget}
-            onIndex={showIndex} onOpenMetric={openMetric} onOpenDashboard={onOpenDashboard} onMonitor={onMonitor} />
+            onIndex={showIndex} onOpenMetric={openMetric} onOpenDashboard={onOpenDashboard} onMonitor={onMonitor}
+            compare={compare} onCompare={setCompare} />
         </main>
       )}
     </div>

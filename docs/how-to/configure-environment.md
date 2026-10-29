@@ -116,6 +116,8 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 **MONITOR_INTERVAL_HOURS** — how often metric monitors are checked automatically while wickd is open (wickd Pro), in whole hours (1 or more). Unset means off; builds and **Check now** still check them. See [Monitor metrics for anomalies](metric-monitors.md).
 
+**DIFF_BASE_TARGET** — the dbt target metric compare's "before" side reads (wickd Pro), e.g. `prod`. Unset, both sides read your active target, so only semantic YAML changes show. See [Compare metrics](compare-metrics.md).
+
 **PROPAGATE_TAGS** — the column tags the Docs **Tags** tab follows through lineage (wickd Pro), comma-separated. Defaults to `pii,sensitive`. See [Inherit docs and trace tagged columns](inherit-docs-and-trace-tags.md).
 
 **METRICFLOW_MODE** — whether MetricFlow runs for this project's semantic layer: `auto`, `off`, or empty to use the global default (`WICKD_METRICFLOW_MODE`). Choosing **Continue without MetricFlow** in the version dialog sets it to `off`. See [Use the semantic layer](semantic-layer.md).

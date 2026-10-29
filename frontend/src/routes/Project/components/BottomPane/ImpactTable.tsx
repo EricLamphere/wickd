@@ -1,3 +1,4 @@
+import { GitCompare } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { ImpactLevel, ImpactNode } from '../../lib/impact';
 import { getModelCoverageStats, type CoverageMap } from '../../lib/testCoverage';
@@ -20,6 +21,8 @@ interface ImpactTableProps {
   affectedColumns?: ReadonlyMap<string, AffectedColumnsLabel>;
   /** Monitored metrics' latest status by metric name (Pro; empty otherwise). */
   monitorStatuses?: ReadonlyMap<string, MetricMonitorState>;
+  /** Uncommitted / Branch modes: a metric row's "Compare numbers" (metric compare, Pro) */
+  onCompareMetric?: (metric: string) => void;
 }
 
 const GRID_BASE = 'grid items-center gap-4 px-4';
@@ -99,7 +102,7 @@ function CoverageCell({ item, coverage }: { item: ImpactNode; coverage: Coverage
   );
 }
 
-function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor }: {
+function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor, onCompare }: {
   item: ImpactNode;
   coverage: CoverageMap;
   onNodeClick: ImpactTableProps['onNodeClick'];
@@ -109,6 +112,8 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
   affected?: AffectedColumnsLabel | null;
   /** a monitored metric's latest status (Pro) */
   monitor?: MetricMonitorState;
+  /** metric rows in Uncommitted / Branch modes: open metric compare */
+  onCompare?: () => void;
 }) {
   const { node } = item;
   const rowFlags = item.flags.filter((f) => f !== 'exposure');
@@ -124,6 +129,12 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
           {node.source_name ? `${node.source_name}.${node.name}` : node.name}
         </button>
         {reason && <span className="text-[11px] text-amber-300/70 truncate shrink-[2]" title={reason}>{reason}</span>}
+        {onCompare && (
+          <button onClick={onCompare} title="See what this change does to the metric's numbers (Pro)"
+            className="flex items-center gap-1 shrink-0 px-1.5 py-0.5 text-[10px] rounded border border-gray-700 text-gray-400 hover:border-brand-600 hover:text-brand-300">
+            <GitCompare className="w-3 h-3" />Compare numbers
+          </button>
+        )}
       </span>
       {affected !== undefined && (
         affected
@@ -164,7 +175,7 @@ function GroupHeader({ depth, count, seedLabel }: { depth: number; count: number
   );
 }
 
-export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses }: ImpactTableProps) {
+export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses, onCompareMetric }: ImpactTableProps) {
   const grid = `${GRID_BASE} ${affectedColumns ? GRID_COLS_WITH_AFFECTED : GRID_COLS}`;
   const columns = affectedColumns ? COLUMNS_WITH_AFFECTED : COLUMNS;
   return (
@@ -185,6 +196,7 @@ export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons,
               grid={grid}
               affected={affectedColumns ? affectedColumns.get(item.node.unique_id) ?? null : undefined}
               monitor={item.node.resource_type === 'metric' ? monitorStatuses?.get(item.node.name) : undefined}
+              onCompare={item.node.resource_type === 'metric' && onCompareMetric ? () => onCompareMetric(item.node.name) : undefined}
             />
           ))}
         </div>

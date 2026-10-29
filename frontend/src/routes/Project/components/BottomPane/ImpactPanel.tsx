@@ -13,6 +13,8 @@ import { ImpactTable } from './ImpactTable';
 import { useMonitorStatuses } from '../../Metrics/monitors/useMonitors';
 import { ImpactToolbar } from './ImpactToolbar';
 import { useColumnLevelImpact } from './useColumnLevelImpact';
+import { useNavigate } from 'react-router-dom';
+import { compareUrl } from '../../Metrics/lib/compareView';
 
 interface ImpactPanelProps {
   projectId: number;
@@ -52,6 +54,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
     [mode, selectedColumns],
   );
   const { handleClick: openInFilesClick } = useOpenInFiles(projectId);
+  const navigate = useNavigate();
   const monitorStatuses = useMonitorStatuses(projectId);
   const { buildSelector, building, error: buildError } = useBuildImpacted(projectId);
 
@@ -127,6 +130,9 @@ export function ImpactPanel(props: ImpactPanelProps) {
           reasons={reasons}
           affectedColumns={columnResult ? columns.labels : undefined}
           monitorStatuses={monitorStatuses}
+          onCompareMetric={isChangeMode
+            ? (metric) => navigate(compareUrl(projectId, metric, { mode: mode === 'branch' ? 'branch' : 'working', base: mode === 'branch' ? base ?? '' : '' }))
+            : undefined}
         />
         {impact.levels.length === 0 && (
           <div className="px-4 py-3 text-xs text-gray-600">Nothing downstream: only these nodes and their tests are affected.</div>

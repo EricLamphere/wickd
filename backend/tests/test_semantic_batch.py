@@ -89,3 +89,26 @@ async def test_run_many_marks_everything_when_dbt_stays_busy(fake_dbt, monkeypat
 
 async def _never_free(project_id: int) -> bool:
     return False
+
+
+async def test_another_target_parses_outside_the_project(fake_dbt, monkeypatch, tmp_path) -> None:
+    """dbt show writes target/manifest.json for the target it runs on: a pinned or compared target
+    mustn't leave the project's artifacts pointing at its relations."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "data_dir", tmp_path)
+    extras: list[tuple] = []
+    real = runner.run
+
+    async def recording(req):
+        extras.append(req.extra)
+        return await real(req)
+
+    monkeypatch.setattr(runner, "run", recording)
+    await run_many(4, Path("/p"), ["select 1"], target="prod")
+    await run_many(4, Path("/p"), ["select 1"], target="dev")  # the active target (DBT_TARGET)
+    await run_many(4, Path("/p"), ["select 1"])
+    prod, dev, active = extras
+    assert "--target-path" in prod and prod[prod.index("--target-path") + 1] == str(tmp_path / "targets" / "4" / "prod")
+    assert "--target-path" not in dev and "--target-path" not in active
+

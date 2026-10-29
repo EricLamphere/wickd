@@ -261,6 +261,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const dashboardsPath = envVars.find((v) => v.key === 'DASHBOARDS_PATH')?.value ?? '';
   const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
   const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
+  const diffBaseTarget = envVars.find((v) => v.key === 'DIFF_BASE_TARGET')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
@@ -337,6 +338,17 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['metric-monitors', projectId] });
   };
 
+  const handleSaveDiffBaseTarget = async (val: string) => {
+    const target = val.trim();
+    if (target) {
+      await api.init.setEnvVar(projectId, 'DIFF_BASE_TARGET', target);
+    } else {
+      await api.init.deleteEnvVar(projectId, 'DIFF_BASE_TARGET');
+    }
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+    qc.invalidateQueries({ queryKey: ['compare-options', projectId] });
+  };
+
   return (
     <div>
       <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Project</h3>
@@ -408,6 +420,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />
+            <ProjectSettingRow
+              label="DIFF_BASE_TARGET"
+              value={diffBaseTarget}
+              placeholder="prod (the dbt target metric compare reads 'before' numbers from; empty = the active one)"
+              kind="example"
+              onSave={handleSaveDiffBaseTarget}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
           </>
         )}
       </div>
@@ -416,7 +437,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'DIFF_BASE_TARGET', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

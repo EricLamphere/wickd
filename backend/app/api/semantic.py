@@ -19,11 +19,22 @@ from app.db.engine import get_session
 from app.db.models import Project, SemanticCheckSnapshot
 from app.dbt.runner import RunRequest, runner
 from app.dbt.schema_yaml import SchemaYamlError
+from app.git.repo import find_repo_root
+from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
-from app.semantic import check, dbt_change, query_batch, saved_queries, service
+from app.semantic import (
+    check,
+    compare,
+    compare_pro,
+    dbt_change,
+    query_batch,
+    saved_queries,
+    service,
+)
 from app.semantic.execute import MAX_ROW_LIMIT, ExecutionError
-from app.semantic.query_service import explain_checked, run_metric_query
+from app.semantic.query_service import explain_checked, query_context, run_metric_query
 from app.semantic.query_spec import QueryInvalid, check_query
+from app.semantic.revisions import RevisionError
 from app.semantic.runtime import RuntimeUnavailable
 from app.semantic.spec import is_latest_spec_parse_error
 from app.semantic.status import SemanticStatus, semantic_status
@@ -57,6 +68,15 @@ class QueryBatchDto(BaseModel):
     queries: list[ExplainDto] = Field(min_length=1, max_length=200)
     # false: stored results only (`not_run` where there are none); true: run those in one batch
     run: bool = False
+
+
+class CompareDto(BaseModel):
+    query: ExplainDto
+    mode: Literal["working", "branch", "targets", "metrics"]
+    # branch: the base branch (default origin/HEAD, main, master); no leading "-" (never an option)
+    base_ref: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$", max_length=255)] | None = None
+    base_target: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$", max_length=255)] | None = None
+    other_metric: Name | None = None
 
 
 class CheckDto(BaseModel):
@@ -177,6 +197,35 @@ async def post_query_batch(project_id: int, dto: QueryBatchDto, session: AsyncSe
     except (service.SemanticError, RuntimeUnavailable, ExecutionError) as exc:
         raise _semantic_http(exc) from exc
     return {"results": [i.to_dict() for i in items]}
+
+
+@router.get("/{project_id}/semantic/compare/options")
+async def get_compare_options(project_id: int, session: AsyncSession = Depends(get_session)) -> dict:
+    """What compare mode defaults to: DIFF_BASE_TARGET, the active target, the branch base."""
+    project = await _project(session, project_id)
+    return {
+        "base_target": await compare.base_target_setting(session, project_id),
+        "active_target": (await query_context(session, project_id, Path(project.path))).target or None,
+        "branch_base": await compare.default_branch_base(project),
+        "is_repo": find_repo_root(Path(project.path)) is not None,
+    }
+
+
+@router.post("/{project_id}/semantic/compare")
+async def post_compare(project_id: int, dto: CompareDto, session: AsyncSession = Depends(get_session)) -> dict:
+    """One query run two ways (uncommitted vs HEAD, branch vs its base, two targets, two metrics) and
+    what differs. Pro; the first compare against a revision checks it out and parses it (seconds)."""
+    await require_pro(session, available=compare_pro.is_available)
+    project = await _project(session, project_id)
+    status = await _require_available(session, project, query=True)
+    try:
+        return await compare.run_compare(
+            session, project, status.adapter_type, query=dto.query.model_dump(exclude_none=True), mode=dto.mode,
+            base_ref=dto.base_ref, base_target=dto.base_target, other_metric=dto.other_metric)
+    except RevisionError as exc:
+        raise _http_error(400, exc.code, exc.message) from exc
+    except (service.SemanticError, RuntimeUnavailable, ExecutionError, QueryInvalid) as exc:
+        raise _semantic_http(exc) from exc
 
 
 class DimensionValuesDto(BaseModel):

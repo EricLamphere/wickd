@@ -174,6 +174,81 @@ export interface QueryBatchItemDto {
   error: string | null;
 }
 
+// ── Metric compare (plan 14, Pro) ──
+
+export type CompareMode = 'working' | 'branch' | 'targets' | 'metrics';
+
+export interface CompareOptionsDto {
+  /** DIFF_BASE_TARGET (Environment): the target the "before" side reads */
+  base_target: string | null;
+  active_target: string | null;
+  /** what branch mode compares with by default (origin/HEAD, main, master) */
+  branch_base: string | null;
+  is_repo: boolean;
+}
+
+export interface CompareSideDto {
+  /** the git ref (HEAD, a base branch); null = the working copy */
+  ref: string | null;
+  sha: string | null;
+  /** null = the active target */
+  target: string | null;
+  query: MetricQueryBody;
+  sql: string | null;
+  columns: string[];
+  rows: unknown[][];
+  truncated: boolean;
+  error: string | null;
+  /** the metric isn't defined on this side (new in these changes, or not committed yet) */
+  missing: boolean;
+}
+
+export interface CompareValueDto {
+  current: number | null;
+  base: number | null;
+  delta: number | null;
+  pct: number | null;
+  changed: boolean;
+}
+
+export interface CompareRowDto {
+  key: unknown[];
+  status: 'same' | 'changed' | 'only_current' | 'only_base';
+  values: Record<string, CompareValueDto>;
+}
+
+export interface CompareSummaryDto {
+  total: number;
+  same: number;
+  changed: number;
+  only_current: number;
+  only_base: number;
+  headline: string;
+  largest: ({ key: unknown[]; metric: string } & Omit<CompareValueDto, 'changed'>)[];
+  by_dimension: { dimension: string; value: unknown; changed: number; rows: number; pct: number | null }[];
+  shape: 'none' | 'level' | 'localized';
+}
+
+export interface CompareResultDto {
+  mode: CompareMode;
+  metrics: string[];
+  other_metric: string | null;
+  active_target: string | null;
+  current: CompareSideDto;
+  base: CompareSideDto;
+  /** null when a side failed */
+  diff: { key_columns: string[]; rows: CompareRowDto[]; summary: CompareSummaryDto; sql_diff: string } | null;
+  notes: string[];
+}
+
+export interface CompareBody {
+  query: MetricQueryBody;
+  mode: CompareMode;
+  base_ref?: string;
+  base_target?: string;
+  other_metric?: string;
+}
+
 export interface SaveQueryBody extends MetricQueryBody {
   name: string;
   label?: string;
@@ -216,6 +291,9 @@ export const semanticApi = {
   /** many queries' stored results; `run` runs the missing ones together in one dbt show (metric index, metric pages) */
   queryBatch: (projectId: number, queries: MetricQueryBody[], run = false) =>
     post<{ results: QueryBatchItemDto[] }>(`/projects/${projectId}/semantic/query/batch`, { queries, run }),
+  compareOptions: (projectId: number) => get<CompareOptionsDto>(`/projects/${projectId}/semantic/compare/options`),
+  /** Pro: one query run two ways (uncommitted vs HEAD, branch vs base, two targets, two metrics) */
+  compare: (projectId: number, body: CompareBody) => post<CompareResultDto>(`/projects/${projectId}/semantic/compare`, body),
   saveQuery: (projectId: number, body: SaveQueryBody) =>
     post<{ path: string }>(`/projects/${projectId}/semantic/saved-queries`, body),
 };

@@ -4,7 +4,7 @@
 // query, Wicky, YAML).
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bookmark, Bot, ExternalLink, FileCode2, LayoutDashboard, Loader2, Play, Radar } from 'lucide-react';
+import { ArrowLeft, Bookmark, Bot, ExternalLink, FileCode2, GitCompare, LayoutDashboard, Loader2, Play, Radar } from 'lucide-react';
 import { alertDialog, promptDialog } from '../../../../lib/dialogs';
 import { semanticApi, type CatalogMetric, type SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { ProFeatureButton } from '../../../../components/ProFeatureButton';
@@ -19,6 +19,9 @@ import type { MonitorDraft } from '../monitors/CreateMonitorDialog';
 import { TYPE_CLS } from '../MetricsSidebar';
 import { chartResult, metricIssues, metricLineage, metricUsage, type MetricPeriod } from '../lib/metricPage';
 import { emptyExploreWidget } from '../lib/exploreWidget';
+import type { CompareState } from '../lib/compareView';
+import { UpgradeModal } from '../../components/UpgradeModal';
+import { useProEntitled } from '../../RunHistory/usePerformance';
 import { METRIC_TIME } from '../lib/metricQuery';
 import type { DashboardWidget } from '../../../../lib/dashboardsApi';
 import { DimensionsSection, HealthSection, LineageSection, Section, UsageSection } from './MetricPageSections';
@@ -37,8 +40,8 @@ interface Props {
   onPeriod: (next: MetricPeriod) => void;
   onIndex: () => void;
   onOpenMetric: (name: string) => void;
-  /** the query view with this widget */
-  onExplore: (widget: DashboardWidget) => void;
+  /** the query view with this widget (and compare mode, when asked for) */
+  onExplore: (widget: DashboardWidget, compare?: CompareState) => void;
   onRunSaved: (name: string) => void;
   onOpenDashboard: (slug: string) => void;
   onMonitor: (draft: MonitorDraft) => void;
@@ -49,6 +52,8 @@ export function MetricPage({ projectId, catalog, metric, period, onPeriod, onInd
   onOpenDashboard, onMonitor, onOpenMonitors }: Props) {
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
+  const [upgrade, setUpgrade] = useState(false);
+  const { entitled } = useProEntitled();
   const ctx = useMetricContext(projectId);
   const chart = useMetricChart(projectId, metric.name, period);
   const { open: openFile } = useOpenInFiles(projectId);
@@ -94,6 +99,10 @@ export function MetricPage({ projectId, catalog, metric, period, onPeriod, onInd
           <button onClick={() => onExplore(exploreWidget)} className={BTN} title="Break it down, filter it and chart it any way in the query view">
             <ExternalLink className="w-3.5 h-3.5" />Explore
           </button>
+          <ProFeatureButton title="What your changes (or another target, or another metric) do to its numbers (Pro)"
+            onClick={() => (entitled ? onExplore(exploreWidget, { mode: 'working', base: '' }) : setUpgrade(true))}>
+            <GitCompare className="w-3.5 h-3.5" />Compare
+          </ProFeatureButton>
           <button onClick={() => setAdding(true)} className={BTN}><LayoutDashboard className="w-3.5 h-3.5" />Add to dashboard</button>
           <ProFeatureButton title="Watch it for anomalies (Pro)"
             onClick={() => onMonitor({ metric: metric.name, grain: (MONITOR_GRAINS as readonly string[]).includes(grain) ? grain as MonitorDraft['grain'] : 'day', dimension: null })}>
@@ -152,6 +161,7 @@ export function MetricPage({ projectId, catalog, metric, period, onPeriod, onInd
         </div>
       </div>
 
+      {upgrade && <UpgradeModal feature="Metric compare" onClose={() => setUpgrade(false)} />}
       {adding && (
         <AddToDashboardDialog projectId={projectId} body={chart.queries.currentBody} catalog={catalog} title={label}
           onClose={() => setAdding(false)} onAdded={(slug) => { setAdding(false); onOpenDashboard(slug); }} />

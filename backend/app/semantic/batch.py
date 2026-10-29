@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.api.init import load_project_env
+from app.config import settings
 from app.dbt.runner import RunRequest, runner
 from app.logging_setup import get_logger
 from app.semantic.execute import LOCK_WAIT_S, MAX_ROW_LIMIT, wait_for_lock
@@ -99,25 +100,35 @@ def _with_jinja(sqls: list[str]) -> set[int]:
     return {i for i, s in enumerate(sqls) if any(t in s for t in _JINJA_TOKENS)}
 
 
+def other_target_path(project_id: int, target: str) -> Path:
+    """Where dbt writes its artifacts when run on a target other than the active one."""
+    return settings.data_dir / "targets" / str(project_id) / target
+
+
 async def run_many(
     project_id: int, project_path: Path, sqls: list[str], *, limit: int = MAX_ROW_LIMIT, target: str | None = None
 ) -> list[BatchResult]:
     """One BatchResult per SQL, in order; a failing statement gets `error`, the others still run.
 
-    `target` overrides the project's active dbt target (a monitor pinned to one)."""
+    `target` overrides the project's active dbt target (a monitor pinned to one, compare mode's
+    base target). `dbt show` re-parses and writes target/manifest.json + semantic_manifest.json
+    for the target it runs on, so another target writes them under the data dir instead — the
+    project's artifacts (which explains read) keep pointing at the active target's relations."""
     limit = max(1, min(limit, MAX_ROW_LIMIT))
     results: dict[int, BatchResult] = {
         i: BatchResult([], [], False, "Jinja isn't allowed in a batched query") for i in _with_jinja(sqls)
     }
     env = await load_project_env(project_id)
-    target = target or env.get("DBT_TARGET")
+    active = env.get("DBT_TARGET")
+    target_path = other_target_path(project_id, target) if target and target != active else None
+    target = target or active
     start = 0
     while start < len(sqls):
         if start in results:
             start += 1
             continue
         end = next((i for i in range(start, len(sqls)) if i in results), len(sqls))
-        found, detail, fatal = await _run_batch(project_id, project_path, sqls[start:end], start, limit, env, target)
+        found, detail, fatal = await _run_batch(project_id, project_path, sqls[start:end], start, limit, env, target, target_path)
         if fatal:  # busy or timed out: retrying the rest would only wait again
             results.update({i: BatchResult([], [], False, detail) for i in range(start, end)})
             start = end
@@ -136,7 +147,7 @@ async def run_many(
 
 async def _run_batch(
     project_id: int, project_path: Path, sqls: list[str], start: int, limit: int,
-    env: dict[str, str], target: str | None,
+    env: dict[str, str], target: str | None, target_path: Path | None = None,
 ) -> tuple[dict[int, tuple[list[str], list[list]]], str, bool]:
     """(results by index, dbt's error message, whether the whole batch failed before running)."""
     if not await wait_for_lock(project_id):
@@ -146,7 +157,8 @@ async def _run_batch(
         project_path=project_path,
         command="show",
         extra=("--inline", build_batch_sql(sqls, start, limit), "--limit", "1", "--output", "json")
-        + (("--target", target) if target else ()),
+        + (("--target", target) if target else ())
+        + (("--target-path", str(target_path)) if target_path else ()),
         env=env,
     )
     try:

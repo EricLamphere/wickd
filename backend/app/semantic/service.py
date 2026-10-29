@@ -183,6 +183,16 @@ async def explain(project_path: Path, query: dict[str, Any]) -> dict:
     return await _call(await manifest_info(project_path), "explain", query)
 
 
+async def explain_on(project_path: Path, manifest: Path, query: dict[str, Any]) -> dict:
+    """explain() against another semantic manifest (compare mode: a base revision or target)."""
+    return await _call(replace(await manifest_info(project_path), semantic_manifest=manifest), "explain", query)
+
+
+async def catalog_on(project_path: Path, manifest: Path) -> dict:
+    """catalog() of another semantic manifest (compare mode)."""
+    return await _call(replace(await manifest_info(project_path), semantic_manifest=manifest), "catalog", {})
+
+
 async def dimension_values_sql(project_path: Path, metrics: list[str], dimension: str) -> dict:
     payload = {"metrics": metrics, "dimension": dimension}
     return await _call(await manifest_info(project_path), "dimension_values", payload)

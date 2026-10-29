@@ -1,11 +1,11 @@
 // The metric explorer's query view: one widget — any dashboard widget type — configured in the
 // dashboards' settings pane on the right (metrics, filters, its type's options: split by, bars
 // by, rows by…), its period in the top bar with the dashboards' pickers, and its rows and SQL
-// underneath. It runs when nothing is stored for its settings; Refresh runs it anyway. The
-// widget lives in the URL (lib/exploreWidget.ts).
+// underneath; compare mode, when on, sits above the widget. It runs when nothing is stored for
+// its settings; Refresh runs it anyway. The widget lives in the URL (lib/exploreWidget.ts).
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bookmark, FileBarChart, LayoutDashboard, Loader2, Radar, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Bookmark, FileBarChart, GitCompare, LayoutDashboard, Loader2, Radar, RefreshCw } from 'lucide-react';
 import { ProFeatureButton } from '../../../../components/ProFeatureButton';
 import type { DashboardDoc, DashboardWidget } from '../../../../lib/dashboardsApi';
 import { alertDialog, alertError, promptDialog } from '../../../../lib/dialogs';
@@ -21,6 +21,10 @@ import { WidgetBody } from '../dashboards/widgets/WidgetBody';
 import type { MonitorDraft } from '../monitors/CreateMonitorDialog';
 import { EXPLORE_HEIGHT, explorePeriod, mainQuery, savedQueryBody, withExplorePeriod } from '../lib/exploreWidget';
 import { writeWorkspaceSql } from '../lib/openInWorkspace';
+import { UpgradeModal } from '../../components/UpgradeModal';
+import { useProEntitled } from '../../RunHistory/usePerformance';
+import type { CompareState } from '../lib/compareView';
+import { ComparePanel } from './ComparePanel';
 import { ExploreResults } from './ExploreResults';
 import { PeriodControl } from './PeriodControl';
 
@@ -39,9 +43,14 @@ interface Props {
   onOpenMetric: (name: string) => void;
   onOpenDashboard: (slug: string) => void;
   onMonitor: (draft: MonitorDraft) => void;
+  /** compare mode (Pro; null = off), in the URL next to the widget */
+  compare: CompareState | null;
+  onCompare: (next: CompareState | null) => void;
 }
 
-export function ExploreView({ projectId, catalog, labels, widget, onChange, onIndex, onOpenMetric, onOpenDashboard, onMonitor }: Props) {
+export function ExploreView({ projectId, catalog, labels, widget, onChange, onIndex, onOpenMetric, onOpenDashboard, onMonitor, compare, onCompare }: Props) {
+  const { entitled } = useProEntitled();
+  const [upgrade, setUpgrade] = useState(false);
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -126,6 +135,10 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onIn
         <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => setAdding(true)} disabled={!metrics.length} className={BTN}><LayoutDashboard className="w-3.5 h-3.5" />Add to dashboard</button>
           <button onClick={saveQuery} disabled={!main} className={BTN}><Bookmark className="w-3.5 h-3.5" />Save as saved query</button>
+          <ProFeatureButton title="Run it two ways — uncommitted vs HEAD, branch vs main, two targets, two metrics — and see what moved (Pro)"
+            onClick={() => (entitled ? onCompare(compare ? null : { mode: 'working', base: '' }) : setUpgrade(true))}>
+            <GitCompare className="w-3.5 h-3.5" />{compare ? 'Stop comparing' : 'Compare'}
+          </ProFeatureButton>
           {monitorDraft && (
             <ProFeatureButton title="Watch it for anomalies (Pro)" onClick={() => onMonitor(monitorDraft)}>
               <Radar className="w-3.5 h-3.5" />Monitor
@@ -133,6 +146,11 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onIn
           )}
           {notice && <span className="text-[11px] text-amber-300">{notice}</span>}
         </div>
+        {/* compare mode first: it's what you came for while it's on */}
+        {compare && entitled && (
+          <ComparePanel projectId={projectId} catalog={catalog} labels={labels} query={main?.body ?? null}
+            grain={result?.grain ?? 'day'} state={compare} onChange={onCompare} />
+        )}
         <section className="flex flex-col shrink-0 px-3 py-2 rounded border border-gray-800 bg-surface-panel" style={{ height: EXPLORE_HEIGHT + 40 }}>
           {runError && <p className="shrink-0 text-[11px] text-red-300">{errorText(runError)}</p>}
           <div className="flex-1 min-h-0">
@@ -152,6 +170,7 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onIn
             onChange={onChange} onNotice={setNotice} standalone />
         </div>
       </aside>
+      {upgrade && <UpgradeModal feature="Metric compare" onClose={() => setUpgrade(false)} />}
       {adding && (
         <AddToDashboardDialog projectId={projectId} widget={widget} catalog={catalog} title={title}
           onClose={() => setAdding(false)} onAdded={(slug) => { setAdding(false); onOpenDashboard(slug); }} />

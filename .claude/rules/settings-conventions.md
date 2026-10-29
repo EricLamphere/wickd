@@ -46,6 +46,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `METRICFLOW_MODE` | `projects.metricflow_mode` | (empty = global default) | `off` |
 | `DASHBOARDS_PATH` | `ProjectEnvVar` | `wickd/dashboards` | `wickd/dashboards` |
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
+| `DIFF_BASE_TARGET` | `ProjectEnvVar` | (empty = the active target) | `prod` |
 
 ## Current Global Settings
 

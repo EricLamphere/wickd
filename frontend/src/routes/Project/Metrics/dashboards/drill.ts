@@ -2,8 +2,8 @@
 // (right-click) a table row splits the widget and shows its metrics over time for that value
 // ("Show timeseries", from the query the widget ran, so its period, comparison and filters
 // carry over). "Drill into…" opens a dialog of draft widgets filtered to the value — a summary,
-// a time series, a breakdown by the first dimension no filter uses, and a table by period — each
-// configurable like any widget and addable to the dashboard. Pure; tested in drill.test.ts.
+// a breakdown by the first dimension no filter uses and a table by period — each configurable
+// like any widget and addable to the dashboard. Pure; tested in drill.test.ts.
 import type { DashboardWidget, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import type { MetricQueryBody } from '../../../../lib/semanticApi';
 import { filterFor, newWidgetId, widgetInfo, widgetTitle } from './dashboardModel';
@@ -65,9 +65,9 @@ export function drillResult(base: WidgetResultDto, current: { columns: string[];
 // ── Drill into… ──────────────────────────────────────────────────────────────
 
 /** The draft widgets in Drill into…, in their places. */
-export type DrilledChart = 'summary' | 'timeseries' | 'breakdown' | 'table';
+export type DrilledChart = 'summary' | 'breakdown' | 'table';
 
-export const DRILLED_CHARTS: DrilledChart[] = ['summary', 'timeseries', 'breakdown', 'table'];
+export const DRILLED_CHARTS: DrilledChart[] = ['summary', 'breakdown', 'table'];
 
 export const BREAKDOWN_TOP_N = 15;
 
@@ -101,7 +101,6 @@ export function drilledWidgets(source: DashboardWidget, pick: Pick, charts: Dril
   const out: Partial<Record<DrilledChart, DashboardWidget>> = {};
   for (const chart of charts) {
     if (chart === 'summary') out.summary = make('summary', {}, name);
-    if (chart === 'timeseries') out.timeseries = make('timeseries', { style: 'line' }, `${name} over time`);
     if (chart === 'table') out.table = make('table', { period_grain: 'auto' }, `${name} by period`);
     if (chart === 'breakdown' && dimension) {
       out.breakdown = { ...make('bar', { dimension, top_n: BREAKDOWN_TOP_N, orientation: 'horizontal' }, `${name} by ${dimension}`), id: `${source.metrics?.[0] ?? 'drill'}_breakdown` };

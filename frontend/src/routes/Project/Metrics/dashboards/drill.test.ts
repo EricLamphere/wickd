@@ -40,10 +40,9 @@ describe('drill', () => {
     const source = { id: 'rev', type: 'bar' as const, width: 50, height: 300, metrics: ['revenue'], filters: ['f'],
       period: { compare: 'none' as const }, options: { dimension: 'customer__region', format: 'currency', top_n: 5 } };
     const labels = new Map([['revenue', 'Revenue']]);
-    const drafts = drilledWidgets(source, region, ['summary', 'timeseries', 'breakdown', 'table'], 'product__category', labels);
+    const drafts = drilledWidgets(source, region, ['summary', 'breakdown', 'table'], 'product__category', labels);
     expect(drafts.summary).toMatchObject({ id: 'revenue_summary', type: 'summary', title: 'Revenue · north', metrics: ['revenue'],
       filters: ['f', "{{ Dimension('customer__region') }} = 'north'"], period: { compare: 'none' }, options: { format: 'currency' } });
-    expect(drafts.timeseries).toMatchObject({ type: 'timeseries', title: 'Revenue · north over time', options: { format: 'currency', style: 'line' } });
     expect(drafts.breakdown).toMatchObject({ id: 'revenue_breakdown', type: 'bar', title: 'Revenue · north by product__category',
       options: { format: 'currency', dimension: 'product__category', top_n: 15, orientation: 'horizontal' } });
     expect(drafts.table).toMatchObject({ id: 'revenue_table', type: 'table', title: 'Revenue · north by period', options: { period_grain: 'auto' } });

@@ -188,11 +188,14 @@ async def refresh(
 
 async def preview(
     session: AsyncSession, project: Project, dashboard: Dashboard, adapter_type: str | None,
-    widgets: list[Widget], *, run: bool = True, today: date | None = None,
+    widgets: list[Widget], *, run: bool = True, refresh_all: bool = False, today: date | None = None,
 ) -> tuple[QueryContext, list[WidgetResult]]:
-    """Unsaved `widgets` (Drill into…) planned with the dashboard's period and filters: stored results,
-    and with `run` the ones without any run in one batch. Nothing is written to the dashboard."""
+    """Unsaved `widgets` (Drill into…, the metric explorer) planned with the dashboard's period and
+    filters: stored results, and with `run` the ones without any run in one batch (`refresh_all`:
+    every one, stored or not). Nothing is written to the dashboard."""
     board = dashboard.model_copy(update={"widgets": widgets})
+    if refresh_all:
+        return await refresh(session, project, board, adapter_type, [w.id for w in widgets], today=today)
     ctx, results = await cached_results(session, project, board, adapter_type, today=today)
     missing = [r.widget_id for r in results if r.status == "not_run"]
     if not run or not missing:

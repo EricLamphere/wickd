@@ -72,6 +72,8 @@ export interface DashboardSummaryDto {
   exposure_drift: { add: string[]; remove: string[] } | null;
   exposure_path: string | null;
   exposure_unique_id: string | null;
+  /** every metric its widgets show (metric pages: "used in dashboards") */
+  metrics: string[];
   /** why the file couldn't be read (it's still listed) */
   error: string | null;
   modified_at: string | null;
@@ -136,6 +138,10 @@ export const dashboardsApi = {
   refresh: (projectId: number, slug: string, widgetIds?: string[]) =>
     post<DashboardResultsDto>(`${one(projectId, slug)}/refresh`, { widget_ids: widgetIds ?? null }),
   /** unsaved widgets (Drill into…) with the dashboard's period and filters; `run` runs those without stored results */
+  /** one widget without a dashboard (the metric explorer): its own period; `refresh` runs it even when stored */
+  previewExplore: (projectId: number, widget: DashboardWidget, opts: { run?: boolean; refresh?: boolean } = {}) =>
+    post<{ target: string | null; profile_name: string | null; widget: WidgetResultDto }>(
+      `/projects/${projectId}/semantic/widget/preview`, { widget, run: opts.run ?? true, refresh: opts.refresh ?? false }),
   preview: (projectId: number, slug: string, widgets: DashboardWidget[], run = true) =>
     post<DashboardResultsDto>(`${one(projectId, slug)}/preview`, { widgets, run }),
   /** a dimension's values, largest first (served from the stored result when there is one) */

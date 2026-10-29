@@ -33,6 +33,8 @@ export interface BodyProps {
   onPickMenu: ((pick: Pick, x: number, y: number) => void) | null;
   /** the drilled value, highlighted */
   drilled: Pick | null;
+  /** what to say while it has no metric (default: drag one onto it, as on a dashboard) */
+  emptyHint?: string;
 }
 
 export function formatOf(widget: DashboardWidget): MetricFormat {
@@ -62,7 +64,7 @@ export function WidgetBody(props: BodyProps) {
     return (
       <Message>
         <MousePointer2 className="w-4 h-4" />
-        <span>Drag a metric from the left onto this widget.</span>
+        <span>{props.emptyHint ?? 'Drag a metric from the left onto this widget.'}</span>
       </Message>
     );
   }

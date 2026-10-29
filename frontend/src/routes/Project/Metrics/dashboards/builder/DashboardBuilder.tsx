@@ -11,9 +11,9 @@ import { relativeTime } from '../../../lib/relativeTime';
 import { statusesByMetric } from '../../monitors/monitorView';
 import { useMonitors } from '../../monitors/useMonitors';
 import { useOpenInFiles } from '../../../lib/openInFiles';
-import type { ExplorerState } from '../../lib/metricQuery';
+import { exploreFromDashboard } from '../../lib/exploreWidget';
 import {
-  addMetric, canvasWidthOf, duplicateWidget, widthToPx, explorerStateFromBody, querySignature, insertWidget, metricsInUse, newWidget, removeWidget,
+  addMetric, canvasWidthOf, duplicateWidget, widthToPx, querySignature, insertWidget, metricsInUse, newWidget, removeWidget,
   replaceWidget, widgetFromQuery, widgetTitle, withDashboardFilter,
 } from '../dashboardModel';
 import { ExportDashboardModal } from '../ExportDashboardModal';
@@ -45,7 +45,8 @@ interface Props {
   labels: Map<string, string>;
   target: string | null;
   onBack: () => void;
-  onOpenExplorer: (state: ExplorerState) => void;
+  onOpenExplorer: (widget: DashboardWidget) => void;
+  onOpenMetric: (metric: string) => void;
 }
 
 const typing = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -58,7 +59,7 @@ function changedWidgets(before: DashboardDoc, after: DashboardDoc): string[] {
   return after.widgets.filter((w) => old.get(w.id) !== JSON.stringify({ ...w, width: 0, height: 0, title: '' })).map((w) => w.id);
 }
 
-export function DashboardBuilder({ projectId, slug, catalog, labels, target, onBack, onOpenExplorer }: Props) {
+export function DashboardBuilder({ projectId, slug, catalog, labels, target, onBack, onOpenExplorer, onOpenMetric }: Props) {
   const detail = useDashboard(projectId, slug);
   // The saved dashboard when a results request starts (the editor exists further down)
   const savedDocRef = useRef<() => DashboardDoc | null>(() => null);
@@ -215,7 +216,7 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
     };
     const openFiltered = (pick: Pick) => {
       const base = result?.queries.current?.query ?? ranQuery;
-      if (base) onOpenExplorer(explorerStateFromBody({ ...base, where: [...(base.where ?? []), ...pickFilters(pick)] }, catalog));
+      onOpenExplorer(exploreFromDashboard(widget, base, doc.period?.compare, pickFilters(pick)));
     };
     return {
       projectId, slug, doc, widget, result, labels, catalog, title: widgetTitle(widget, labels), selected: selected === widget.id, present,
@@ -232,7 +233,8 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
         });
         setNotice(`Added ${drafts.length} widget${drafts.length === 1 ? '' : 's'} to the dashboard`);
       },
-      onOpenInExplorer: () => { if (ranQuery) onOpenExplorer(explorerStateFromBody(ranQuery, catalog)); },
+      onOpenInExplorer: () => onOpenExplorer(exploreFromDashboard(widget, result?.queries.current?.query ?? ranQuery, doc.period?.compare)),
+      onOpenMetric: widget.metrics?.length === 1 ? () => onOpenMetric(widget.metrics![0]) : null,
       onDuplicate: () => apply((d) => duplicateWidget(d, widget.id)),
       onRemove: () => { apply((d) => removeWidget(d, widget.id)); if (selected === widget.id) setSelected(null); },
       onResize: (size: { width: number; height: number }) => apply((d) => replaceWidget(d, { ...widget, ...size })),

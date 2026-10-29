@@ -1,6 +1,7 @@
 // "Explore" links into the Metrics page from the SidePane, Docs and the command palette.
 // Pure; unit-tested in exploreLink.test.ts.
 import type { MetricQueryBody } from '../../../../lib/semanticApi';
+import { metricPageSearch } from './metricPage';
 import { DEFAULT_GRAIN, EMPTY_STATE, GRAIN_ORDER, METRIC_TIME, writeState } from './metricQuery';
 
 export const EXPLORABLE_TYPES = new Set(['metric', 'semantic_model', 'saved_query']);
@@ -20,6 +21,11 @@ export function exploreSearch(
 
 export function exploreUrl(projectId: number, search: string): string {
   return `/projects/${projectId}/metrics?${search}`;
+}
+
+/** A metric's page on the Metrics page (plan 13). */
+export function metricPageUrl(projectId: number, metric: string): string {
+  return exploreUrl(projectId, metricPageSearch(metric));
 }
 
 /** The request "Explore" opens for one metric — so its stored result can preview it (Docs sparkline). */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import {
-  EMPTY_STATE, allowedGrains, buildFilter, filterLabel, groupByOptions, presetRange, stateFromParams,
+  EMPTY_STATE, allowedGrains, buildFilter, filterLabel, groupByOptions, stateFromParams,
   stateFromSavedQuery, toRequest, writeState, type ExplorerState,
 } from './metricQuery';
 
@@ -110,15 +110,5 @@ describe('filters', () => {
   it('labels filters by the names they reference', () => {
     expect(filterLabel("{{ Dimension('customer__country') }} in ('US')")).toBe("customer__country in ('US')");
     expect(filterLabel("{{ TimeDimension('metric_time', 'day') }} >= '2026-01-01'")).toBe("metric_time >= '2026-01-01'");
-  });
-});
-
-describe('presetRange', () => {
-  const today = new Date(Date.UTC(2026, 9, 28));
-  it('computes start dates relative to today', () => {
-    expect(presetRange('7d', today)).toEqual({ start: '2026-10-22', end: '' });
-    expect(presetRange('ytd', today)).toEqual({ start: '2026-01-01', end: '' });
-    expect(presetRange('12m', today)).toEqual({ start: '2025-10-29', end: '' });
-    expect(presetRange('all', today)).toEqual({ start: '', end: '' });
   });
 });

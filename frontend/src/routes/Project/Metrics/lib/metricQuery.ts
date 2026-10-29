@@ -163,35 +163,6 @@ export function stateFromSavedQuery(saved: { metrics: string[]; group_by: string
 
 // ── Date range presets ──────────────────────────────────────────────────────
 
-export const DATE_PRESETS = [
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
-  { key: '90d', label: 'Last 90 days' },
-  { key: '12m', label: 'Last 12 months' },
-  { key: 'ytd', label: 'Year to date' },
-  { key: 'all', label: 'All time' },
-] as const;
-
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-/** {start, end} for a preset, relative to `today` (UTC dates). */
-export function presetRange(key: string, today: Date = new Date()): { start: string; end: string } {
-  const day = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
-  const minus = (days: number) => isoDay(new Date(day.getTime() - days * 86_400_000));
-  switch (key) {
-    case '7d': return { start: minus(6), end: '' };
-    case '30d': return { start: minus(29), end: '' };
-    case '90d': return { start: minus(89), end: '' };
-    case '12m': return { start: isoDay(new Date(Date.UTC(day.getUTCFullYear() - 1, day.getUTCMonth(), day.getUTCDate() + 1))), end: '' };
-    case 'ytd': return { start: `${day.getUTCFullYear()}-01-01`, end: '' };
-    default: return { start: '', end: '' };
-  }
-}
-
-// ── Filters ─────────────────────────────────────────────────────────────────
-
 export const FILTER_OPS = ['=', '!=', '>', '>=', '<', '<=', 'in', 'not in', 'like', 'is null', 'is not null'] as const;
 export type FilterOp = (typeof FILTER_OPS)[number];
 

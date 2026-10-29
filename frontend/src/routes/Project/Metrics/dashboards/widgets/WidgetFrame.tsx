@@ -6,7 +6,7 @@
 // metric is dragged over it, it says whether it can take it.
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
-  Copy, CopyPlus, ExternalLink, GripVertical, Info, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
+  Copy, CopyPlus, ExternalLink, FileBarChart, GripVertical, Info, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
@@ -60,6 +60,8 @@ export interface DropHint {
 export interface FrameActions {
   onSelect: () => void;
   onOpenInExplorer: () => void;
+  /** the widget's metric's page (single-metric widgets only) */
+  onOpenMetric: (() => void) | null;
   onDuplicate: () => void;
   onRemove: () => void;
   onResize: (size: Size) => void;
@@ -282,6 +284,7 @@ export function WidgetFrame(props: Props) {
               <Menu onClose={() => setMenu(false)} items={[
                 ...(text ? [] : [
                   { label: 'Open in explorer', icon: <ExternalLink className="w-3.5 h-3.5" />, onClick: props.onOpenInExplorer, disabled: !firstData },
+                  ...(props.onOpenMetric ? [{ label: 'Open metric page', icon: <FileBarChart className="w-3.5 h-3.5" />, onClick: props.onOpenMetric }] : []),
                   { label: 'View SQL', icon: <Info className="w-3.5 h-3.5" />, onClick: () => setSql(true), disabled: !result || !Object.keys(result.queries).length },
                   { label: 'Copy CSV', icon: <Copy className="w-3.5 h-3.5" />, disabled: !hasData,
                     onClick: () => { if (firstData) navigator.clipboard?.writeText(toCsv(firstData.columns, firstData.rows)); } },

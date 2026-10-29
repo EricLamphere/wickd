@@ -1,10 +1,11 @@
 // Left column of the Metrics page: metrics grouped by semantic model, then saved queries.
 import { useMemo, useState } from 'react';
-import { Bookmark, Check, Pencil, Search } from 'lucide-react';
+import { Bookmark, Check, LayoutGrid, Pencil, Search } from 'lucide-react';
 import type { CatalogMetric, CatalogSavedQuery, SemanticCatalogDto } from '../../../lib/semanticApi';
 import { OPEN_IN_FILES_TITLE, isOpenInFilesClick } from '../lib/openInFiles';
 
-const TYPE_CLS: Record<string, string> = {
+/** Type pill colors per metric type (also the metric index and pages). */
+export const TYPE_CLS: Record<string, string> = {
   simple: 'bg-gray-800 text-gray-400 border-gray-700',
   ratio: 'bg-purple-950/40 text-purple-300 border-purple-900/60',
   cumulative: 'bg-sky-950/40 text-sky-300 border-sky-900/60',
@@ -21,6 +22,9 @@ interface Props {
   onEditSaved: (q: CatalogSavedQuery) => void;
   /** Cmd+click: open the metric's YAML (null when it isn't in the manifest graph) */
   onOpenYaml: ((metric: string) => void) | null;
+  /** the metric index (plan 13); `indexActive` while it's shown */
+  onShowIndex: () => void;
+  indexActive: boolean;
 }
 
 function matches(text: string, needle: string): boolean {
@@ -36,7 +40,7 @@ function groupByModel(metrics: CatalogMetric[]): [string, CatalogMetric[]][] {
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
-export function MetricsSidebar({ catalog, selected, savedQuery, onToggleMetric, onRunSaved, onEditSaved, onOpenYaml }: Props) {
+export function MetricsSidebar({ catalog, selected, savedQuery, onToggleMetric, onRunSaved, onEditSaved, onOpenYaml, onShowIndex, indexActive }: Props) {
   const [search, setSearch] = useState('');
   const needle = search.trim().toLowerCase();
   const metrics = useMemo(
@@ -47,6 +51,10 @@ export function MetricsSidebar({ catalog, selected, savedQuery, onToggleMetric, 
 
   return (
     <aside className="flex flex-col w-64 shrink-0 border-r border-gray-800 bg-surface-panel min-h-0">
+      <button onClick={onShowIndex} className={`flex items-center gap-2 mx-2 mt-2 px-2 py-1.5 text-xs rounded text-left ${
+        indexActive ? 'bg-brand-950/40 text-brand-200' : 'text-gray-300 hover:bg-gray-800/60'}`}>
+        <LayoutGrid className="w-3.5 h-3.5" />All metrics
+      </button>
       <label className="flex items-center gap-2 m-2 px-2 py-1.5 bg-surface-app border border-gray-800 rounded focus-within:border-brand-600">
         <Search className="w-3.5 h-3.5 text-gray-500" />
         <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search metrics"

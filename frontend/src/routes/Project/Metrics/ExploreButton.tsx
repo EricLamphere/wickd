@@ -1,11 +1,12 @@
-// "Explore" entry points into the Metrics page (SidePane, Docs) and the Docs preview sparkline.
+// "Explore" / "Metric page" entry points into the Metrics page (SidePane, Docs) and the Docs
+// preview sparkline.
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { LineChart } from 'lucide-react';
+import { FileBarChart, LineChart } from 'lucide-react';
 import { Sparkline } from '../../../components/charts/Sparkline';
 import { semanticApi } from '../../../lib/semanticApi';
 import { relativeTime } from '../lib/relativeTime';
-import { exploreSearch, exploreUrl, previewBody } from './lib/exploreLink';
+import { exploreSearch, exploreUrl, metricPageUrl, previewBody } from './lib/exploreLink';
 import { formatTime, formatValue, parseTime, toNumber } from './lib/metricSeries';
 
 interface ExploreProps {
@@ -22,14 +23,22 @@ export function ExploreButton({ projectId, resourceType, name, grain, modelMetri
   const navigate = useNavigate();
   const search = exploreSearch(resourceType, name, { grain, modelMetrics });
   if (!search) return null;
+  const cls = 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-gray-700 text-gray-300 hover:border-brand-600 hover:text-brand-300 transition-colors';
   return (
-    <button
-      onClick={() => navigate(exploreUrl(projectId, search))}
-      title={resourceType === 'saved_query' ? 'Run this saved query on the Metrics page' : 'Query it on the Metrics page'}
-      className="flex items-center gap-1.5 self-start px-2.5 py-1 text-xs rounded border border-gray-700 text-gray-300 hover:border-brand-600 hover:text-brand-300 transition-colors"
-    >
-      <LineChart className="w-3.5 h-3.5" />Explore
-    </button>
+    <div className="flex flex-wrap items-center gap-2 self-start">
+      {resourceType === 'metric' && (
+        <button onClick={() => navigate(metricPageUrl(projectId, name))} title="Its definition, chart, lineage, usage and health" className={cls}>
+          <FileBarChart className="w-3.5 h-3.5" />Metric page
+        </button>
+      )}
+      <button
+        onClick={() => navigate(exploreUrl(projectId, search))}
+        title={resourceType === 'saved_query' ? 'Run this saved query on the Metrics page' : 'Query it on the Metrics page'}
+        className={cls}
+      >
+        <LineChart className="w-3.5 h-3.5" />Explore
+      </button>
+    </div>
   );
 }
 

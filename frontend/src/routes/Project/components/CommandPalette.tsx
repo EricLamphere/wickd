@@ -26,7 +26,7 @@ import { normalizeCommand } from '../lib/customCommand';
 import { CustomCommandMode } from './CustomCommandMode';
 import { useSelectedNodeId } from '../lib/selectedNodeContext';
 import { openWicky } from '../lib/wickyEvents';
-import { exploreSearch, exploreUrl } from '../Metrics/lib/exploreLink';
+import { exploreSearch, exploreUrl, metricPageUrl } from '../Metrics/lib/exploreLink';
 
 // ---- Types ----
 
@@ -261,6 +261,16 @@ function buildModelCommands(
   const base = `/projects/${projectId}`;
   const cmds: Command[] = [];
   for (const node of nodes) {
+    if (node.resource_type === 'metric') {
+      cmds.push({
+        id: `metric-page-${node.unique_id}`,
+        category: 'model',
+        title: `Metric: ${node.label || node.name}`,
+        subtitle: node.original_file_path ?? undefined,
+        icon: <LineChart size={14} />,
+        onExecute: () => navigate(metricPageUrl(projectId, node.name)),
+      });
+    }
     if (node.resource_type === 'metric' || node.resource_type === 'saved_query') {
       const search = exploreSearch(node.resource_type, node.name, { grain: node.semantic?.time_granularity });
       if (search) {

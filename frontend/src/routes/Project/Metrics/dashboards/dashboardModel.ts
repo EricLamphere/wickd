@@ -524,26 +524,6 @@ export function toCsv(columns: string[], rows: unknown[][]): string {
   return [columns.map(cell).join(','), ...rows.map((r) => r.map(cell).join(','))].join('\n');
 }
 
-/** Explorer state for a query a widget ran (Open in explorer): group-by columns split into name + grain. */
-export function explorerStateFromBody(body: MetricQueryBody, catalog: SemanticCatalogDto) {
-  const metrics = body.metrics ?? [];
-  const options = groupByOptions(catalog, metrics);
-  let grain = 'day';
-  const groupBy = (body.group_by ?? []).map((g) => {
-    const idx = g.lastIndexOf('__');
-    const name = idx > 0 ? g.slice(0, idx) : g;
-    if (options.some((o) => o.kind === 'time' && o.name === name)) {
-      grain = g.slice(idx + 2);
-      return name;
-    }
-    return g;
-  });
-  return {
-    metrics, groupBy, grain, filters: body.where ?? [], start: body.start ?? '', end: body.end ?? '',
-    orderBy: [] as string[], limit: body.limit ?? null, savedQuery: null,
-  };
-}
-
 /** `widget` as another type: metrics trimmed to what it takes; Bar / Top N get a dimension if they lack one. */
 export function changeType(widget: DashboardWidget, type: WidgetType, catalog: SemanticCatalogDto): DashboardWidget {
   if (type === widget.type) return widget;

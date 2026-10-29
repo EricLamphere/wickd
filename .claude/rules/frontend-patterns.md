@@ -81,6 +81,7 @@ When handling SSE events, invalidate the relevant query:
 | `metricflow_env` (global stream) | `['semantic-status']` once the sidecar is ready or failed |
 | `dashboards_changed` | `['dashboards', projectId]`, `['dashboard', projectId, slug]`, `['dashboard-results', projectId, slug]` (Metrics → Dashboards, `Metrics/dashboards/useDashboards.ts`) |
 | `graph_changed` | `['dashboard-results', projectId]` (widget SQL changes with definitions) |
+| `graph_changed` | `['metric-chart', projectId]`, `['metric-index', projectId]` (metric pages + index, `Metrics/explore/useMetricPages.ts`) |
 | `dashboards_changed` (never `graph_changed`: every `dbt show` rewrites manifest.json, and a preview refetch runs queries) | `['dashboard-preview', projectId, slug]` (Drill into… drafts, `Metrics/dashboards/widgets/useWidgetPreview.ts`) |
 | `metric_monitor_started`, `metric_monitor_finished` | `['metric-monitors', projectId]` (Metrics → Monitors, DAG badges, Impact; `Metrics/monitors/useMonitors.ts`), `['health-summary', projectId]` |
 

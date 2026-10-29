@@ -60,6 +60,13 @@ class PreviewDto(BaseModel):
     run: bool = True
 
 
+class WidgetPreviewDto(BaseModel):
+    widget: dict[str, Any]
+    run: bool = True
+    # run it even when results are stored (the explorer's Refresh)
+    refresh: bool = False
+
+
 class ExposureDto(BaseModel):
     owner: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
     name: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z_][a-z0-9_]*$", max_length=200)] | None = None
@@ -102,6 +109,8 @@ def _summary(entry: DashboardEntry, index: dashboard_exposure.ExposureIndex | No
     return {
         "slug": entry.slug, "path": entry.path, "title": d.title if d else entry.slug,
         "widget_count": len(d.widgets) if d else 0, "exposure": exposure, **_exposure_state(d, index),
+        # every metric its widgets show (metric pages list where a metric is used)
+        "metrics": sorted({m for w in d.widgets for m in w.metrics}) if d else [],
         "error": entry.error, "modified_at": _modified(entry),
     }
 
@@ -262,6 +271,30 @@ async def preview_widgets(
     except (service.SemanticError, RuntimeUnavailable, QueryInvalid, ExecutionError) as exc:
         raise _semantic_http(exc) from exc
     return _results(ctx, results)
+
+
+# The metric explorer's widget: no dashboard file; the widget's own period (else the defaults:
+# last 30 days vs the previous period) and filters are all there is.
+EXPLORE_DASHBOARD = Dashboard(title="Explore")
+
+
+@router.post("/{project_id}/semantic/widget/preview")
+async def preview_explore_widget(
+    project_id: int, dto: WidgetPreviewDto, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """One widget's results without a dashboard (the metric explorer); runs it when nothing is stored."""
+    project = await _project(session, project_id)
+    try:
+        widget = Widget.model_validate(dto.widget)
+    except ValidationError as exc:
+        raise _http_error(400, "invalid_widget", store.validation_message(exc)) from exc
+    status = await _require_available(session, project, query=True)
+    try:
+        ctx, results = await dashboard_refresh.preview(
+            session, project, EXPLORE_DASHBOARD, status.adapter_type, [widget], run=dto.run, refresh_all=dto.refresh)
+    except (service.SemanticError, RuntimeUnavailable, QueryInvalid, ExecutionError) as exc:
+        raise _semantic_http(exc) from exc
+    return {"target": ctx.target or None, "profile_name": ctx.profile_name, "widget": results[0].to_dict()}
 
 
 # ── Register as exposure ─────────────────────────────────────────────────────

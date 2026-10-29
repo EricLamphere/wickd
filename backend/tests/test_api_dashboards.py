@@ -171,6 +171,13 @@ async def test_custom_folder_and_broken_file_listed(db, client, tmp_path) -> Non
 # ── results ──────────────────────────────────────────────────────────────────
 
 
+async def test_list_names_the_metrics_each_dashboard_uses(db, client, tmp_path) -> None:
+    project = await _project(db, tmp_path)
+    await _create(client, project, WIDGETS)
+    listed = (await client.get(f"/api/projects/{project.id}/dashboards")).json()["dashboards"]
+    assert listed[0]["metrics"] == ["deleted_metric", "order_count", "revenue"]
+
+
 async def test_results_then_refresh(db, client, tmp_path, worker, batches) -> None:
     project = await _project(db, tmp_path)
     await _create(client, project, [*WIDGETS, {"id": "rev_again", "type": "timeseries", "metrics": ["revenue"]},
@@ -226,6 +233,27 @@ async def test_preview_runs_unsaved_widgets_in_the_dashboard_context(db, client,
 
     bad = await client.post(f"{base}/preview", json={"widgets": [{"id": "Bad Id!", "type": "summary"}]})
     assert bad.status_code == 400
+
+
+async def test_explore_preview_needs_no_dashboard(db, client, tmp_path, worker, batches) -> None:
+    project = await _project(db, tmp_path)
+    url = f"/api/projects/{project.id}/semantic/widget/preview"
+    widget = {"id": "explore", "type": "timeseries", "metrics": ["revenue"],
+              "period": {"current": {"start": "2026-01-01", "end": "2026-01-31"}, "compare": "none"}}
+
+    stored = (await client.post(url, json={"widget": widget, "run": False})).json()
+    assert stored["widget"]["status"] == "not_run" and not batches
+
+    ran = (await client.post(url, json={"widget": widget})).json()["widget"]
+    assert ran["status"] == "ok" and set(ran["queries"]) == {"current"}  # its own period: no comparison
+    assert ran["queries"]["current"]["query"]["start"] == "2026-01-01" and len(batches) == 1
+
+    await client.post(url, json={"widget": widget})
+    assert len(batches) == 1  # stored: not run again
+    await client.post(url, json={"widget": widget, "refresh": True})
+    assert len(batches) == 2  # Refresh runs it anyway
+
+    assert (await client.post(url, json={"widget": {"id": "Bad Id!"}})).status_code == 400
 
 
 async def test_dashboard_period_and_filters_reach_the_explain(db, client, tmp_path, worker, batches) -> None:

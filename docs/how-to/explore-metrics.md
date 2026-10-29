@@ -4,36 +4,45 @@ The **Metrics** page answers "does my metric return what I think?" while you wri
 
 The page appears in the left nav for projects that define metrics. It needs MetricFlow (see [Use the semantic layer](semantic-layer.md)); if MetricFlow is off or your dbt-core can't run it, the page offers the same "Enable MetricFlow" / "Choose a dbt-core version…" options as Health → Semantic Layer.
 
+## Browse your metrics
+
+The **Explore** tab opens on **All metrics**: a card per metric, grouped by semantic model, with its type, a sparkline of its last result for the chosen period, how many places use it, and a warning count when the last semantic check found issues (Pro: a monitor badge when a monitor flagged it). Nothing runs when the page opens; the sparklines are stored results. **Run all** runs every metric's chart for the period on your warehouse in one batch. Search matches names, labels, descriptions, types and semantic models.
+
+## A metric's page
+
+Click a card (or a metric on the left, or **Metric page** in Docs and the side pane, or "Metric: …" in ⌘K, or a single-metric dashboard widget's ⋯ → **Open metric page**) to open its page:
+
+- **Over time**: the metric over a period you pick, compared with the previous period or the same period last year (dashed gray), from the last stored result; **Run** refreshes it. The period is remembered per project and also drives the index's sparklines.
+- **Definition**: label, how it's calculated (`sum(amount)`, `ratio: revenue / orders`, …), filter, input metrics.
+- **Slice it by**: its dimensions, grouped by entity, and its time dimensions.
+- **Where it comes from**: input metrics (each opens its own page), semantic models, the dbt models they're built on and those models' parents. Click to show one in the DAG; ⌘-click to open its file.
+- **Where it's used**: dashboards, saved queries, exposures and metrics built on it.
+- **Health**: issues from the last Health → Semantic Layer check for the metric or its semantic models, and (Pro) its monitors' status.
+- Actions: **Explore** (opens the query view below with the metric over the period), **Add to dashboard**, **Monitor** (Pro), **Save as saved query**, **Ask Wicky** (Pro) and **YAML**.
+
+Back and forward step between the index, pages and queries.
+
 ## Build a query
 
-1. **Pick metrics** on the left. They're grouped by semantic model, with a type badge (simple, ratio, cumulative, derived, conversion). Search filters the list. ⌘-click a metric to open its YAML in Files.
-2. **Group by**: only the dimensions valid for *every* selected metric are offered. `metric_time` comes first.
-3. **Grain**: shown when a time dimension is selected. You can pick the dimension's own grain or anything coarser.
-4. **Dates**: a preset (last 7/30/90 days, last 12 months, year to date) or a custom start/end. This sets MetricFlow's time constraint on `metric_time`.
-5. **Filters**: **+ Filter** opens a builder (dimension, operator, value; comma-separate values for `in`). **Advanced** takes a raw MetricFlow `where`, e.g. `{{ Dimension('customer__country') }} = 'US'`, with buttons that insert dimension references.
-6. **Order** and **Limit** (up to 5,000 rows).
+The query view (**Explore** on the index or on a metric's page, a dashboard widget's **Open in explorer**, Docs' **Explore**, ⌘K) is one widget — any of the dashboard widget types — with its settings on the right, exactly as on a dashboard:
 
-The **SQL** tab updates as you change the query; this never touches the warehouse. **Copy** it, or **Open in Workspace** to save it as a new file under your workspace's `metrics/` folder and edit it in the SQL Workspace.
+1. **Pick metrics** on the left (in the query view a click adds or removes one; elsewhere it opens the metric's page), or **Add a metric…** in Configure. ⌘-click opens a metric's YAML in Files.
+2. **Type**: time series, bar chart, Top N, table or metric summary.
+3. **Break it down** with the type's settings: a time series' **Split by** (one line per value, top N), a bar chart's **Bars by** and **Stack by**, a table's **Rows by** dimensions and **Rows by period**, Top N's **Rank**. Only dimensions every picked metric has are offered.
+4. **Filters**: **+ Filter** opens a builder (dimension, operator, value), or write a raw MetricFlow `where`.
+5. **Period** in the top bar: the same pickers as dashboards — a preset or calendar range, compared with the previous period, the same period last year, a custom range or nothing.
 
-The whole query lives in the URL, so back/forward steps through your queries and you can share or bookmark a link.
+Its chart, previous period included, shows as you change it. Whenever there's no stored result for the settings, it runs on your warehouse with the active target and profile (`dbt show`); **Refresh** (⌘↵) runs it again anyway. Under it, **Table** has the rows and **SQL** the query MetricFlow generated (per query when it runs several: current and previous period, total and trend…); **Copy** the SQL or **Open in Workspace** to save it as a new file under your workspace's `metrics/` folder.
 
-## Run it
-
-**Run on &lt;target&gt;** (⌘↵) explains the query, runs it with your dbt (`dbt show`, with the active target and profile) and shows:
-
-- **Chart**: one chart per metric, each on its own scale (metrics are never stacked on a second axis). Grouping by a time dimension draws lines; otherwise bars. With a categorical group-by, each value gets its own series (the 8 largest are drawn and the rest are counted under the chart, never summed into "Other", since summing a ratio would be wrong). With no group-by you get a number tile per metric.
-- **Table**: every row.
-- **SQL**: the query that ran.
-
-**Cancel** stops the run. If the result was cut at the row limit, a note suggests a coarser grain or a filter.
+The widget lives in the URL, so back/forward steps through your queries and you can share or bookmark a link. The metric chips above the title open each metric's page; **All metrics** goes back to the index.
 
 ### Results are remembered
 
-Every result is stored, keyed by the exact SQL, your dbt target, the environment variables wickd sets (global, profile and project vars) and your `profiles.yml`. So when you come back to a query, its last result shows right away ("Last run 4 min ago · target dev · profile prod") without hitting the warehouse. Switching to a profile that points the same target at another warehouse is a different environment, so it never shows the other environment's numbers. Only a hash of the variables is stored, never their values. Editing a metric's YAML changes its SQL, so the stored result no longer matches. If a parse lands after a result was shown, a "Definitions changed since this ran — Re-run" note appears.
+Every result is stored, keyed by the exact SQL, your dbt target, the environment variables wickd sets (global, profile and project vars) and your `profiles.yml`. So when you come back to a query, its last result shows right away without hitting the warehouse. Switching to a profile that points the same target at another warehouse is a different environment, so it never shows the other environment's numbers. Only a hash of the variables is stored, never their values. Editing a metric's YAML changes its SQL, so a stored result no longer matches; use **Refresh** after a parse to see the new numbers.
 
 ## Saved queries
 
-Saved queries are listed under the metrics. Click one to run it. The pencil opens its definition in the query builder so you can change it.
+Saved queries are listed under the metrics. Click one (or its pencil) to open its definition in the query view.
 
 **Save as saved query…** writes the current query to your YAML as a `saved_queries:` entry. It goes in your existing saved-queries file, or else the file that defines the first metric. wickd only adds lines in the file's own indentation style and checks the result parses to exactly the old file plus the new entry before writing. A date range is saved as `metric_time` filters, since saved queries have no time constraint. The new saved query shows up in the list after dbt re-parses (wickd does that automatically).
 
@@ -43,6 +52,6 @@ Saved queries are listed under the metrics. Click one to run it. The pencil open
 
 ## Other ways in
 
-- **Side pane** (DAG or Files) and **Docs**: metric, semantic model and saved query nodes have an **Explore** button. In Docs, a metric also shows its last stored result as a sparkline.
-- **Command palette** (⌘K): "Explore metric: …", "Run saved query: …" and "Go to Metrics".
+- **Side pane** (DAG or Files) and **Docs**: metric, semantic model and saved query nodes have an **Explore** button, and metrics a **Metric page** button. In Docs, a metric also shows its last stored result as a sparkline.
+- **Command palette** (⌘K): "Metric: …" (its page), "Explore metric: …", "Run saved query: …" and "Go to Metrics".
 - **Monitor this metric** (Pro): with one metric picked, opens **Monitors** with the metric, grain and a categorical group-by filled in. See [Monitor metrics for anomalies](metric-monitors.md).

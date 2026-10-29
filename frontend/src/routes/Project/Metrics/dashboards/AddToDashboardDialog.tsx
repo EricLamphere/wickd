@@ -1,16 +1,18 @@
-// Explorer → "Add to dashboard…": pick a dashboard (or name a new one) and the widget type;
-// the query becomes a widget (metrics, group-bys as the type's options, filters, dates) at
-// the end of the dashboard.
+// "Add to dashboard…" (metric pages, the explorer): pick a dashboard (or name a new one) and the
+// widget type; a query becomes a widget (metrics, group-bys as the type's options, filters,
+// dates), or the explorer's widget goes as configured, at the end of the dashboard.
 import { useEffect, useMemo, useState } from 'react';
 import { X } from 'lucide-react';
-import { dashboardsApi, type WidgetType } from '../../../../lib/dashboardsApi';
+import { dashboardsApi, type DashboardWidget, type WidgetType } from '../../../../lib/dashboardsApi';
 import type { MetricQueryBody, SemanticCatalogDto } from '../../../../lib/semanticApi';
-import { widgetFromQuery, widgetInfo, WIDGET_TYPES } from './dashboardModel';
+import { newWidgetId, widgetFromQuery, widgetInfo, WIDGET_TYPES } from './dashboardModel';
 import { errorText, useDashboardList } from './useDashboards';
 
 interface Props {
   projectId: number;
-  body: MetricQueryBody;
+  /** the query to turn into a widget, or `widget` as it is */
+  body?: MetricQueryBody;
+  widget?: DashboardWidget;
   catalog: SemanticCatalogDto;
   /** suggested widget title (the metric labels) */
   title: string;
@@ -21,10 +23,16 @@ interface Props {
 const NEW = '__new__';
 const FIELD = 'w-full px-2 py-1.5 bg-surface-app border border-gray-700 rounded text-xs text-gray-200 outline-none focus:border-brand-600';
 
-export function AddToDashboardDialog({ projectId, body, catalog, title, onAdded, onClose }: Props) {
+export function AddToDashboardDialog({ projectId, body, widget, catalog, title, onAdded, onClose }: Props) {
+  // a configured widget keeps everything but its id and size, which the dashboard decides
+  const fromWidget = (taken: Iterable<string>): DashboardWidget | null => {
+    if (!widget) return null;
+    const info = widgetInfo(widget.type);
+    return { ...widget, id: newWidgetId(widget.metrics?.[0] ?? widget.type, taken), width: info.width, height: info.height };
+  };
   const list = useDashboardList(projectId);
   const valid = useMemo(() => (list.data?.dashboards ?? []).filter((d) => !d.error), [list.data]);
-  const suggested = useMemo(() => widgetFromQuery(body, catalog, []), [body, catalog]);
+  const suggested = useMemo(() => fromWidget([]) ?? widgetFromQuery(body ?? {}, catalog, []), [body, widget, catalog]); // eslint-disable-line react-hooks/exhaustive-deps
   const [target, setTarget] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [type, setType] = useState<WidgetType>(suggested.type);
@@ -40,7 +48,7 @@ export function AddToDashboardDialog({ projectId, body, catalog, title, onAdded,
   }, [onClose]);
 
   const build = (taken: string[]) => {
-    const base = widgetFromQuery(body, catalog, taken);
+    const base = fromWidget(taken) ?? widgetFromQuery(body ?? {}, catalog, taken);
     const info = widgetInfo(type);
     const typed = type === base.type ? base : { ...base, type, width: info.width, height: info.height, metrics: (base.metrics ?? []).slice(0, info.maxMetrics) };
     return widgetTitle.trim() ? { ...typed, title: widgetTitle.trim() } : typed;

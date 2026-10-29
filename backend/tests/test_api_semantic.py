@@ -261,6 +261,40 @@ async def test_query_results_are_cached_per_sql_and_env(client, db, tmp_path, db
     assert again["source"] == "warehouse" and fake_show["calls"] == 2
 
 
+async def test_query_batch_reads_stored_results_and_runs_the_rest_in_one_batch(
+    client, db, tmp_path, dbt_env, worker_calls, monkeypatch
+) -> None:
+    from app.semantic import query_batch
+    from app.semantic.batch import BatchResult
+
+    batches: list[list[str]] = []
+
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+        batches.append(sqls)
+        return [BatchResult(["metric_time__day", "revenue"], [["2024-01-01", 5]], False) for _ in sqls]
+
+    monkeypatch.setattr(query_batch, "run_many", fake_run_many)
+    project = await _project(db, tmp_path)
+    url = f"/api/projects/{project.id}/semantic/query/batch"
+    queries = [{"metrics": ["revenue"]}, {"metrics": ["nope"]}]
+
+    stored = (await client.post(url, json={"queries": queries})).json()["results"]
+    assert [r["status"] for r in stored] == ["not_run", "error"] and not batches
+    assert "nope" in stored[1]["error"]
+
+    ran = (await client.post(url, json={"queries": queries, "run": True})).json()["results"]
+    assert ran[0]["status"] == "ok" and ran[0]["result"]["rows"] == [["2024-01-01", 5]]
+    assert ran[0]["result"]["source"] == "warehouse" and ran[1]["status"] == "error"
+    assert len(batches) == 1 and len(batches[0]) == 1
+
+    again = (await client.post(url, json={"queries": queries[:1], "run": True})).json()["results"]
+    assert again[0]["result"]["source"] == "cache" and len(batches) == 1  # stored: nothing re-run
+    single = (await client.post(f"/api/projects/{project.id}/semantic/query/cached", json=queries[0])).json()
+    assert single["rows"] == [["2024-01-01", 5]]  # the same cache as the explorer
+
+    assert (await client.post(url, json={"queries": []})).status_code == 422
+
+
 async def test_identical_queries_in_flight_share_one_run(client, db, tmp_path, dbt_env, worker_calls, fake_show) -> None:
     project = await _project(db, tmp_path)
     fake_show["gate"] = asyncio.Event()

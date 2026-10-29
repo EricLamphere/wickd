@@ -21,9 +21,11 @@ export interface WidgetSettingsProps {
   labels: Map<string, string>;
   onChange: (w: DashboardWidget) => void;
   onNotice: (message: string) => void;
+  /** no dashboard around it (the metric explorer): its period is set in the explorer's top bar */
+  standalone?: boolean;
 }
 
-export function WidgetSettings({ projectId, doc, widget, catalog, labels, onChange, onNotice }: WidgetSettingsProps) {
+export function WidgetSettings({ projectId, doc, widget, catalog, labels, onChange, onNotice, standalone = false }: WidgetSettingsProps) {
   const metrics = widget.metrics ?? [];
   const info = widgetInfo(widget.type);
   const options = groupByOptions(catalog, metrics);
@@ -78,23 +80,27 @@ export function WidgetSettings({ projectId, doc, widget, catalog, labels, onChan
               </select>
             )}
           </Row>
-          <Row label="Filters" hint="Added to the dashboard's filters for this widget only.">
+          <Row label="Filters" hint={standalone ? undefined : "Added to the dashboard's filters for this widget only."}>
             <FilterEditor filters={widget.filters ?? []} options={options} grain="day" suggest={suggest}
               onChange={(filters) => onChange({ ...widget, filters: filters.length ? filters : undefined })} />
           </Row>
-          <Row label="Period" hint={widget.period?.current ? undefined : "Follows the dashboard's period."}>
-            <PeriodPicker ariaLabel="Widget period" months={1}
-              label={widget.period?.current ? currentLabel(current) : `Dashboard's: ${currentLabel(dashCurrent)}`}
-              resolved={resolved} value={current} presets={CURRENT_PRESETS} onChange={(v) => setPeriod({ current: v as CurrentPeriod })}
-              inherit={{ label: `Use the dashboard's (${currentLabel(dashCurrent)})`, active: !widget.period?.current, onSelect: () => setPeriod({ current: null }) }} />
-          </Row>
-          <Row label="Compare to" hint={widget.period?.compare ? undefined : "Follows the dashboard's comparison."}>
-            <PeriodPicker ariaLabel="Widget comparison" muted months={1}
-              label={widget.period?.compare ? compareLabel(compare) : `Dashboard's: ${compareLabel(dashCompare)}`}
-              resolved={resolveCompare(compare, resolved)} value={compare} presets={COMPARE_PRESETS}
-              onChange={(v) => setPeriod({ compare: v as ComparePeriod })}
-              inherit={{ label: `Use the dashboard's (${compareLabel(dashCompare)})`, active: !widget.period?.compare, onSelect: () => setPeriod({ compare: null }) }} />
-          </Row>
+          {!standalone && (
+            <>
+              <Row label="Period" hint={widget.period?.current ? undefined : "Follows the dashboard's period."}>
+                <PeriodPicker ariaLabel="Widget period" months={1}
+                  label={widget.period?.current ? currentLabel(current) : `Dashboard's: ${currentLabel(dashCurrent)}`}
+                  resolved={resolved} value={current} presets={CURRENT_PRESETS} onChange={(v) => setPeriod({ current: v as CurrentPeriod })}
+                  inherit={{ label: `Use the dashboard's (${currentLabel(dashCurrent)})`, active: !widget.period?.current, onSelect: () => setPeriod({ current: null }) }} />
+              </Row>
+              <Row label="Compare to" hint={widget.period?.compare ? undefined : "Follows the dashboard's comparison."}>
+                <PeriodPicker ariaLabel="Widget comparison" muted months={1}
+                  label={widget.period?.compare ? compareLabel(compare) : `Dashboard's: ${compareLabel(dashCompare)}`}
+                  resolved={resolveCompare(compare, resolved)} value={compare} presets={COMPARE_PRESETS}
+                  onChange={(v) => setPeriod({ compare: v as ComparePeriod })}
+                  inherit={{ label: `Use the dashboard's (${compareLabel(dashCompare)})`, active: !widget.period?.compare, onSelect: () => setPeriod({ compare: null }) }} />
+              </Row>
+            </>
+          )}
         </>
       )}
       <div className="flex flex-col gap-3 pt-3 border-t border-gray-800">

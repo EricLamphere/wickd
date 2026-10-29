@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { exploreSearch, previewBody, requestSearch } from './exploreLink';
+import { exploreSearch, metricPageUrl, previewBody, requestSearch } from './exploreLink';
 import { stateFromParams, toRequest, type GroupByOption } from './metricQuery';
 
 const TIME: GroupByOption = { name: 'metric_time', kind: 'time', nativeGrain: 'day', label: null, description: null };
@@ -38,5 +38,11 @@ describe('requestSearch', () => {
     const options: GroupByOption[] = [TIME, { name: 'customer__region', kind: 'categorical', nativeGrain: null, label: null, description: null }];
     expect(toRequest(state, options)).toEqual(body);
     expect(requestSearch({ saved_query: 'weekly' })).toBe('saved=weekly');
+  });
+});
+
+describe('metricPageUrl', () => {
+  it("opens a metric's page on the Explore tab", () => {
+    expect(metricPageUrl(4, 'revenue')).toBe('/projects/4/metrics?tab=explore&metric=revenue');
   });
 });

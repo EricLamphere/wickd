@@ -4,11 +4,10 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, LayoutDashboard, Link2, Plus } from 'lucide-react';
-import { dashboardsApi } from '../../../../lib/dashboardsApi';
+import { dashboardsApi, type DashboardWidget } from '../../../../lib/dashboardsApi';
 import { alertDialog, promptDialog } from '../../../../lib/dialogs';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { relativeTime } from '../../lib/relativeTime';
-import type { ExplorerState } from '../lib/metricQuery';
 import { DashboardBuilder } from './builder/DashboardBuilder';
 import { errorText, useDashboardList } from './useDashboards';
 
@@ -17,7 +16,10 @@ interface Props {
   catalog: SemanticCatalogDto;
   labels: Map<string, string>;
   target: string | null;
-  onOpenExplorer: (state: ExplorerState) => void;
+  /** a widget in the metric explorer, as it showed here */
+  onOpenExplorer: (widget: DashboardWidget) => void;
+  /** a metric's page (single-metric widgets' menu) */
+  onOpenMetric: (metric: string) => void;
 }
 
 const PARAM = 'dashboard';
@@ -33,7 +35,7 @@ function remember(projectId: number, slug: string | null): void {
   } catch { /* storage unavailable */ }
 }
 
-export function DashboardsTab({ projectId, catalog, labels, target, onOpenExplorer }: Props) {
+export function DashboardsTab({ projectId, catalog, labels, target, onOpenExplorer, onOpenMetric }: Props) {
   const [params, setParams] = useSearchParams();
   const slug = params.get(PARAM);
   const list = useDashboardList(projectId);
@@ -55,7 +57,7 @@ export function DashboardsTab({ projectId, catalog, labels, target, onOpenExplor
 
   if (slug) {
     return <DashboardBuilder key={slug} projectId={projectId} slug={slug} catalog={catalog} labels={labels} target={target}
-      onBack={() => open(null)} onOpenExplorer={onOpenExplorer} />;
+      onBack={() => open(null)} onOpenExplorer={onOpenExplorer} onOpenMetric={onOpenMetric} />;
   }
 
   const create = async () => {

@@ -20,7 +20,7 @@ from app.db.models import Project, SemanticCheckSnapshot
 from app.dbt.runner import RunRequest, runner
 from app.dbt.schema_yaml import SchemaYamlError
 from app.logging_setup import get_logger
-from app.semantic import check, dbt_change, saved_queries, service
+from app.semantic import check, dbt_change, query_batch, saved_queries, service
 from app.semantic.execute import MAX_ROW_LIMIT, ExecutionError
 from app.semantic.query_service import explain_checked, run_metric_query
 from app.semantic.query_spec import QueryInvalid, check_query
@@ -51,6 +51,12 @@ class QueryDto(ExplainDto):
     rows: int = Field(default=MAX_ROW_LIMIT, ge=1, le=MAX_ROW_LIMIT)
     # refresh = always run on the warehouse; prefer = the cached result if there is one
     cache: Literal["refresh", "prefer"] = "refresh"
+
+
+class QueryBatchDto(BaseModel):
+    queries: list[ExplainDto] = Field(min_length=1, max_length=200)
+    # false: stored results only (`not_run` where there are none); true: run those in one batch
+    run: bool = False
 
 
 class CheckDto(BaseModel):
@@ -157,6 +163,20 @@ async def post_cached_query(project_id: int, dto: ExplainDto, session: AsyncSess
     except (service.SemanticError, RuntimeUnavailable, QueryInvalid) as exc:
         raise _semantic_http(exc) from exc
     return outcome.to_dict() if outcome is not None else None
+
+
+@router.post("/{project_id}/semantic/query/batch")
+async def post_query_batch(project_id: int, dto: QueryBatchDto, session: AsyncSession = Depends(get_session)) -> dict:
+    """Many queries' stored results (metric index sparklines, metric page charts); with `run`, the
+    missing ones run together in one `dbt show`. Per-query errors don't fail the request."""
+    project = await _project(session, project_id)
+    status = await _require_available(session, project, query=True)
+    queries = [q.model_dump(exclude_none=True) for q in dto.queries]
+    try:
+        items = await query_batch.run_queries(session, project, queries, status.adapter_type, run=dto.run)
+    except (service.SemanticError, RuntimeUnavailable, ExecutionError) as exc:
+        raise _semantic_http(exc) from exc
+    return {"results": [i.to_dict() for i in items]}
 
 
 class DimensionValuesDto(BaseModel):

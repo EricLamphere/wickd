@@ -1,33 +1,37 @@
-// Metrics page (/projects/:id/metrics): Explore tab — pick metrics, group-bys, grain, filters
-// and dates; see MetricFlow's SQL live, Run it on the warehouse, chart / table the result.
-// The whole query lives in the URL (lib/metricQuery.ts), so back/forward steps through queries.
+// Metrics page (/projects/:id/metrics): Explore tab — with nothing asked for, the metric index
+// (explore/MetricIndex); `?metric=<name>`, a metric's page (explore/MetricPage, plan 13);
+// `?view=query&w=<widget>`, the query view (explore/ExploreView): one widget of any dashboard
+// type, configured in the dashboards' settings pane. Older links' query params become that
+// widget on arrival (lib/exploreWidget.ts). Back/forward steps index → page → query.
 // Dashboards tab (?tab=dashboards): metric queries pinned as tiles, YAML files in the project (dashboards/).
 // Monitors tab (?tab=monitors, Pro): metrics watched for anomalies (monitors/).
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
-import { alertDialog, alertError, promptDialog } from '../../../lib/dialogs';
-import { semanticApi, semanticErrorBody, type CatalogSavedQuery, type SemanticCatalogDto } from '../../../lib/semanticApi';
+import type { DashboardWidget } from '../../../lib/dashboardsApi';
+import { alertDialog } from '../../../lib/dialogs';
+import { semanticErrorBody, type CatalogSavedQuery, type SemanticCatalogDto } from '../../../lib/semanticApi';
 import { useSemanticStatus } from '../components/semantic/useSemantic';
 import NavRail from '../components/NavRail';
 import { useOpenInFiles } from '../lib/openInFiles';
 import { useUrlTab } from '../../../lib/useUrlTab';
 import type { MonitorDraft } from './monitors/CreateMonitorDialog';
 import { MonitorsTab } from './monitors/MonitorsTab';
-import { AddToDashboardDialog } from './dashboards/AddToDashboardDialog';
+import { addMetric, removeMetric, widgetFromQuery } from './dashboards/dashboardModel';
 import { DashboardsTab } from './dashboards/DashboardsTab';
 import { ProLabel } from '../../../components/ProLabel';
 import { DraftFromModel } from './DraftFromModel';
 import { MetricsSidebar } from './MetricsSidebar';
 import { MetricsUnavailable } from './MetricsUnavailable';
-import { QueryBar } from './QueryBar';
-import { ResultsPane } from './ResultsPane';
 import {
-  allowedGrains, groupByColumn, groupByOptions, stateFromParams, stateFromSavedQuery, toRequest, writeState, type ExplorerState,
-} from './lib/metricQuery';
-import { writeWorkspaceSql } from './lib/openInWorkspace';
-import { useActiveTarget, useExplain, useMetricResult, useSemanticCatalog } from './useMetricExplorer';
+  clearExplore, emptyExploreWidget, isExploreView, readExploreWidget, widgetFromLegacy, writeExploreWidget,
+} from './lib/exploreWidget';
+import { ExploreView } from './explore/ExploreView';
+import { MetricIndex } from './explore/MetricIndex';
+import { MetricPage } from './explore/MetricPage';
+import { useMetricPeriod } from './explore/useMetricPages';
+import { useActiveTarget, useSemanticCatalog } from './useMetricExplorer';
 
 function errorText(err: unknown): string | null {
   if (!err) return null;
@@ -84,11 +88,20 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
   const labels = useMemo(() => labelsFor(catalog), [catalog]);
   const { data: target } = useActiveTarget(projectId);
   const monitor = (next: MonitorDraft) => { setDraft(next); setTab('monitors'); };
-  // A widget's query in the explorer (Open in explorer)
-  const openExplorer = useCallback((state: ExplorerState) => {
+  // A dashboard widget in the explorer (Open in explorer), as it showed there
+  const openExplorer = useCallback((widget: DashboardWidget) => {
     setParams((prev) => {
-      const next = writeState(prev, state);
+      const next = writeExploreWidget(prev, widget);
       next.set('tab', 'explore');
+      return next;
+    });
+  }, [setParams]);
+  const openMetricPage = useCallback((metric: string) => {
+    setParams((prev) => {
+      const next = clearExplore(prev);
+      next.set('tab', 'explore');
+      next.set('metric', metric);
+      next.delete('dashboard');
       return next;
     });
   }, [setParams]);
@@ -111,9 +124,12 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
         ))}
       </div>
       <div className="flex-1 min-h-0 overflow-auto">
-        {tab === 'explore' && <Explorer projectId={projectId} catalog={catalog} onMonitor={monitor} onOpenDashboard={openDashboard} />}
+        {tab === 'explore' && (
+          <Explorer projectId={projectId} catalog={catalog} onMonitor={monitor} onOpenDashboard={openDashboard} onOpenMonitors={() => setTab('monitors')} />
+        )}
         {tab === 'dashboards' && (
-          <DashboardsTab projectId={projectId} catalog={catalog} labels={labels} target={target?.target ?? null} onOpenExplorer={openExplorer} />
+          <DashboardsTab projectId={projectId} catalog={catalog} labels={labels} target={target?.target ?? null} onOpenExplorer={openExplorer}
+            onOpenMetric={openMetricPage} />
         )}
         {tab === 'monitors' && <MonitorsTab projectId={projectId} catalog={catalog} draft={draft} onDraftHandled={() => setDraft(null)} />}
       </div>
@@ -121,51 +137,43 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
   );
 }
 
-const MONITOR_GRAINS = ['day', 'week', 'month'] as const;
-
-function Explorer({ projectId, catalog, onMonitor, onOpenDashboard }: {
+function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonitors }: {
   projectId: number; catalog: SemanticCatalogDto; onMonitor: (draft: MonitorDraft) => void; onOpenDashboard: (slug: string) => void;
+  onOpenMonitors: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const state = useMemo(() => stateFromParams(params), [params]);
-  const saved = state.savedQuery ? catalog.saved_queries.find((q) => q.name === state.savedQuery) ?? null : null;
-  // A saved query runs by name; its definition drives the options and the chart shape
-  const effective = saved ? stateFromSavedQuery(saved) : state;
-  const options = useMemo(() => groupByOptions(catalog, effective.metrics), [catalog, effective.metrics]);
-  const grain = allowedGrains(options, effective.groupBy).includes(effective.grain) ? effective.grain : allowedGrains(options, effective.groupBy)[0];
-  const body = useMemo(() => toRequest({ ...state, grain }, options), [state, grain, options]);
-
-  const explain = useExplain(projectId, body);
-  const result = useMetricResult(projectId, body);
-  const { data: target } = useActiveTarget(projectId);
+  const [period, setPeriod] = useMetricPeriod(projectId);
   const labels = useMemo(() => labelsFor(catalog), [catalog]);
   const { data: graph } = useQuery({ queryKey: ['graph', projectId], queryFn: () => api.models.graph(projectId) });
   const { open } = useOpenInFiles(projectId);
+  // the index (nothing asked for) → a metric's page (?metric=) → the query view (?view=query&w=, or an older link's query)
+  const pageMetric = params.get('metric');
+  const mode = pageMetric ? 'page' : isExploreView(params) ? 'explore' : 'index';
+  const widget = useMemo(() => readExploreWidget(params), [params]);
 
-  const update = useCallback((patch: Partial<ExplorerState>) => {
-    setParams((prev) => writeState(prev, { ...stateFromParams(prev), ...patch }));
-  }, [setParams]);
-
-  const shape = useMemo(() => {
-    const time = effective.groupBy.find((g) => options.find((o) => o.name === g)?.kind === 'time');
-    return {
-      metrics: effective.metrics,
-      timeColumn: time ? groupByColumn(time, options, grain) : null,
-      dimensionColumns: effective.groupBy.filter((g) => g !== time && options.some((o) => o.name === g)),
-      labels: Object.fromEntries(labels),
-    };
-  }, [effective.metrics, effective.groupBy, options, grain, labels]);
-
-  const run = result.run;
+  // An older explorer link (Docs' Explore, ⌘K, Wicky, saved queries): becomes the widget, in place
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && body && !explain.error) { e.preventDefault(); run(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [run, body, explain.error]);
+    if (mode === 'explore' && !widget) setParams((prev) => writeExploreWidget(prev, widgetFromLegacy(prev, catalog)), { replace: true });
+  }, [mode, widget, catalog, setParams]);
+
+  const openMetric = useCallback((name: string) => {
+    setParams((prev) => {
+      const next = clearExplore(prev);
+      next.set('metric', name);
+      return next;
+    });
+  }, [setParams]);
+  const showIndex = useCallback(() => {
+    setParams((prev) => {
+      const next = clearExplore(prev);
+      next.delete('metric');
+      return next;
+    });
+  }, [setParams]);
+  const explore = useCallback((next: DashboardWidget) => setParams((prev) => writeExploreWidget(prev, next)), [setParams]);
+  // settings edits replace the history entry (one per change would bury Back under keystrokes)
+  const editWidget = useCallback((next: DashboardWidget) => setParams((prev) => writeExploreWidget(prev, next), { replace: true }), [setParams]);
+  const exploreSaved = (q: CatalogSavedQuery) => explore({ ...widgetFromQuery({ saved_query: q.name }, catalog, []), id: 'explore' });
 
   const metricUid = useMemo(() => {
     const uids = new Map<string, string>();
@@ -173,83 +181,53 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard }: {
     return uids;
   }, [graph]);
 
-  const runSaved = (q: CatalogSavedQuery) => {
-    update({ savedQuery: q.name });
-    run({ saved_query: q.name });
+  // in the query view a metric click adds it to (or takes it off) the widget; elsewhere it opens its page
+  const clickMetric = async (m: string) => {
+    if (mode !== 'explore' || !widget) { openMetric(m); return; }
+    if (widget.metrics?.includes(m)) { editWidget(removeMetric(widget, m)); return; }
+    const added = addMetric(widget, m, catalog);
+    if (added.widget) editWidget(added.widget); else await alertDialog(added.error, { title: "Can't add it here" });
   };
 
-  const save = async () => {
-    if (!body || state.savedQuery) return;
-    const name = await promptDialog('Name for the saved query (lowercase, digits, underscores):',
-      state.metrics.join('_by_').slice(0, 60), { title: 'Save as saved query', confirmLabel: 'Save' });
-    if (!name) return;
-    try {
-      const { path } = await semanticApi.saveQuery(projectId, { ...body, name: name.trim() });
-      await alertDialog(`Added \`${name.trim()}\` to ${path}. It shows up under Saved queries once dbt re-parses.`, { title: 'Saved query added' });
-    } catch (err) {
-      await alertDialog(errorText(err) ?? 'Saving failed', { title: "Couldn't save the query" });
-    }
-  };
-
-  const openInWorkspace = async (sql: string) => {
-    try {
-      await writeWorkspaceSql(projectId, state.savedQuery ?? state.metrics.join('_'), sql);
-      navigate(`/projects/${projectId}/workspace`);
-    } catch (err) {
-      await alertError(err);
-    }
-  };
-
-  const fine = grain === 'day' || grain === 'hour';
   return (
     <div className="flex h-full min-h-0">
       <MetricsSidebar
         catalog={catalog}
-        selected={state.savedQuery ? [] : state.metrics}
-        savedQuery={state.savedQuery}
-        onToggleMetric={(m) => update({ savedQuery: null, metrics: state.metrics.includes(m) ? state.metrics.filter((x) => x !== m) : [...state.metrics, m] })}
-        onRunSaved={runSaved}
-        onEditSaved={(q) => setParams((prev) => writeState(prev, stateFromSavedQuery(q)))}
+        selected={mode === 'page' && pageMetric ? [pageMetric] : mode === 'explore' ? widget?.metrics ?? [] : []}
+        savedQuery={null}
+        onShowIndex={showIndex}
+        indexActive={mode === 'index'}
+        onToggleMetric={(m) => { void clickMetric(m); }}
+        onRunSaved={exploreSaved}
+        onEditSaved={exploreSaved}
         onOpenYaml={(m) => { const uid = metricUid.get(m); if (uid) open(uid); }}
       />
-      <main className="flex flex-col flex-1 min-w-0 min-h-0">
-        <QueryBar
-          state={{ ...state, grain }}
-          options={options}
-          labels={labels}
-          onChange={update}
-          target={target?.target ?? null}
-          running={result.running}
-          canRun={!!body && !explain.error}
-          onRun={() => run()}
-          onCancel={result.cancel}
-          onSave={body && !state.savedQuery ? save : null}
-          onAddToDashboard={body ? () => setAdding(true) : null}
-          onMonitor={!state.savedQuery && state.metrics.length === 1 ? () => onMonitor({
-            metric: state.metrics[0],
-            grain: (MONITOR_GRAINS as readonly string[]).includes(grain) ? grain as MonitorDraft['grain'] : 'day',
-            dimension: shape.dimensionColumns.find((d) => options.find((o) => o.name === d)?.kind === 'categorical') ?? null,
-          }) : null}
-        />
-        <ResultsPane
-          result={result.result}
-          loadingResult={result.loading}
-          sql={explain.data?.sql ?? null}
-          sqlError={errorText(explain.error)}
-          runError={errorText(result.runError)}
-          running={result.running}
-          definitionsChanged={result.definitionsChanged}
-          shape={shape}
-          grain={grain}
-          truncatedHint={fine && shape.timeColumn ? 'Try a coarser grain (week or month) or add a filter.' : 'Add a filter or a limit to narrow it.'}
-          onRun={() => run()}
-          onOpenInWorkspace={openInWorkspace}
-        />
-      </main>
-      {adding && body && (
-        <AddToDashboardDialog projectId={projectId} body={body} catalog={catalog}
-          title={state.savedQuery ? labels.get(`saved:${state.savedQuery}`) ?? state.savedQuery : state.metrics.map((m) => labels.get(m) ?? m).join(', ')}
-          onClose={() => setAdding(false)} onAdded={(slug) => { setAdding(false); onOpenDashboard(slug); }} />
+      {mode === 'index' && (
+        <main className="flex-1 min-w-0 min-h-0 overflow-auto">
+          <MetricIndex projectId={projectId} catalog={catalog} period={period} onPeriod={setPeriod} onOpen={openMetric}
+            onExplore={() => explore({ ...emptyExploreWidget(), period })} />
+        </main>
+      )}
+      {mode === 'page' && pageMetric && (
+        <main className="flex-1 min-w-0 min-h-0 overflow-auto">
+          {catalog.metrics.find((m) => m.name === pageMetric) ? (
+            <MetricPage key={pageMetric} projectId={projectId} catalog={catalog} metric={catalog.metrics.find((m) => m.name === pageMetric)!}
+              period={period} onPeriod={setPeriod} onIndex={showIndex} onOpenMetric={openMetric} onExplore={explore}
+              onRunSaved={(name) => { const q = catalog.saved_queries.find((x) => x.name === name); if (q) exploreSaved(q); }}
+              onOpenDashboard={onOpenDashboard} onMonitor={onMonitor} onOpenMonitors={onOpenMonitors} />
+          ) : (
+            <div className="flex flex-col items-start gap-2 p-5 text-xs text-gray-400">
+              <span>There's no metric called <code className="font-mono">{pageMetric}</code> (renamed or removed?).</span>
+              <button onClick={showIndex} className="text-brand-300 hover:text-brand-200">All metrics</button>
+            </div>
+          )}
+        </main>
+      )}
+      {mode === 'explore' && widget && (
+        <main className="flex-1 min-w-0 min-h-0">
+          <ExploreView projectId={projectId} catalog={catalog} labels={labels} widget={widget} onChange={editWidget}
+            onIndex={showIndex} onOpenMetric={openMetric} onOpenDashboard={onOpenDashboard} onMonitor={onMonitor} />
+        </main>
       )}
     </div>
   );

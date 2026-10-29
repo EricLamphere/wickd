@@ -167,6 +167,13 @@ export interface MetricQueryResultDto {
   source: 'warehouse' | 'cache';
 }
 
+/** One query of a batch: its stored (or, when run, fresh) result, or why it couldn't answer. */
+export interface QueryBatchItemDto {
+  status: 'ok' | 'not_run' | 'error';
+  result: MetricQueryResultDto | null;
+  error: string | null;
+}
+
 export interface SaveQueryBody extends MetricQueryBody {
   name: string;
   label?: string;
@@ -206,6 +213,9 @@ export const semanticApi = {
   /** The stored result for the current target + env, never running the query (null if none). */
   cachedQuery: (projectId: number, body: MetricQueryBody) =>
     post<MetricQueryResultDto | null>(`/projects/${projectId}/semantic/query/cached`, body),
+  /** many queries' stored results; `run` runs the missing ones together in one dbt show (metric index, metric pages) */
+  queryBatch: (projectId: number, queries: MetricQueryBody[], run = false) =>
+    post<{ results: QueryBatchItemDto[] }>(`/projects/${projectId}/semantic/query/batch`, { queries, run }),
   saveQuery: (projectId: number, body: SaveQueryBody) =>
     post<{ path: string }>(`/projects/${projectId}/semantic/saved-queries`, body),
 };

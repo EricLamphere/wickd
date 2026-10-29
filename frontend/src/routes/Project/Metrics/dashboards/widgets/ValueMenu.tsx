@@ -1,9 +1,10 @@
-// Right-click menu on a value (a bar, a Top N row, a table row): drill into it, apply it as a
-// dashboard filter, inspect it, or open the explorer filtered to it. Rendered on document.body
+// Right-click menu on a value (a bar, a stacked bar segment, a Top N row, a table row): show it
+// over time in the widget, apply it as a dashboard filter, drill into it (InspectDialog), or open
+// the explorer filtered to it. Rendered on document.body
 // at the pointer, kept inside the window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ExternalLink, Filter, Search, SplitSquareHorizontal } from 'lucide-react';
+import { ExternalLink, Filter, LineChart, Search } from 'lucide-react';
 import { pickLabel, type Pick } from '../drill';
 
 export interface ValueActions {
@@ -31,9 +32,9 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
   }, [onClose]);
   const label = pickLabel(pick);
   const items = [
-    { label: `Drill into ${label}`, icon: <SplitSquareHorizontal className="w-3.5 h-3.5" />, run: actions.onDrill },
+    { label: 'Show timeseries', icon: <LineChart className="w-3.5 h-3.5" />, run: actions.onDrill },
     { label: 'Apply as dashboard filter', icon: <Filter className="w-3.5 h-3.5" />, run: actions.onApplyFilter },
-    { label: 'Inspect', icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
+    { label: 'Drill into…', icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
     { label: 'Open in explorer, filtered', icon: <ExternalLink className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
   ];
   return createPortal(

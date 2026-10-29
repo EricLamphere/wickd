@@ -577,10 +577,10 @@ export function railWidth(start: number, dx: number, side: 'left' | 'right', min
  */
 /** Options that change a widget's queries (backend dashboard_plan.py); the rest only change how it's drawn. */
 const QUERY_OPTIONS: Partial<Record<WidgetType, string[]>> = {
-  summary: ['trend'],
+  summary: ['trend', 'show_change', 'show_previous', 'previous_line'],
   timeseries: ['grain', 'split_by'],
-  bar: ['dimension', 'stack_by', 'top_n'],
-  table: ['dimensions', 'compare_columns', 'limit'],
+  bar: ['dimension', 'stack_by', 'top_n', 'show_previous'],
+  table: ['period_grain', 'dimensions', 'compare_columns', 'limit'],
   leaderboard: ['dimension', 'top_n', 'show_change'],
 };
 

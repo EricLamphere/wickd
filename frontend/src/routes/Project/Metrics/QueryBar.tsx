@@ -56,7 +56,7 @@ export function QueryBar({ state, options, labels, onChange, target, running, ca
           {state.savedQuery ? (
             <span className="flex items-center gap-1.5 px-2 py-0.5 text-xs rounded border border-brand-800 bg-brand-950/40 text-brand-200">
               <Bookmark className="w-3 h-3" />Saved query: {labels.get(`saved:${state.savedQuery}`) ?? state.savedQuery}
-              <button onClick={() => onChange({ savedQuery: null })} aria-label="Close saved query" className="text-brand-300 hover:text-white"><X className="w-3 h-3" /></button>
+              <button onClick={() => onChange({ savedQuery: null })} aria-label="Close saved query" className="text-brand-300 hover:text-gray-100"><X className="w-3 h-3" /></button>
             </span>
           ) : state.metrics.length === 0 ? (
             <span className="text-xs text-gray-500">Pick one or more metrics on the left.</span>

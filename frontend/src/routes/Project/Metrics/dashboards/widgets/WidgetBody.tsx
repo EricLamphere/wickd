@@ -27,7 +27,7 @@ export interface BodyProps {
   /** its results are for other settings (a change is being saved and run) */
   updating: boolean;
   onRun: () => void;
-  /** click a value (a bar, a Top N row): drill into it */
+  /** click a value (a bar or segment, a Top N row): show it over time */
   onPick: ((pick: Pick) => void) | null;
   /** right-click a value: its menu at the pointer */
   onPickMenu: ((pick: Pick, x: number, y: number) => void) | null;
@@ -49,7 +49,7 @@ function Message({ children, tone = 'muted' }: { children: React.ReactNode; tone
 
 export function WidgetBody(props: BodyProps) {
   const { projectId, widget, result, labels, height, loading, refreshing, monitors, filtered, updating, onRun, onPick, onPickMenu, drilled } = props;
-  // Bars and Top N pick one value of the widget's dimension
+  // Top N picks one value of the widget's dimension (bars build their own picks: stacked segments have two)
   const dimension = opt<string>(widget, 'dimension', '');
   const single = (value: string): Pick => ({ values: [{ dimension, value }] });
   const pick = onPick && dimension ? (value: string) => onPick(single(value)) : null;
@@ -94,7 +94,7 @@ export function WidgetBody(props: BodyProps) {
     case 'timeseries': return <TimeseriesWidget widget={widget} result={result} labels={labels} height={height} format={format}
       overlay={monitor && band.data ? overlayFromPoints(band.data.points) : null} />;
     case 'bar': return <BarWidget widget={widget} result={result} labels={labels} height={height} format={format}
-      onPick={opt(widget, 'stack_by', null) ? null : pick} onMenu={menu} selected={selected} />;
+      onPick={dimension ? onPick : null} onMenu={dimension ? onPickMenu : null} selected={drilled} />;
     case 'leaderboard': return <LeaderboardWidget widget={widget} result={result} format={format}
       higherIsBetter={opt(widget, 'higher_is_better', true)} onPick={pick} onMenu={menu} selected={selected} />;
     case 'table': return <TableWidget widget={widget} result={result} labels={labels} onMenu={onPickMenu} />;

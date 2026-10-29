@@ -14,6 +14,8 @@ import { useProjectEvents } from '../../../../lib/sse';
 import { api, type GraphDto } from '../../../../lib/api';
 import ModelNodeComponent from '../ModelNode';
 import { computeLayout } from '../../lib/layout';
+import { drawsNodes, finishedStatus, initStepOperation, isWarningLine, type OperationStatus } from '../../lib/operationRun';
+import { OperationNode } from './OperationNode';
 
 interface ProjectRunButtonsProps {
   projectId: number;
@@ -58,14 +60,17 @@ type NodeStatus = 'pending' | 'running' | 'success' | 'error' | 'warn' | 'idle';
 
 interface RunInfo {
   command: string;
+  /** the operation's name (`source freshness`, `docs generate`) */
+  label: string;
   select: string | null;
   startedAt: string;
 }
 
 interface RunPanelProps {
   projectId: number;
+  /** the project node's name for commands without DAG nodes */
+  projectName: string;
   graph: GraphDto | null;
-  onRunStart: () => void;
 }
 
 const nodeTypes = { model: ModelNodeComponent };
@@ -137,8 +142,17 @@ function buildDisplayGraph(graph: GraphDto, runNodeIds: Set<string>): GraphDto {
   };
 }
 
-function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
+function RunPanelInner({ projectId, projectName, graph }: RunPanelProps) {
   const [runInfo, setRunInfo] = useState<RunInfo | null>(null);
+  // a command without DAG nodes: the project node's status (null while showing a node run)
+  const [operation, setOperation] = useState<OperationStatus | null>(null);
+  const warnedRef = useRef(false);
+  // read by the event handler, set with the state (events can arrive before a re-render)
+  const operationRef = useRef<OperationStatus | null>(null);
+  const showOperation = useCallback((status: OperationStatus | null) => {
+    operationRef.current = status;
+    setOperation(status);
+  }, []);
   const [running, setRunning] = useState(false);
   const [runNodeIds, setRunNodeIds] = useState<Set<string>>(new Set());
   const [nodeStatuses, setNodeStatuses] = useState<Record<string, NodeStatus>>({});
@@ -164,9 +178,67 @@ function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
 
   useEffect(() => () => stopTimer(), [stopTimer]);
 
+  const startOperation = useCallback((info: RunInfo) => {
+    warnedRef.current = false;
+    showOperation('running');
+    setRunInfo(info);
+    setRunning(true);
+    startTimer();
+  }, [startTimer, showOperation]);
+
+  // once only: a single-model compile reports both run_finished and compile_finished
+  const finishOperation = useCallback((status: OperationStatus) => {
+    if (operationRef.current !== 'running') return;
+    showOperation(status);
+    setRunning(false);
+    stopTimer();
+  }, [stopTimer, showOperation]);
+
   useProjectEvents(projectId, useCallback((event) => {
+    // dbt run outside the runner (no run_* events): docs generate, the project compile and the
+    // init pipeline's dbt steps announce themselves with these; their output arrives as project_log
+    const now = () => new Date().toISOString();
+    if (event.type === 'docs_generating') {
+      startOperation({ command: 'docs', label: 'docs generate', select: null, startedAt: now() });
+      return;
+    }
+    if (event.type === 'docs_generated') {
+      finishOperation(finishedStatus((event.data as { ok?: boolean } | undefined)?.ok === false ? 1 : 0, warnedRef.current));
+      return;
+    }
+    if (event.type === 'compile_started') {
+      startOperation({ command: 'compile', label: 'compile', select: null, startedAt: now() });
+      return;
+    }
+    if (event.type === 'compile_finished') {
+      finishOperation(finishedStatus((event.data as { ok?: boolean } | undefined)?.ok === false ? 1 : 0, warnedRef.current));
+      return;
+    }
+    if (event.type === 'init_step') {
+      const d = event.data as { name: string; status: string; return_code?: number | null; log?: string };
+      const label = initStepOperation(d.name);
+      if (!label) return;
+      if (d.status === 'running') {
+        startOperation({ command: label, label, select: null, startedAt: now() });
+      } else {
+        const warned = warnedRef.current || (d.log ?? '').split('\n').some((l) => isWarningLine(stripAnsi(l)));
+        finishOperation(finishedStatus(d.status === 'error' ? (d.return_code || 1) : 0, warned));
+      }
+      return;
+    }
+    if (event.type === 'project_log') {
+      if (operationRef.current === 'running' && isWarningLine(stripAnsi((event.data as { line: string }).line))) warnedRef.current = true;
+      return;
+    }
+
     if (event.type === 'run_started') {
-      const d = event.data as { command: string; select: string | null; started_at: string };
+      const d = event.data as { command: string; label?: string; select: string | null; started_at: string };
+      const info = { command: d.command, label: d.label ?? d.command, select: d.select, startedAt: d.started_at };
+      if (!drawsNodes(d.command)) {
+        startOperation(info);
+        return;
+      }
+      showOperation(null);
       // Rebuild name→uid lookup from the current graph
       nameToUidRef.current = new Map(
         graphRef.current?.nodes.map((n) => [n.name, n.unique_id]) ?? []
@@ -174,14 +246,17 @@ function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
       // Mark that a new run is starting — don't wipe the DAG yet.
       // It will be cleared when the first model's START line arrives.
       newRunPendingRef.current = true;
-      setRunInfo({ command: d.command, select: d.select, startedAt: d.started_at });
+      setRunInfo(info);
       setRunning(true);
       startTimer();
-      onRunStart();
     }
 
     if (event.type === 'run_log') {
       const line = (event.data as { line: string }).line;
+      if (operationRef.current !== null) {
+        if (isWarningLine(stripAnsi(line))) warnedRef.current = true;
+        return;
+      }
 
       // Lazily build name map if graph loaded after run_started
       if (nameToUidRef.current.size === 0 && graphRef.current) {
@@ -216,7 +291,17 @@ function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
       }
     }
 
+    // dbt wasn't found: no run_finished follows
+    if (event.type === 'run_error') {
+      finishOperation('error');
+      return;
+    }
+
     if (event.type === 'run_finished') {
+      if (operationRef.current !== null) {
+        finishOperation(finishedStatus((event.data as { return_code?: number | null }).return_code, warnedRef.current));
+        return;
+      }
       setRunning(false);
       stopTimer();
       // Confirm final statuses from the backend-persisted results
@@ -232,7 +317,7 @@ function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
         });
       }).catch(() => {});
     }
-  }, [projectId, startTimer, stopTimer, onRunStart]));
+  }, [projectId, startTimer, stopTimer, startOperation, finishOperation, showOperation]));
 
   const miniGraph = useMemo(() => {
     if (!graph || runNodeIds.size === 0) return null;
@@ -278,7 +363,7 @@ function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
       {/* Run header */}
       <div className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-800 shrink-0 select-none">
         <span className={`text-xs font-semibold uppercase tracking-wide ${commandColor}`}>
-          {runInfo.command}
+          {runInfo.label}
         </span>
         {runInfo.select && (
           <span className="text-xs font-mono text-gray-400 truncate max-w-xs">{runInfo.select}</span>
@@ -301,17 +386,18 @@ function RunPanelInner({ projectId, graph, onRunStart }: RunPanelProps) {
 
       {/* Execution DAG */}
       <div className="overflow-hidden relative flex-1">
-        {running && runNodeIds.size === 0 && (
+        {operation !== null && <OperationNode project={projectName} operation={runInfo.label} status={operation} />}
+        {operation === null && running && runNodeIds.size === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-600">
             Waiting for models to start…
           </div>
         )}
-        {!running && runNodeIds.size === 0 && (
+        {operation === null && !running && runNodeIds.size === 0 && (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-600">
             No models executed.
           </div>
         )}
-        {runNodeIds.size > 0 && (
+        {operation === null && runNodeIds.size > 0 && (
           <ReactFlow
             nodes={rfNodes}
             edges={rfEdges}

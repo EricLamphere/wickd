@@ -1,6 +1,6 @@
 // Metric summary: the period's total (its own query, never a sum of the trend), the previous
 // period's total and the change (green/red by "higher is better"), and the trend with the
-// previous period drawn faded underneath.
+// previous period drawn faded underneath. Each part but the total can be turned off.
 import { linePath, areaPath, plotPoints } from '../../../../../lib/charts';
 import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import {
@@ -36,6 +36,9 @@ export function SummaryWidget({ widget, result, labels, format }: {
   const metrics = widget.metrics ?? [];
   const higherIsBetter = opt(widget, 'higher_is_better', true);
   const showTrend = opt(widget, 'trend', true);
+  const showChange = opt(widget, 'show_change', true);
+  const showPrevious = opt(widget, 'show_previous', true);
+  const previousLine = opt(widget, 'previous_line', true);
   const { total, total_previous: totalPrev, trend, trend_previous: trendPrev } = result.queries;
   const time = `metric_time__${result.grain}`;
   // per metric, a narrow widget gets short numbers (12.3K) so they fit
@@ -48,7 +51,7 @@ export function SummaryWidget({ widget, result, labels, format }: {
         const ratio = changeRatio(value, previous);
         const change = formatChange(ratio);
         const points = trend?.status === 'ok' ? series(trend.columns, trend.rows, m, time) : [];
-        const prevPoints = trendPrev?.status === 'ok' ? alignPrevious(points, series(trendPrev.columns, trendPrev.rows, m, time)) : [];
+        const prevPoints = previousLine && trendPrev?.status === 'ok' ? alignPrevious(points, series(trendPrev.columns, trendPrev.rows, m, time)) : [];
         const values = points.map((p) => p.v).filter((v): v is number => v !== null);
         return (
           <div key={m} className="flex flex-col gap-1 min-w-0 h-full" data-export-kpi="">
@@ -57,11 +60,11 @@ export function SummaryWidget({ widget, result, labels, format }: {
               <span className={`${narrow ? 'text-xl' : 'text-2xl'} font-semibold text-gray-100 tabular-nums truncate`} title={formatMetric(value, format)}>
                 {formatMetric(value, format, narrow ? 'short' : true)}
               </span>
-              {change && (
+              {showChange && change && (
                 <span className={`shrink-0 px-1.5 py-px text-[11px] font-medium rounded ${TONE[changeTone(ratio, higherIsBetter)]}`}>{change}</span>
               )}
             </div>
-            {totalPrev && (
+            {showPrevious && totalPrev && (
               <span className="text-[11px] text-gray-500 truncate" title={rangeLabel(result.previous)}>
                 vs {formatMetric(previous, format, narrow ? 'short' : true)}{!narrow && result.previous ? ` · ${rangeLabel(result.previous)}` : ''}
               </span>

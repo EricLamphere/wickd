@@ -215,6 +215,16 @@ def test_summary_without_trend_or_comparison() -> None:
     assert list(_roles(plan)) == ["total"] and plan.previous is None
 
 
+def test_summary_parts_drop_their_previous_queries() -> None:
+    no_line = _plan({"type": "summary", "metrics": ["revenue"], "options": {"previous_line": False}})
+    assert list(_roles(no_line)) == ["total", "total_previous", "trend"]
+    totals_only = _plan({"type": "summary", "metrics": ["revenue"],
+                         "options": {"show_change": False, "show_previous": False}})
+    assert list(_roles(totals_only)) == ["total", "trend", "trend_previous"]
+    change_only = _plan({"type": "summary", "metrics": ["revenue"], "options": {"show_previous": False, "trend": False}})
+    assert list(_roles(change_only)) == ["total", "total_previous"]
+
+
 def test_widget_period_override_per_key() -> None:
     plan = _plan({"type": "timeseries", "metrics": ["revenue"], "period": {"current": "last_7_days"}},
                  period={"current": "last_90_days", "compare": "previous_year"})
@@ -237,11 +247,20 @@ def test_bar_top_n_and_previous_without_limit() -> None:
     assert "limit" not in q["current_previous"]
 
 
-def test_stacked_bar_skips_the_comparison() -> None:
+def test_stacked_bar_is_compared_by_bar_and_stack() -> None:
     plan = _plan({"type": "bar", "metrics": ["revenue"],
                   "options": {"dimension": "customer__region", "stack_by": "order__channel"}})
-    assert list(_roles(plan)) == ["current"]
-    assert plan.notes == ("the comparison isn't shown on stacked bars",)
+    q = _roles(plan)
+    assert list(q) == ["current", "current_previous"] and plan.notes == ()
+    assert q["current_previous"]["group_by"] == ["customer__region", "order__channel"]
+    assert "limit" not in q["current"]  # top N bars are picked from the totals client side
+
+
+def test_bar_previous_period_can_be_hidden() -> None:
+    for options in ({}, {"stack_by": "order__channel"}):
+        plan = _plan({"type": "bar", "metrics": ["revenue"],
+                      "options": {"dimension": "customer__region", "show_previous": False, **options}})
+        assert list(_roles(plan)) == ["current"]
 
 
 def test_table_and_leaderboard() -> None:
@@ -251,6 +270,18 @@ def test_table_and_leaderboard() -> None:
     lb = _roles(_plan({"type": "leaderboard", "metrics": ["revenue", "order_count"], "options": {"dimension": "customer__region"}}))
     assert lb["current"]["metrics"] == ["revenue"] and lb["current"]["limit"] == 10
     assert "current_previous" in lb
+
+
+def test_table_rows_by_period() -> None:
+    plan = _plan({"type": "table", "metrics": ["revenue"], "options": {"period_grain": "auto"}})
+    t = _roles(plan)
+    assert t["current"]["group_by"] == ["metric_time__day"] and t["current"]["order_by"] == ["metric_time__day"]
+    assert t["current"]["limit"] == 50 and "limit" not in t["current_previous"]
+    weekly = _plan({"type": "table", "metrics": ["revenue"],
+                    "options": {"period_grain": "week", "dimensions": ["customer__region"]}})
+    w = _roles(weekly)
+    assert w["current"]["group_by"] == ["metric_time__week", "customer__region"]
+    assert w["current"]["order_by"] == ["metric_time__week", "-revenue"] and weekly.grain == "week"
 
 
 def test_text_and_empty_widgets_have_no_queries() -> None:

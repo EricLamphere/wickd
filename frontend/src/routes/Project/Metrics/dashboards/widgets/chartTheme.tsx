@@ -19,19 +19,22 @@ export interface TooltipRow {
   color: string;
   value: number | null;
   dashed?: boolean;
+  /** the row under the pointer (a stacked segment) */
+  active?: boolean;
 }
 
-export function TooltipBox({ title, rows, format }: { title: string; rows: TooltipRow[]; format: MetricFormat }) {
+export function TooltipBox({ title, rows, format, hint }: { title: string; rows: TooltipRow[]; format: MetricFormat; hint?: string }) {
   return (
-    <div className="min-w-[10rem] px-2 py-1.5 bg-surface-elevated border border-gray-700 rounded shadow-lg text-[11px]">
-      <p className="mb-0.5 text-gray-300 font-medium">{title}</p>
+    <div className="min-w-[10rem] max-w-[18rem] px-2 py-1.5 bg-surface-elevated border border-gray-700 rounded shadow-lg text-[11px]">
+      <p className="mb-0.5 text-gray-300 font-medium truncate">{title}</p>
       {rows.map((r) => (
-        <p key={r.label} className="flex items-center gap-2 text-gray-400">
+        <p key={r.label} className={`flex items-center gap-2 ${r.active ? 'text-gray-100 font-medium' : 'text-gray-400'}`}>
           <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: r.color, opacity: r.dashed ? 0.6 : 1 }} />
           <span className="flex-1 truncate">{r.label}</span>
           <span className="font-mono text-gray-200 tabular-nums">{formatMetric(r.value, format)}</span>
         </p>
       ))}
+      {hint && <p className="mt-1 pt-1 border-t border-gray-800 text-[10px] text-gray-500 truncate">{hint}</p>}
     </div>
   );
 }

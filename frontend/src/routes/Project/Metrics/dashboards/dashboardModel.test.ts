@@ -280,6 +280,7 @@ describe('result signatures', () => {
     expect(querySignature(d, { ...d.widgets[0], title: 'X', width: 90, height: 500 })).toBe(base);
     expect(querySignature(d, { ...d.widgets[0], options: { trend: false } })).not.toBe(base);
     expect(querySignature(d, { ...d.widgets[0], options: { format: 'currency', higher_is_better: false } })).toBe(base);
+    expect(querySignature(d, { ...d.widgets[0], options: { show_change: false } })).not.toBe(base);
     const bar = w('c', { type: 'bar', options: { dimension: 'a' } });
     expect(querySignature(d, { ...bar, options: { dimension: 'a', orientation: 'horizontal', sort: 'name' } })).toBe(querySignature(d, bar));
     expect(querySignature(d, { ...bar, options: { dimension: 'b' } })).not.toBe(querySignature(d, bar));
@@ -288,4 +289,5 @@ describe('result signatures', () => {
     expect(Object.keys(signatures(d, ['a']))).toEqual(['a']);
     expect(signatures(null)).toEqual({});
   });
+
 });

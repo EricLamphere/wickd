@@ -93,6 +93,7 @@ export default function ProjectLayout() {
           projectId={id}
           graph={graph ?? null}
           projectPath={project?.path ?? null}
+          projectName={project?.name ?? 'Project'}
           selectedNodeId={selectedNodeId}
           selectedNodeIds={selectedNodeIds}
           selectedColumns={selectedColumns}

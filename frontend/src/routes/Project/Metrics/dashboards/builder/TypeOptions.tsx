@@ -89,7 +89,14 @@ export function TypeOptions({ widget, dimensions, onChange }: Props) {
           <FormatOptions widget={widget} onChange={onChange} />
           <Toggle label="Higher is better (green when it goes up)" checked={opt(widget, 'higher_is_better', true)}
             onChange={(v) => set('higher_is_better', v ? null : false)} />
+          <Toggle label="Show the change %" checked={opt(widget, 'show_change', true)} onChange={(v) => set('show_change', v ? null : false)} />
+          <Toggle label="Show the previous period's value and dates" checked={opt(widget, 'show_previous', true)}
+            onChange={(v) => set('show_previous', v ? null : false)} />
           <Toggle label="Show the trend" checked={opt(widget, 'trend', true)} onChange={(v) => set('trend', v ? null : false)} />
+          {opt(widget, 'trend', true) && (
+            <Toggle label="Show the previous period on the trend" checked={opt(widget, 'previous_line', true)}
+              onChange={(v) => set('previous_line', v ? null : false)} />
+          )}
         </>
       );
     case 'timeseries':
@@ -115,7 +122,7 @@ export function TypeOptions({ widget, dimensions, onChange }: Props) {
       return (
         <>
           <Row label="Bars by"><Select value={opt<string | null>(widget, 'dimension', null)} options={dims} allowNone="Pick a dimension" onChange={(v) => set('dimension', v)} /></Row>
-          <Row label="Stack by" hint="Stacked bars don't show the comparison.">
+          <Row label="Stack by" hint="With several metrics, one stacked chart per metric.">
             <Select value={opt<string | null>(widget, 'stack_by', null)} options={dims.filter((d) => d.value !== opt(widget, 'dimension', ''))}
               allowNone="Don't stack" onChange={(v) => set('stack_by', v)} />
           </Row>
@@ -130,6 +137,8 @@ export function TypeOptions({ widget, dimensions, onChange }: Props) {
             </Row>
           </div>
           <Row label="Top N bars"><NumberInput value={opt(widget, 'top_n', 10)} min={1} max={50} onChange={(v) => set('top_n', v)} /></Row>
+          <Toggle label="Show the previous period (gray bars; faded stacks when stacked)" checked={opt(widget, 'show_previous', true)}
+            onChange={(v) => set('show_previous', v ? null : false)} />
           <Row label="Several metrics"><Select value={opt(widget, 'layout', 'auto')} options={LAYOUTS} onChange={(v) => set('layout', v === 'auto' ? null : v)} /></Row>
           <FormatOptions widget={widget} onChange={onChange} />
         </>
@@ -148,7 +157,11 @@ export function TypeOptions({ widget, dimensions, onChange }: Props) {
       const chosen: string[] = opt(widget, 'dimensions', []);
       return (
         <>
-          <Row label="Rows by" hint="Up to 5 dimensions; none = one row of totals.">
+          <Row label="Rows by period" hint="One row per period, oldest first (then by the dimensions below); compared period by period.">
+            <Select value={opt<string | null>(widget, 'period_grain', null)} options={GRAINS} allowNone="No"
+              onChange={(v) => set('period_grain', v)} />
+          </Row>
+          <Row label="Rows by" hint="Up to 5 dimensions; with no period or dimensions, one row of totals.">
             <div className="flex flex-col gap-1 max-h-40 overflow-auto">
               {dimensions.map((d) => (
                 <Toggle key={d} label={d} checked={chosen.includes(d)}

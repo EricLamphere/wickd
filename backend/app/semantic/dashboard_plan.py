@@ -4,10 +4,10 @@ Each widget becomes a few queries, each with a role, all run in the dashboard's 
 
 | widget      | roles (the *_previous ones only while comparing)                  |
 |-------------|--------------------------------------------------------------------|
-| summary     | total, total_previous, trend, trend_previous (trend when enabled)  |
+| summary     | total, total_previous, trend, trend_previous (each part optional)  |
 | timeseries  | current, previous: metric_time at the grain (+ split dimension)    |
-| bar         | current, previous: by category (+ stack dimension, never compared) |
-| table       | current, previous: by its dimensions (previous when comparing)    |
+| bar         | current, previous: by category (+ stack dimension)                 |
+| table       | current, previous: by period (optional) + its dimensions          |
 | leaderboard | current (top N), previous (all values, matched by key)             |
 | text        | none                                                               |
 
@@ -47,6 +47,9 @@ class SummaryOptions(_Options):
     decimals: int | None = Field(default=None, ge=0, le=6)
     higher_is_better: bool = True
     trend: bool = True
+    show_change: bool = True  # the change % badge
+    show_previous: bool = True  # "vs <previous total> · <previous dates>"
+    previous_line: bool = True  # the previous period under the trend
 
 
 class TimeseriesOptions(_Options):
@@ -65,9 +68,12 @@ class BarOptions(_Options):
     top_n: int = Field(default=10, ge=1, le=50)
     stack_by: Name | None = None
     layout: Layout = "auto"
+    show_previous: bool = True  # gray bars (faded stacks) for the comparison period
 
 
 class TableOptions(_Options):
+    # rows by period first (None = no; auto = the dashboard's grain), then by the dimensions
+    period_grain: Grain | None = None
     dimensions: list[Name] = Field(default_factory=list, max_length=5)
     compare_columns: bool = True
     limit: int = Field(default=50, ge=1, le=500)
@@ -221,9 +227,12 @@ def plan_widget(widget: Widget, dashboard: Dashboard, catalog: Mapping[str, Any]
     grain = dashboard_grain
 
     if isinstance(options, SummaryOptions):
-        queries += _pair("total", metrics, where, current, previous)
+        # a previous query only for the parts that show it
+        queries += _pair("total", metrics, where, current,
+                         previous if options.show_change or options.show_previous else None)
         if options.trend:
-            queries += _pair("trend", metrics, where, current, previous, group_by=[time])
+            queries += _pair("trend", metrics, where, current, previous if options.previous_line else None,
+                             group_by=[time])
     elif isinstance(options, TimeseriesOptions):
         grain = options.grain if options.grain != "auto" else dashboard_grain
         _check_dimensions([options.split_by], available)
@@ -233,20 +242,26 @@ def plan_widget(widget: Widget, dashboard: Dashboard, catalog: Mapping[str, Any]
         if not options.dimension:
             raise WidgetBroken("pick a dimension to break the bars down by")
         _check_dimensions([options.dimension, options.stack_by], available)
+        compare = previous if options.show_previous else None
         if options.stack_by:
-            group_by = [options.dimension, options.stack_by]
-            queries.append(QueryPlan("current", _query(metrics, where, current, group_by=group_by)))
-            if previous is not None:
-                notes.append("the comparison isn't shown on stacked bars")
+            # every bar × stack value (top N bars are picked from their totals when drawn)
+            queries += _pair("current", metrics, where, current, compare,
+                             group_by=[options.dimension, options.stack_by])
         else:
-            queries += _pair("current", metrics, where, current, previous, group_by=[options.dimension],
+            queries += _pair("current", metrics, where, current, compare, group_by=[options.dimension],
                              order_by=[f"-{metrics[0]}"], limit=options.top_n)
     elif isinstance(options, TableOptions):
         _check_dimensions(options.dimensions, available)
         compare = previous if options.compare_columns else None
-        queries += _pair("current", metrics, where, current, compare, group_by=list(options.dimensions) or None,
-                         order_by=[f"-{metrics[0]}"] if options.dimensions else None,
-                         limit=options.limit if options.dimensions else None)
+        by_period: list[str] = []
+        if options.period_grain:
+            grain = options.period_grain if options.period_grain != "auto" else dashboard_grain
+            by_period = [f"{METRIC_TIME}__{grain}"]
+        group_by = [*by_period, *options.dimensions]
+        # oldest period first, then the largest values within it
+        order_by = [*by_period, *([f"-{metrics[0]}"] if options.dimensions else [])]
+        queries += _pair("current", metrics, where, current, compare, group_by=group_by or None,
+                         order_by=order_by or None, limit=options.limit if group_by else None)
     elif isinstance(options, LeaderboardOptions):
         if not options.dimension:
             raise WidgetBroken("pick a dimension to rank")

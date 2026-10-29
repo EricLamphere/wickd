@@ -1,5 +1,5 @@
 // The drill-down inside a widget: its metrics over time for the picked value (current period,
-// previous dashed gray), next to or under the original chart. Not saved to the file.
+// previous dashed gray), under the original chart. Not saved to the file.
 import { Filter, Loader2, X } from 'lucide-react';
 import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import { semanticErrorBody } from '../../../../../lib/semanticApi';
@@ -26,7 +26,7 @@ export function DrillPanel({ projectId, widget, result, pick, labels, format, he
   const series: DashboardWidget = { id: `${widget.id}-drill`, type: 'timeseries', width: 100, height, metrics, options: { style: 'line' } };
   const error = drill.error ? (semanticErrorBody(drill.error)?.message ?? String(drill.error)) : null;
   return (
-    <div className="flex flex-col min-w-0 min-h-0 h-full pl-3 border-l border-gray-800" data-drill="">
+    <div className="flex flex-col min-w-0 min-h-0 h-full" data-drill="">
       <div className="flex items-center gap-1.5 shrink-0 mb-1">
         <span className="min-w-0 px-1.5 py-0.5 text-[10px] rounded border border-brand-800 bg-brand-950/40 text-brand-200 truncate"
           title={pick.values.map((v) => `${v.dimension} = ${v.value}`).join(', ')}>

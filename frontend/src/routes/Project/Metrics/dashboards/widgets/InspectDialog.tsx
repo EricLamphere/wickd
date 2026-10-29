@@ -1,119 +1,137 @@
-// Inspect a value: for each of the widget's metrics, its value, the previous period's, the change
-// and its share of what's shown, then the value period by period (current vs previous).
-import { useEffect, useMemo } from 'react';
-import { ExternalLink, Filter, SplitSquareHorizontal, X } from 'lucide-react';
-import { DataTable } from '../../../../../components/DataTable';
-import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
-import { semanticErrorBody } from '../../../../../lib/semanticApi';
-import { formatTime } from '../../lib/metricSeries';
-import { alignPrevious, changeTone, formatChange, formatMetric, rangeLabel, series, type MetricFormat } from '../dashboardModel';
-import { pickLabel, pickStats, type Pick } from '../drill';
-import { useDrill } from './useDrill';
+// "Drill into…" a value: draft widgets filtered to it — a metric summary beside a time series,
+// a horizontal bar chart by the first shared dimension no filter uses, and a table by period. Click a widget to configure it in the side pane with every setting a dashboard
+// widget has; Add to dashboard inserts the chosen ones (as configured) after the source widget.
+import { useEffect, useRef, useState } from 'react';
+import { ExternalLink, Filter, X } from 'lucide-react';
+import type { DashboardDoc, DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
+import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
+import { rangeLabel, sharedDimensions, widgetInfo } from '../dashboardModel';
+import { breakdownDimension, DRILLED_CHARTS, drilledWidgets, pickFilters, pickLabel, type DrilledChart, type Pick } from '../drill';
+import { errorText } from '../useDashboards';
+import { WidgetSettings } from '../builder/WidgetSettings';
+import { AddDrilledMenu } from './AddDrilledMenu';
+import { DraftSlot } from './DraftSlot';
+import { useWidgetPreview } from './useWidgetPreview';
 import type { ValueActions } from './ValueMenu';
 
 interface Props {
   projectId: number;
+  slug: string;
+  doc: DashboardDoc;
   widget: DashboardWidget;
   result: WidgetResultDto;
   pick: Pick;
   labels: Map<string, string>;
-  format: MetricFormat;
-  higherIsBetter: boolean;
-  actions: Omit<ValueActions, 'onInspect'>;
+  catalog: SemanticCatalogDto;
+  actions: Omit<ValueActions, 'onInspect' | 'onDrill'>;
+  /** the chosen draft widgets onto the dashboard (absent while presenting) */
+  onAddToDashboard: ((widgets: DashboardWidget[]) => void) | null;
   onClose: () => void;
 }
 
-/** Warehouse floats (744.8900000000001) to 2 decimals; still numbers, so copy stays numeric. */
-const round = (v: number | null) => (v === null ? null : Math.round(v * 100) / 100);
+const TOP_PX = 260;
+const BREAKDOWN_PX = 300;
+const TABLE_PX = 320;
 
-const TONE = { good: 'text-emerald-400', bad: 'text-red-400', flat: 'text-gray-400' };
+type Drafts = Partial<Record<DrilledChart, DashboardWidget>>;
 
-export function InspectDialog({ projectId, widget, result, pick, labels, format, higherIsBetter, actions, onClose }: Props) {
-  const drill = useDrill(projectId, result, pick);
-  const metrics = (result.queries.current?.query.metrics ?? widget.metrics ?? []) as string[];
-  const grain = result.grain ?? 'day';
+export function InspectDialog({ projectId, slug, doc, widget, result, pick, labels, catalog, actions, onAddToDashboard, onClose }: Props) {
+  const [drafts, setDrafts] = useState<Drafts>(() => {
+    const filters = [...(doc.filters ?? []), ...(widget.filters ?? []), ...pickFilters(pick)];
+    const dimension = breakdownDimension(sharedDimensions(catalog, widget.metrics ?? []), filters);
+    return drilledWidgets(widget, pick, DRILLED_CHARTS, dimension, labels);
+  });
+  const [selected, setSelected] = useState<DrilledChart | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const pane = useRef<HTMLElement>(null);
+  const previews = {
+    summary: useWidgetPreview(projectId, slug, drafts.summary ?? null),
+    timeseries: useWidgetPreview(projectId, slug, drafts.timeseries ?? null),
+    breakdown: useWidgetPreview(projectId, slug, drafts.breakdown ?? null),
+    table: useWidgetPreview(projectId, slug, drafts.table ?? null),
+  };
+  const update = (chart: DrilledChart, next: DashboardWidget) => setDrafts((cur) => ({ ...cur, [chart]: next }));
 
   useEffect(() => {
-    // capture phase: the table inside handles keys of its own
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    // capture phase: the table inside handles keys of its own. In the settings pane Escape closes the pane.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      if (pane.current?.contains(e.target as Node)) setSelected(null); else onClose();
+    };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
-  const table = useMemo(() => {
-    if (!drill.data) return null;
-    const time = `metric_time__${grain}`;
-    const { current, previous } = drill.data;
-    const columns = ['period', ...metrics.flatMap((m) => {
-      const label = labels.get(m) ?? m;
-      return previous ? [label, `${label} (previous)`, `${label} change`] : [label];
-    })];
-    const base = series(current.columns, current.rows, metrics[0], time);
-    const rows = base.map((p, i) => [formatTime(p.x, grain), ...metrics.flatMap((m) => {
-      const cur = series(current.columns, current.rows, m, time);
-      const v = round(cur.find((c) => c.x === p.x)?.v ?? null);
-      if (!previous) return [v];
-      const before = round(alignPrevious(cur, series(previous.columns, previous.rows, m, time))[i] ?? null);
-      return [v, before, formatChange(before === null || v === null || before === 0 ? null : (v - before) / Math.abs(before)) ?? ''];
-    })]);
-    return { columns, rows };
-  }, [drill.data, metrics, labels, grain]);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 3500);
+    return () => clearTimeout(t);
+  }, [notice]);
 
-  const error = drill.error ? (semanticErrorBody(drill.error)?.message ?? String(drill.error)) : null;
+  const slot = (chart: DrilledChart, height: number, className?: string) => {
+    const draft = drafts[chart];
+    if (!draft) return null;
+    const p = previews[chart];
+    return (
+      <DraftSlot projectId={projectId} widget={draft} result={p.data} loading={p.isLoading} fetching={p.isFetching}
+        error={p.error ? errorText(p.error) : null} labels={labels} height={height} selected={selected === chart}
+        onSelect={() => setSelected(chart)} onRun={() => p.refetch()} className={className} />
+    );
+  };
+  const editing = selected ? drafts[selected] : undefined;
   const run = (f: (p: Pick) => void) => () => { onClose(); f(pick); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div role="dialog" aria-label={`Inspect ${pickLabel(pick)}`} onClick={(e) => e.stopPropagation()}
-        className="flex flex-col w-full max-w-3xl max-h-[85vh] mx-4 bg-surface-panel border border-gray-700 rounded-lg shadow-2xl">
+      <div role="dialog" aria-label={`Drill into ${pickLabel(pick)}`} onClick={(e) => e.stopPropagation()}
+        className="flex flex-col w-[95vw] max-w-[88rem] h-[90vh] mx-4 bg-surface-panel border border-gray-700 rounded-lg shadow-2xl">
         <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-800">
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-gray-100 truncate">{pickLabel(pick)}</h2>
             <p className="text-[11px] text-gray-500 truncate">
               {pick.values.map((v) => `${v.dimension} = ${v.value}`).join(', ')}
               {result.current ? ` · ${rangeLabel(result.current)}` : ''}{result.previous ? ` vs ${rangeLabel(result.previous)}` : ''}
+              {' · click a widget to configure it'}
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-gray-500 hover:text-gray-300"><X size={16} /></button>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto p-5 flex flex-col gap-4">
-          <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, metrics.length))}, minmax(0, 1fr))` }}>
-            {metrics.map((m) => {
-              const s = pickStats(result, pick, m);
-              return (
-                <div key={m} className="flex flex-col gap-1 p-3 rounded border border-gray-800 bg-surface-app">
-                  <span className="text-[11px] text-gray-400 truncate">{labels.get(m) ?? m}</span>
-                  <span className="text-xl font-semibold text-gray-100 tabular-nums">{formatMetric(s?.value, format)}</span>
-                  {s?.previous !== null && s?.previous !== undefined && (
-                    <span className="text-[11px] text-gray-500">
-                      vs {formatMetric(s.previous, format)}
-                      {formatChange(s.change) && <span className={`ml-1.5 ${TONE[changeTone(s.change, higherIsBetter)]}`}>{formatChange(s.change)}</span>}
-                    </span>
-                  )}
-                  {s?.share !== null && s?.share !== undefined && (
-                    <span className="text-[11px] text-gray-500">{(s.share * 100).toFixed(1)}% of the values shown</span>
-                  )}
-                </div>
-              );
-            })}
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 min-w-0 overflow-auto p-5 flex flex-col gap-4">
+            <div className="flex gap-3 min-w-0">
+              {slot('summary', TOP_PX, 'w-1/3 shrink-0')}
+              {slot('timeseries', TOP_PX, 'flex-1')}
+            </div>
+            {slot('breakdown', BREAKDOWN_PX)}
+            {slot('table', TABLE_PX)}
           </div>
-          <section className="flex flex-col gap-1.5">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">By {grain}</h3>
-            {drill.isLoading && <p className="text-xs text-gray-500">Running…</p>}
-            {error && <p className="text-xs text-red-300">{error}</p>}
-            {table && <div className="h-64"><DataTable columns={table.columns.map((c, i) => ({ key: c, align: i ? 'right' as const : undefined }))} rows={table.rows} /></div>}
-          </section>
+          {selected && editing && (
+            <aside ref={pane} aria-label="Widget settings" className="flex flex-col w-80 shrink-0 border-l border-gray-800">
+              <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800">
+                <span className="flex-1 text-xs font-medium text-gray-200 truncate">Configure {widgetInfo(editing.type).label.toLowerCase()}</span>
+                <button onClick={() => setSelected(null)} aria-label="Close the settings" className="text-gray-500 hover:text-gray-200"><X className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-auto p-3">
+                <WidgetSettings projectId={projectId} doc={doc} widget={editing} catalog={catalog} labels={labels}
+                  onChange={(w) => update(selected, w)} onNotice={setNotice} />
+              </div>
+            </aside>
+          )}
         </div>
-        <div className="flex flex-wrap justify-end gap-2 px-5 py-3 border-t border-gray-800">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-gray-800">
+          {notice && <span className="flex-1 min-w-0 text-[11px] text-amber-300 truncate">{notice}</span>}
           <button onClick={run(actions.onOpenInExplorer)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">
             <ExternalLink className="w-3.5 h-3.5" />Open in explorer
           </button>
           <button onClick={run(actions.onApplyFilter)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">
             <Filter className="w-3.5 h-3.5" />Apply as dashboard filter
           </button>
-          <button onClick={run(actions.onDrill)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500">
-            <SplitSquareHorizontal className="w-3.5 h-3.5" />Drill into it
-          </button>
+          {onAddToDashboard && (
+            <AddDrilledMenu labels={labels}
+              items={DRILLED_CHARTS.flatMap((c) => (drafts[c] ? [{ id: c, widget: drafts[c]! }] : []))}
+              onAdd={(charts) => { onClose(); onAddToDashboard(charts.flatMap((c) => (drafts[c] ? [drafts[c]!] : []))); }} />
+          )}
         </div>
       </div>
     </div>

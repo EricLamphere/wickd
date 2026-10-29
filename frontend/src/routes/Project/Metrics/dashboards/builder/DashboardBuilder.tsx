@@ -28,7 +28,7 @@ import { WidgetsRail, type RailTab } from './WidgetsRail';
 import { WidgetFrame } from '../widgets/WidgetFrame';
 import { aiApi, type AiProposalDto } from '../../../../../lib/aiApi';
 import { ProposalReviewModal } from '../../../components/Wicky/ProposalReviewModal';
-import { pickFilters, type Pick } from '../drill';
+import { pickFilters, withUniqueIds, type Pick } from '../drill';
 
 /** The dragged copy glides into the widget's new spot on drop. */
 const DROP_ANIMATION: DropAnimation = {
@@ -218,12 +218,20 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
       if (base) onOpenExplorer(explorerStateFromBody({ ...base, where: [...(base.where ?? []), ...pickFilters(pick)] }, catalog));
     };
     return {
-      projectId, widget, result, labels, title: widgetTitle(widget, labels), selected: selected === widget.id, present,
+      projectId, slug, doc, widget, result, labels, catalog, title: widgetTitle(widget, labels), selected: selected === widget.id, present,
       loading: results.isLoading, refreshing: !!running && (running.size === 0 || running.has(widget.id)), monitors,
       // results computed for other settings: show "Updating…" rather than old data under the new settings
       updating: !!result && results.data?.signatures[widget.id] !== undefined && results.data.signatures[widget.id] !== querySignature(doc, widget),
       monitorStatus: status, filtered: !!ranQuery?.where?.length, dropHint: dnd.hintFor(widget),
       onSelect: () => select(widget), onRun: () => run([widget.id]), onApplyFilter: applyFilter, onOpenFiltered: openFiltered,
+      onAddDrilled: (drafts: DashboardWidget[]) => {
+        apply((d) => {
+          const added = withUniqueIds(drafts, d.widgets.map((w) => w.id));
+          const after = d.widgets.findIndex((w) => w.id === widget.id) + 1;
+          return added.reduce((acc, w, i) => insertWidget(acc, w, after + i), d);
+        });
+        setNotice(`Added ${drafts.length} widget${drafts.length === 1 ? '' : 's'} to the dashboard`);
+      },
       onOpenInExplorer: () => { if (ranQuery) onOpenExplorer(explorerStateFromBody(ranQuery, catalog)); },
       onDuplicate: () => apply((d) => duplicateWidget(d, widget.id)),
       onRemove: () => { apply((d) => removeWidget(d, widget.id)); if (selected === widget.id) setSelected(null); },

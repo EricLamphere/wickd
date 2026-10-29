@@ -202,6 +202,32 @@ async def test_results_then_refresh(db, client, tmp_path, worker, batches) -> No
     assert [w["widget_id"] for w in only.json()["widgets"]] == ["rev"]
 
 
+async def test_preview_runs_unsaved_widgets_in_the_dashboard_context(db, client, tmp_path, worker, batches) -> None:
+    project = await _project(db, tmp_path)
+    await _create(client, project, WIDGETS[:1])
+    base = f"/api/projects/{project.id}/dashboards/revenue-overview"
+    where = "{{ Dimension('customer__region') }} = 'north'"
+    draft = {"id": "drill", "type": "timeseries", "metrics": ["revenue"], "filters": [where]}
+
+    cached = await client.post(f"{base}/preview", json={"widgets": [draft], "run": False})
+    assert cached.status_code == 200, cached.text
+    assert [w["status"] for w in cached.json()["widgets"]] == ["not_run"] and not batches
+
+    ran = await client.post(f"{base}/preview", json={"widgets": [draft]})
+    widget = ran.json()["widgets"][0]
+    assert widget["widget_id"] == "drill" and widget["status"] == "ok"
+    assert widget["queries"]["current"]["query"]["where"] == [where]
+    assert len(batches) == 1
+
+    again = await client.post(f"{base}/preview", json={"widgets": [draft]})
+    assert again.json()["widgets"][0]["status"] == "ok" and len(batches) == 1  # stored: nothing re-run
+    saved = (await client.get(base)).json()["dashboard"]["widgets"]
+    assert [w["id"] for w in saved] == [WIDGETS[0]["id"]]  # never written to the file
+
+    bad = await client.post(f"{base}/preview", json={"widgets": [{"id": "Bad Id!", "type": "summary"}]})
+    assert bad.status_code == 400
+
+
 async def test_dashboard_period_and_filters_reach_the_explain(db, client, tmp_path, worker, batches) -> None:
     project = await _project(db, tmp_path)
     created = await _create(client, project, WIDGETS[:1])

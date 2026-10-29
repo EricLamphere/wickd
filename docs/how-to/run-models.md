@@ -41,6 +41,10 @@ The panel updates line-by-line as dbt emits output. You don't need to wait for t
 
 Click any node in the Execution DAG to jump to that model in the main DAG and see its details.
 
+Commands that don't run models — compile, docs generate, debug, source freshness, deps, run-operation and other custom commands — show a single node instead: the project's name with the operation under it, blue while running, then green on success, red on failure, or yellow if dbt printed warnings.
+
+The bottom pane never opens by itself when something runs: it stays open or closed as you left it. Open the **Execution DAG** tab whenever you want to watch.
+
 ## Reading run output
 
 The **Project Logs** tab (next to the Run tab in the bottom panel) shows full stdout/stderr from dbt. This is useful for debugging failing models.

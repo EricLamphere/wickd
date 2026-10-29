@@ -1,12 +1,17 @@
-// Drilling into a value (plan 12 follow-up): clicking a bar, a Top N row or (right-click) a
-// table row splits the widget and shows its metrics over time for that value, using the query
-// the widget ran (so its period, comparison and filters carry over). Pure; tested in drill.test.ts.
-import type { WidgetResultDto } from '../../../../lib/dashboardsApi';
+// Picking a value (plan 12 follow-up): clicking a bar, a stacked bar segment, a Top N row or
+// (right-click) a table row splits the widget and shows its metrics over time for that value
+// ("Show timeseries", from the query the widget ran, so its period, comparison and filters
+// carry over). "Drill into…" opens a dialog of draft widgets filtered to the value — a summary,
+// a time series, a breakdown by the first dimension no filter uses, and a table by period — each
+// configurable like any widget and addable to the dashboard. Pure; tested in drill.test.ts.
+import type { DashboardWidget, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import type { MetricQueryBody } from '../../../../lib/semanticApi';
-import { categories, changeRatio, filterFor } from './dashboardModel';
-import { toNumber } from '../lib/metricSeries';
+import { filterFor, newWidgetId, widgetInfo, widgetTitle } from './dashboardModel';
 
-/** The value(s) picked: one dimension for a bar or Top N row, every dimension of a table row. */
+/**
+ * The value(s) picked: one dimension for a bar or Top N row, the bar's and the stack's for a
+ * stacked bar segment, every dimension of a table row.
+ */
 export interface Pick {
   values: { dimension: string; value: string }[];
 }
@@ -31,46 +36,18 @@ export function drillQuery(ran: MetricQueryBody, pick: Pick, grain: string): Met
   return body;
 }
 
+export interface QueryPair {
+  current: MetricQueryBody;
+  previous: MetricQueryBody | null;
+}
+
 /** The drill queries for a widget's result: the current period, and the previous one when compared. */
-export function drillBodies(result: WidgetResultDto, pick: Pick): { current: MetricQueryBody; previous: MetricQueryBody | null } | null {
+export function drillBodies(result: WidgetResultDto, pick: Pick): QueryPair | null {
   const current = result.queries.current;
   if (!current) return null;
-  const grain = result.grain ?? 'day';
   const previous = result.queries.current_previous;
-  return {
-    current: drillQuery(current.query, pick, grain),
-    previous: previous ? drillQuery(previous.query, pick, grain) : null,
-  };
-}
-
-export interface PickStats {
-  value: number | null;
-  previous: number | null;
-  change: number | null;
-  /** share of the total over the values shown (null for ratios we can't add up honestly: tables) */
-  share: number | null;
-}
-
-/** The pick's value for `metric` in the widget's result, the previous one and the change. */
-export function pickStats(result: WidgetResultDto, pick: Pick, metric: string): PickStats | null {
-  const cur = result.queries.current;
-  if (!cur || cur.status !== 'ok') return null;
-  const prev = result.queries.current_previous?.status === 'ok' ? result.queries.current_previous : null;
-  if (pick.values.length === 1) {
-    const { dimension, value } = pick.values[0];
-    const cats = categories(cur, prev, dimension, metric);
-    const hit = cats.find((c) => c.key === value);
-    if (!hit) return null;
-    const total = cats.reduce((sum, c) => sum + (c.value ?? 0), 0);
-    return { value: hit.value, previous: hit.previous, change: changeRatio(hit.value, hit.previous), share: total && hit.value !== null ? hit.value / total : null };
-  }
-  const match = (columns: string[], row: unknown[]) => pick.values.every((v) => String(row[columns.indexOf(v.dimension)] ?? '∅') === v.value);
-  const row = cur.rows.find((r) => match(cur.columns, r));
-  if (!row) return null;
-  const value = toNumber(row[cur.columns.indexOf(metric)]);
-  const before = prev ? prev.rows.find((r) => match(prev.columns, r)) : undefined;
-  const previous = before && prev ? toNumber(before[prev.columns.indexOf(metric)]) : null;
-  return { value, previous, change: changeRatio(value, previous), share: null };
+  const grain = result.grain ?? 'day';
+  return { current: drillQuery(current.query, pick, grain), previous: previous ? drillQuery(previous.query, pick, grain) : null };
 }
 
 /** A pseudo widget result for the drill's queries, so the time series renderer can draw it. */
@@ -85,4 +62,60 @@ export function drillResult(base: WidgetResultDto, current: { columns: string[];
   };
 }
 
+// ── Drill into… ──────────────────────────────────────────────────────────────
 
+/** The draft widgets in Drill into…, in their places. */
+export type DrilledChart = 'summary' | 'timeseries' | 'breakdown' | 'table';
+
+export const DRILLED_CHARTS: DrilledChart[] = ['summary', 'timeseries', 'breakdown', 'table'];
+
+export const BREAKDOWN_TOP_N = 15;
+
+const REFERENCE = /\{\{\s*(?:Dimension|TimeDimension|Entity)\(\s*['"](\w+)['"]/g;
+
+/** The first of `dimensions` that none of `filters` refers to (null when every one is filtered). */
+export function breakdownDimension(dimensions: string[], filters: string[]): string | null {
+  const used = new Set(filters.flatMap((f) => [...f.matchAll(REFERENCE)].map((m) => m[1])));
+  return dimensions.find((d) => !used.has(d)) ?? null;
+}
+
+/** Display options a drilled widget keeps from the one it came from. */
+const KEPT_OPTIONS = ['format', 'decimals', 'currency', 'higher_is_better'];
+
+/**
+ * Draft widgets for Drill into…: the source widget's metrics, its own filters and period plus the
+ * pick's filters. The breakdown needs its `dimension`. Ids are unique among themselves only
+ * (withUniqueIds() before they go on the dashboard).
+ */
+export function drilledWidgets(source: DashboardWidget, pick: Pick, charts: DrilledChart[], dimension: string | null,
+  labels: Map<string, string>): Partial<Record<DrilledChart, DashboardWidget>> {
+  const kept = Object.fromEntries(Object.entries(source.options ?? {}).filter(([k]) => KEPT_OPTIONS.includes(k)));
+  const filters = [...(source.filters ?? []), ...pickFilters(pick)];
+  const name = `${widgetTitle({ ...source, title: undefined }, labels)} · ${pickLabel(pick)}`;
+  const make = (type: DashboardWidget['type'], options: Record<string, unknown>, title: string): DashboardWidget => {
+    const info = widgetInfo(type);
+    const metrics = (source.metrics ?? []).slice(0, info.maxMetrics);
+    return { id: `${metrics[0] ?? 'drill'}_${type}`, type, title, width: info.width, height: info.height, metrics, filters,
+      ...(source.period ? { period: source.period } : {}), options: { ...kept, ...options } };
+  };
+  const out: Partial<Record<DrilledChart, DashboardWidget>> = {};
+  for (const chart of charts) {
+    if (chart === 'summary') out.summary = make('summary', {}, name);
+    if (chart === 'timeseries') out.timeseries = make('timeseries', { style: 'line' }, `${name} over time`);
+    if (chart === 'table') out.table = make('table', { period_grain: 'auto' }, `${name} by period`);
+    if (chart === 'breakdown' && dimension) {
+      out.breakdown = { ...make('bar', { dimension, top_n: BREAKDOWN_TOP_N, orientation: 'horizontal' }, `${name} by ${dimension}`), id: `${source.metrics?.[0] ?? 'drill'}_breakdown` };
+    }
+  }
+  return out;
+}
+
+/** `widgets` with ids unique among `taken` and each other (kept when already free). */
+export function withUniqueIds(widgets: DashboardWidget[], taken: Iterable<string>): DashboardWidget[] {
+  const used = new Set(taken);
+  return widgets.map((w) => {
+    const id = newWidgetId(w.id, used);
+    used.add(id);
+    return { ...w, id };
+  });
+}

@@ -58,7 +58,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 
 | Type | Topic | Emitted by |
 |------|-------|------------|
-| `run_started` | project | `runner.stream()` automatically |
+| `run_started` | project | `runner.stream()` automatically — includes `command`, `label` (`command_label()`: e.g. `source freshness`), `select`, `started_at` |
 | `run_log` | project | `runner.stream()` automatically |
 | `run_finished` | project | `runner.stream()` automatically |
 | `run_error` | project | `runner.stream()` (dbt not found) |

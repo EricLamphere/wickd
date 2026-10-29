@@ -1,17 +1,19 @@
 // A widget on the canvas: header (grip, title, monitor pill, "as of", ⋯ menu), body, notes,
 // and resize handles (right edge, bottom edge, corner). Click selects it (its settings open in
-// the right rail). Clicking a value (bar, Top N row) splits the widget with a drill-down;
-// right-click a value for its menu (drill, dashboard filter, inspect, explorer). While a
+// the right rail). Clicking a value (bar, stacked segment, Top N row) splits the widget top and
+// bottom with its timeseries; right-click a value for its menu (show timeseries, dashboard
+// filter, drill into…, explorer). While a
 // metric is dragged over it, it says whether it can take it.
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
   Copy, CopyPlus, ExternalLink, GripVertical, Info, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
-import type { DashboardWidget } from '../../../../../lib/dashboardsApi';
+import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
+import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
 import { statusStyle, type MetricMonitorState } from '../../monitors/monitorView';
 import {
-  HEIGHT_LOCK, MAX_HEIGHT, opt, pxToWidth, resized, toCsv, widthCss, widthToPx, type Resized, type ResizeLimits, type Size,
+  HEIGHT_LOCK, MAX_HEIGHT, opt, pxToWidth, resized, toCsv, widthCss, type Resized, type ResizeLimits, type Size,
 } from '../dashboardModel';
 import type { Pick } from '../drill';
 import { DrillPanel } from './DrillPanel';
@@ -68,6 +70,13 @@ interface Props extends Omit<BodyProps, 'height' | 'onPick' | 'onPickMenu' | 'dr
   onApplyFilter: (pick: Pick) => void;
   /** the widget's query in the explorer, filtered to a picked value */
   onOpenFiltered: (pick: Pick) => void;
+  /** for Drill into…'s breakdown dimensions */
+  catalog: SemanticCatalogDto;
+  /** Drill into…'s chosen draft widgets onto the dashboard, after this one */
+  onAddDrilled: (widgets: DashboardWidget[]) => void;
+  /** the dashboard (Drill into… plans its drafts with its period and filters) */
+  doc: DashboardDoc;
+  slug: string;
   title: string;
   selected: boolean;
   present: boolean;
@@ -220,7 +229,8 @@ export function WidgetFrame(props: Props) {
   const [menuAt, setMenuAt] = useState<{ pick: Pick; x: number; y: number } | null>(null);
   const [inspect, setInspect] = useState<Pick | null>(null);
   // A drill-down on a dimension the widget no longer shows goes away
-  const dims = [opt<string | null>(widget, 'dimension', null), ...opt<string[]>(widget, 'dimensions', [])].filter(Boolean);
+  const dims = [opt<string | null>(widget, 'dimension', null), opt<string | null>(widget, 'stack_by', null),
+    ...opt<string[]>(widget, 'dimensions', [])].filter(Boolean);
   const drilled = drill && drill.values.every((v) => dims.includes(v.dimension)) ? drill : null;
   const valueActions = {
     onDrill: (p: Pick) => setDrill(p),
@@ -232,9 +242,8 @@ export function WidgetFrame(props: Props) {
   const height = size.height;
   const notes = result?.notes ?? [];
   const bodyHeight = height - HEADER_PX - 16 - notes.length * 14;
-  // With a drill-down, a wide widget splits side by side and a tall one top and bottom
-  const sideBySide = widthToPx(size.width, containerWidth) >= bodyHeight * 1.3;
-  const chartHeight = drilled && result && !sideBySide ? Math.floor((bodyHeight - 8) / 2) : bodyHeight;
+  // A drill-down splits the widget top and bottom, so the timeseries gets the full width
+  const chartHeight = drilled && result ? Math.floor((bodyHeight - 8) / 2) : bodyHeight;
   const pill = monitorStatus?.status && monitorStatus.status !== 'ok' ? statusStyle(monitorStatus.status) : null;
   const text = widget.type === 'text';
   const hasData = result?.status === 'ok' && Object.keys(result.queries).length > 0;
@@ -285,7 +294,7 @@ export function WidgetFrame(props: Props) {
           </div>
         )}
       </header>
-      <div className={`flex-1 min-h-0 overflow-hidden flex ${sideBySide ? 'flex-row' : 'flex-col'} gap-2`}>
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col gap-2">
         <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
           <WidgetErrorBoundary resetKey={`${JSON.stringify(widget)}|${result?.ran_at ?? ''}|${result?.status ?? ''}`}>
             <WidgetBody {...props} height={Math.max(40, chartHeight)} drilled={drilled}
@@ -294,8 +303,7 @@ export function WidgetFrame(props: Props) {
           </WidgetErrorBoundary>
         </div>
         {drilled && result && (
-          <div className={`flex-1 min-w-0 min-h-0 overflow-hidden ${sideBySide ? '' : 'pt-2 border-t border-gray-800 [&>div]:pl-0 [&>div]:border-l-0'}`}
-            onClick={(e) => e.stopPropagation()}>
+          <div className="flex-1 min-w-0 min-h-0 overflow-hidden pt-2 border-t border-gray-800" onClick={(e) => e.stopPropagation()}>
             <WidgetErrorBoundary resetKey={JSON.stringify(drilled)}>
               <DrillPanel projectId={props.projectId} widget={widget} result={result} pick={drilled} labels={props.labels}
                 format={formatOf(widget)} height={Math.max(60, chartHeight)} onClose={() => setDrill(null)} onApplyFilter={props.onApplyFilter} />
@@ -323,8 +331,9 @@ export function WidgetFrame(props: Props) {
       {sql && result && <SqlDialog queries={result.queries} onClose={() => setSql(false)} />}
       {menuAt && <ValueMenu pick={menuAt.pick} x={menuAt.x} y={menuAt.y} actions={valueActions} onClose={() => setMenuAt(null)} />}
       {inspect && result && (
-        <InspectDialog projectId={props.projectId} widget={widget} result={result} pick={inspect} labels={props.labels}
-          format={formatOf(widget)} higherIsBetter={opt(widget, 'higher_is_better', true)} actions={valueActions} onClose={() => setInspect(null)} />
+        <InspectDialog projectId={props.projectId} slug={props.slug} doc={props.doc} widget={widget} result={result} pick={inspect}
+          labels={props.labels} catalog={props.catalog} actions={valueActions}
+          onAddToDashboard={present ? null : props.onAddDrilled} onClose={() => setInspect(null)} />
       )}
     </section>
   );

@@ -26,7 +26,7 @@ from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.semantic import dashboard_exposure, dashboard_refresh, service
 from app.semantic import dashboards as store
-from app.semantic.dashboards import Dashboard, DashboardEntry, DashboardError
+from app.semantic.dashboards import Dashboard, DashboardEntry, DashboardError, Widget
 from app.semantic.execute import ExecutionError
 from app.semantic.query_service import QueryContext
 from app.semantic.query_spec import QueryInvalid
@@ -52,6 +52,12 @@ class SaveDto(BaseModel):
 
 class RefreshDto(BaseModel):
     widget_ids: list[Annotated[str, StringConstraints(max_length=80)]] | None = Field(default=None, max_length=store.MAX_WIDGETS)
+
+
+class PreviewDto(BaseModel):
+    widgets: list[dict[str, Any]] = Field(min_length=1, max_length=10)
+    # false: stored results only (`not_run` where there are none)
+    run: bool = True
 
 
 class ExposureDto(BaseModel):
@@ -237,6 +243,25 @@ async def refresh_dashboard(
     finally:
         _refreshing.discard(key)
     return _results(ctx, widgets)
+
+
+@router.post("/{project_id}/dashboards/{slug}/preview")
+async def preview_widgets(
+    project_id: int, slug: str, dto: PreviewDto, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """Unsaved widgets (Drill into…) with the dashboard's period and filters; runs those without stored results."""
+    project, setting = await _context(session, project_id)
+    dashboard = _read(project, setting, slug)
+    try:
+        widgets = [Widget.model_validate(w) for w in dto.widgets]
+    except ValidationError as exc:
+        raise _http_error(400, "invalid_widget", store.validation_message(exc)) from exc
+    status = await _require_available(session, project, query=True)
+    try:
+        ctx, results = await dashboard_refresh.preview(session, project, dashboard, status.adapter_type, widgets, run=dto.run)
+    except (service.SemanticError, RuntimeUnavailable, QueryInvalid, ExecutionError) as exc:
+        raise _semantic_http(exc) from exc
+    return _results(ctx, results)
 
 
 # ── Register as exposure ─────────────────────────────────────────────────────

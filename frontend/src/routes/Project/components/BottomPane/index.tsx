@@ -31,6 +31,8 @@ interface BottomPaneProps {
   projectId: number;
   graph: GraphDto | null;
   projectPath: string | null;
+  /** shown as the Execution DAG's node for commands without DAG nodes (compile, docs generate…) */
+  projectName: string;
   selectedNodeId: string | null;
   selectedNodeIds: readonly string[];
   /** DAG column selection (`<uid>::<column>`), which drives column-level impact. */
@@ -60,7 +62,7 @@ function newTermTab(): TermTab {
   return { id: `term-${termIdCounter}`, label: 'bash' };
 }
 
-export function BottomPane({ projectId, graph, projectPath, selectedNodeId, selectedNodeIds, selectedColumns }: BottomPaneProps) {
+export function BottomPane({ projectId, graph, projectPath, projectName, selectedNodeId, selectedNodeIds, selectedColumns }: BottomPaneProps) {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<PaneTabId>('run');
   // Impact tab source + branch base live here so they survive switching tabs
@@ -82,10 +84,6 @@ export function BottomPane({ projectId, graph, projectPath, selectedNodeId, sele
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
-
-  const handleRunStart = useCallback(() => {
-    setOpen(true);
-  }, []);
 
   // When switching to terminal tab, create first instance if none exist
   const switchToTerminal = useCallback(() => {
@@ -252,7 +250,7 @@ export function BottomPane({ projectId, graph, projectPath, selectedNodeId, sele
         className="overflow-hidden flex flex-col"
         aria-hidden={!(open && activeTab === 'run')}
       >
-        <RunPanel projectId={projectId} graph={graph} onRunStart={handleRunStart} />
+        <RunPanel projectId={projectId} projectName={projectName} graph={graph} />
       </div>
 
       {/* Node DAG — mounted only while visible so it centres against the real pane size */}

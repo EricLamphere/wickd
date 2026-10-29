@@ -135,6 +135,9 @@ export const dashboardsApi = {
   results: (projectId: number, slug: string) => get<DashboardResultsDto>(`${one(projectId, slug)}/results`),
   refresh: (projectId: number, slug: string, widgetIds?: string[]) =>
     post<DashboardResultsDto>(`${one(projectId, slug)}/refresh`, { widget_ids: widgetIds ?? null }),
+  /** unsaved widgets (Drill into…) with the dashboard's period and filters; `run` runs those without stored results */
+  preview: (projectId: number, slug: string, widgets: DashboardWidget[], run = true) =>
+    post<DashboardResultsDto>(`${one(projectId, slug)}/preview`, { widgets, run }),
   /** a dimension's values, largest first (served from the stored result when there is one) */
   dimensionValues: (projectId: number, metric: string, dimension: string) =>
     post<{ values: unknown[]; ran_at: string; source: 'warehouse' | 'cache' }>(

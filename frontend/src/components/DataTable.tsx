@@ -295,7 +295,7 @@ export function DataTable({
         // with the content.
         <div
           ref={textWrapRef}
-          className="relative overflow-auto rounded border border-gray-800 outline-none"
+          className="relative flex-1 min-h-0 overflow-auto rounded border border-gray-800 outline-none"
           style={containerStyle}
           tabIndex={0}
           onKeyDown={handleTextKeyDown}
@@ -326,7 +326,7 @@ export function DataTable({
           onBlur={() => setIsFocused(false)}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
-          className="overflow-auto rounded border border-gray-800 outline-none select-none"
+          className="flex-1 min-h-0 overflow-auto rounded border border-gray-800 outline-none select-none"
           style={containerStyle}
         >
           <table className={`w-full ${fontCls} text-gray-300 border-collapse`}>

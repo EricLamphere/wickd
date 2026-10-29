@@ -32,6 +32,17 @@ def command_line(req: RunRequest) -> str:
     return shlex.join(parts)
 
 
+def command_label(req: RunRequest) -> str:
+    """The operation's name for the UI: the command and its subcommand words, up to the first flag
+    (`source freshness`, `run-operation my_macro`, `compile`)."""
+    words = [req.command]
+    for arg in req.extra:
+        if arg.startswith("-"):
+            break
+        words.append(arg)
+    return " ".join(words)
+
+
 class DbtRunner:
     """Serializes dbt invocations per project (dbt is not parallel-safe in-process)."""
 
@@ -131,6 +142,7 @@ class DbtRunner:
                     type="run_started",
                     data={
                         "command": req.command,
+                        "label": command_label(req),
                         "select": req.select,
                         "started_at": started_at,
                     },

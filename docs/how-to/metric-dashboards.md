@@ -31,9 +31,9 @@ Drag a widget type from the right rail onto the canvas (it's inserted before the
 |---|---|
 | **Metric summary** | The period's total, the previous period's total and the change (green or red, depending on whether higher is better), and the trend with the previous period dashed underneath. The total is its own query, so ratios and averages are right, never a sum of the trend. |
 | **Time series** | Each metric over time, with the previous period as a faded dashed gray line lined up period by period (this Tuesday over last period's Tuesday). Line, area or stacked area; optionally split by a dimension (its top N values). |
-| **Bar chart** | One bar per value of a dimension, with a gray bar for the previous period beside each. Vertical or horizontal, sorted by value or name, top N, or stacked by a second dimension (stacked bars don't show the comparison). |
+| **Bar chart** | One bar per value of a dimension, with a gray bar for the previous period beside each. Vertical or horizontal, sorted by value or name, top N, or stacked by a second dimension: the previous period's bar stands beside each stacked bar, split the same way in the same colors, faded; with several metrics, each gets its own stacked chart. |
 | **Top N** | A dimension's top values for one metric, with an inline bar and the change vs the previous period ("new" when it wasn't there before). |
-| **Table** | Metrics by up to five dimensions, with "previous" and "change" columns per metric. |
+| **Table** | Metrics by period (optional) and up to five dimensions, with "previous" and "change" columns per metric. |
 | **Text** | A heading or a note: `#`, `##`, `###` headings, `-` bullets and `**bold**`. |
 
 With several metrics, a time series or bar chart draws them on one chart when their scales are close, and gives each its own chart when one is 10× the other (revenue next to a conversion rate). **Several metrics** in the settings forces either.
@@ -50,7 +50,7 @@ Widgets flow left to right in the order they're listed in the file. A widget tha
 Select a widget (click it) and the right rail switches to **Configure**:
 
 - **Shared**: title, type, metrics, filters (added to the dashboard's filters, for this widget only), and a **period** and **compare to** that override the dashboard's. The first option in each, **Use the dashboard's …**, goes back to following the dashboard. Changing the type keeps what fits: a Bar chart or Top N picks a dimension, and Top N keeps the first metric.
-- **Type-specific**: number format (number, currency with a currency code, percent) and decimals; higher is better; trend on/off (summary); style, grain, split by, top N, start the y-axis at zero (time series); bars by, stack by, orientation, sort, top N (bar chart); rank by, top N, show the change (Top N); rows by, row count, comparison columns (table); the text (text).
+- **Type-specific**: number format (number, currency with a currency code, percent) and decimals; higher is better; the change %, the previous period's value and dates, the trend and the previous period on the trend, each on/off (summary; all on by default); style, grain, split by, top N, start the y-axis at zero (time series); bars by, stack by, orientation, sort, top N, show the previous period (bar chart); rank by, top N, show the change (Top N); rows by period (the dashboard's grain or its own; oldest first, compared period by period), rows by, row count, comparison columns (table); the text (text).
 
 ## Period, comparison and filters
 
@@ -60,8 +60,9 @@ The bar under the title applies to every widget:
 - **vs**: the previous period (same length, right before), the same period last year, no comparison, or custom dates. Both buttons show the actual dates ("Sep 29 – Oct 28, 2026").
 - **Grain**: Auto follows the period's length (day up to a month, week up to six months, month up to three years, else quarter), or pick one.
 - **Filters**: the value box suggests the dimension's values (largest first). A filter applies to every widget whose metrics all have that dimension; elsewhere the widget skips it and says so under the chart.
-- **Drill into a value**: click a bar or a Top N row and the widget splits (side by side when it's wide, top and bottom when it's tall) to show its metrics over time for that value, with the previous period dashed in gray; the value stays highlighted. Click another value to switch, the same one (or ×) to close. Drill-downs aren't saved to the file.
-- **Right-click a value** (a bar, a Top N row or a table row) for **Drill into …**, **Apply as dashboard filter**, **Inspect** (the value, the previous period's, the change, its share of what's shown, and a period-by-period table) and **Open in explorer, filtered**.
+- **Show a value over time**: click a bar or a Top N row and the widget splits top and bottom to show its metrics over time for that value across the full width, with the previous period dashed in gray; the value stays highlighted. Click another value to switch, the same one (or ×) to close. These aren't saved to the file.
+- **Stacked bars**: every segment can be hovered and clicked, the previous period's faded ones included (they pick the same bar and stack value). A segment stands for both values, the bar's and the stack's: clicking it shows that combination over time, and right-click → Apply as dashboard filter adds both filters. Hover above a bar (outside its segments) and click or right-click to pick the bar's value alone.
+- **Right-click a value** (a bar, a stacked segment, a Top N row or a table row) for **Show timeseries**, **Apply as dashboard filter**, **Drill into…** and **Open in explorer, filtered**. Drill into… opens a window of widgets filtered to the value: a metric summary beside a time series, a horizontal bar chart (top 15) by the first dimension its metrics share that no filter already uses (the dashboard's, the widget's or the value's own; change it in its settings), and a table by period. Click any of them to configure it in the side pane with the same settings as a dashboard widget (title, type, metrics, filters — including the value's own —, period, comparison and its type's settings); Escape in the pane closes it. **Add to dashboard** (bottom right) lets you tick which of them to add, as configured, with Select all / Deselect all. They're inserted after the widget you drilled into. They start with that widget's own filters, period and number format.
 
 ## Refresh
 

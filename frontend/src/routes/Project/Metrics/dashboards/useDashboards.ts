@@ -22,6 +22,8 @@ function useDashboardEvents(projectId: number) {
       const slug = (event.data as { slug?: string } | undefined)?.slug;
       qc.invalidateQueries({ queryKey: slug ? ['dashboard', projectId, slug] : ['dashboard', projectId] });
       qc.invalidateQueries({ queryKey: slug ? ['dashboard-results', projectId, slug] : ['dashboard-results', projectId] });
+      // Drill into… drafts (never on graph_changed: see widgets/useWidgetPreview.ts)
+      qc.invalidateQueries({ queryKey: slug ? ['dashboard-preview', projectId, slug] : ['dashboard-preview', projectId] });
     }
     if (event.type === 'graph_changed') {
       // definitions changed (new SQL), and a linked exposure may have appeared or gone

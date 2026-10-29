@@ -22,7 +22,7 @@ from app.logging_setup import get_logger
 from app.semantic import query_cache, service
 from app.semantic.batch import run_many
 from app.semantic.dashboard_plan import WidgetBroken, WidgetPlan, plan_widget
-from app.semantic.dashboards import Dashboard
+from app.semantic.dashboards import Dashboard, Widget
 from app.semantic.query_cache import CacheKey
 from app.semantic.query_service import QueryContext, explain_checked, query_context
 from app.semantic.query_spec import QueryInvalid
@@ -184,6 +184,22 @@ async def refresh(
     log.info("dashboard_refreshed", project_id=project.id, widgets=len(results), queries=len(unique),
              errors=sum(1 for r in results if r.status == "error"), elapsed_ms=elapsed_ms)
     return ctx, results
+
+
+async def preview(
+    session: AsyncSession, project: Project, dashboard: Dashboard, adapter_type: str | None,
+    widgets: list[Widget], *, run: bool = True, today: date | None = None,
+) -> tuple[QueryContext, list[WidgetResult]]:
+    """Unsaved `widgets` (Drill into…) planned with the dashboard's period and filters: stored results,
+    and with `run` the ones without any run in one batch. Nothing is written to the dashboard."""
+    board = dashboard.model_copy(update={"widgets": widgets})
+    ctx, results = await cached_results(session, project, board, adapter_type, today=today)
+    missing = [r.widget_id for r in results if r.status == "not_run"]
+    if not run or not missing:
+        return ctx, results
+    ctx, ran = await refresh(session, project, board, adapter_type, missing, today=today)
+    by_id = {r.widget_id: r for r in ran}
+    return ctx, [by_id.get(r.widget_id, r) for r in results]
 
 
 async def _store(

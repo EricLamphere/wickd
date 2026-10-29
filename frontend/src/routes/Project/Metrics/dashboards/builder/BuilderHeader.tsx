@@ -62,7 +62,7 @@ export function BuilderHeader(p: Props) {
       <button onClick={p.onBack} className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-200 shrink-0" data-export-hide="">
         <ArrowLeft className="w-3.5 h-3.5" />Dashboards
       </button>
-      <button onClick={p.onRename} disabled={p.present} title="Rename" className="min-w-0 text-sm font-semibold text-gray-100 truncate hover:text-white">
+      <button onClick={p.onRename} disabled={p.present} title="Rename" className="min-w-0 text-sm font-semibold text-gray-100 truncate hover:text-brand-300 hover:underline decoration-dotted underline-offset-4">
         {p.title}
       </button>
       {!p.present && <span className="hidden xl:inline text-[11px] font-mono text-gray-600 truncate">{p.path}</span>}

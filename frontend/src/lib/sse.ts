@@ -18,6 +18,7 @@ const PROJECT_EVENT_TYPES = [
   'ai_proposal_updated', 'ai_proposal_progress', 'ai_query_updated',
   'semantic_check_started', 'semantic_check_finished',
   'metric_monitor_started', 'metric_monitor_progress', 'metric_monitor_finished',
+  'dashboards_changed',
 ];
 
 /** Events on the `global` topic (not tied to a project). */

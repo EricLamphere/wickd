@@ -944,6 +944,8 @@ export const api = {
     defaultDir: () => get<{ path: string }>('/exports/default-dir'),
     dag: (projectId: number, body: DagExportRequest) =>
       post<ExportResult>(`/projects/${projectId}/exports/dag`, body),
+    dashboard: (projectId: number, body: DagExportRequest) =>
+      post<ExportResult>(`/projects/${projectId}/exports/dashboard`, body),
     reveal: (path: string) => post<void>('/exports/reveal', { path }),
   },
   filesystem: {

@@ -9,6 +9,8 @@ interface Props {
   options: GroupByOption[];
   grain: string;
   onChange: (filters: string[]) => void;
+  /** a categorical dimension's values, to suggest while typing a filter value */
+  suggest?: (dimension: string) => Promise<string[]>;
 }
 
 const NO_VALUE = new Set<FilterOp>(['is null', 'is not null']);
@@ -18,13 +20,30 @@ function templateFor(o: GroupByOption, grain: string): string {
   return o.kind === 'time' ? `{{ TimeDimension('${o.name}', '${grain}') }}` : `{{ Dimension('${o.name}') }}`;
 }
 
-function Builder({ options, grain, onAdd, onClose }: { options: GroupByOption[]; grain: string; onAdd: (w: string) => void; onClose: () => void }) {
+/** Suggestions for the dimension's values (fetched once per dimension while the builder is open). */
+function useSuggestions(dimension: string, enabled: boolean, suggest?: Props['suggest']) {
+  const [values, setValues] = useState<string[]>([]);
+  useEffect(() => {
+    setValues([]);
+    if (!enabled || !suggest || !dimension) return;
+    let live = true;
+    suggest(dimension).then((v) => { if (live) setValues(v); }).catch(() => {});
+    return () => { live = false; };
+  }, [dimension, enabled, suggest]);
+  return values;
+}
+
+function Builder({ options, grain, onAdd, onClose, suggest }: {
+  options: GroupByOption[]; grain: string; onAdd: (w: string) => void; onClose: () => void; suggest?: Props['suggest'];
+}) {
   const [advanced, setAdvanced] = useState(false);
   const [dimension, setDimension] = useState(options.find((o) => o.kind === 'categorical')?.name ?? options[0]?.name ?? '');
   const [op, setOp] = useState<FilterOp>('=');
   const [value, setValue] = useState('');
   const [text, setText] = useState('');
   const option = options.find((o) => o.name === dimension);
+  const suggestions = useSuggestions(dimension, !advanced && option?.kind === 'categorical', suggest);
+  const listId = `filter-values-${dimension}`;
   const ready = advanced ? text.trim().length > 0 : !!option && (NO_VALUE.has(op) || value.trim().length > 0);
   const add = () => {
     if (!ready) return;
@@ -57,9 +76,14 @@ function Builder({ options, grain, onAdd, onClose }: { options: GroupByOption[];
             {FILTER_OPS.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
           {!NO_VALUE.has(op) && (
-            <input autoFocus value={value} onChange={(e) => setValue(e.target.value)}
-              placeholder={op.includes('in') ? 'a, b, c' : option?.kind === 'time' ? 'YYYY-MM-DD' : 'value'}
-              className={`${FIELD_CLS} w-28`} />
+            <>
+              <input autoFocus value={value} onChange={(e) => setValue(e.target.value)} list={suggestions.length ? listId : undefined}
+                placeholder={op.includes('in') ? 'a, b, c' : option?.kind === 'time' ? 'YYYY-MM-DD' : 'value'}
+                className={`${FIELD_CLS} w-32`} />
+              {suggestions.length > 0 && (
+                <datalist id={listId}>{suggestions.slice(0, 200).map((v) => <option key={v} value={v} />)}</datalist>
+              )}
+            </>
           )}
         </div>
       )}
@@ -78,7 +102,7 @@ function Builder({ options, grain, onAdd, onClose }: { options: GroupByOption[];
   );
 }
 
-export function FilterEditor({ filters, options, grain, onChange }: Props) {
+export function FilterEditor({ filters, options, grain, onChange, suggest }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -102,7 +126,7 @@ export function FilterEditor({ filters, options, grain, onChange }: Props) {
         className="flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-dashed border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-40">
         <Plus className="w-3 h-3" />Filter
       </button>
-      {open && <Builder options={options} grain={grain} onAdd={(w) => onChange([...filters, w])} onClose={() => setOpen(false)} />}
+      {open && <Builder options={options} grain={grain} onAdd={(w) => onChange([...filters, w])} onClose={() => setOpen(false)} suggest={suggest} />}
     </div>
   );
 }

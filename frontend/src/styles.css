@@ -316,3 +316,33 @@ html[data-theme="light"] .node-selected .node-name {
 .timeline-gap-overhead {
   background: repeating-linear-gradient(90deg, rgb(var(--gray-500) / 0.6) 0 2px, transparent 2px 5px);
 }
+
+/* Metric dashboards: widgets take their own width (percent of the dashboard's fixed canvas width) */
+.dashboard-grid-wrap { width: max-content; }
+
+/* Dashboard period calendars (react-day-picker), in the app's colours */
+.wickd-day-picker .rdp-root {
+  --rdp-accent-color: rgb(var(--brand-500));
+  --rdp-accent-background-color: rgb(var(--brand-500) / 0.18);
+  --rdp-range_middle-background-color: rgb(var(--brand-500) / 0.18);
+  --rdp-range_middle-color: rgb(var(--text-primary));
+  --rdp-range_start-date-background-color: rgb(var(--brand-600));
+  --rdp-range_end-date-background-color: rgb(var(--brand-600));
+  --rdp-today-color: rgb(var(--brand-300));
+  --rdp-day-height: 30px;
+  --rdp-day-width: 30px;
+  --rdp-day_button-height: 28px;
+  --rdp-day_button-width: 28px;
+  --rdp-nav-height: 28px;
+  font-size: 12px;
+  color: rgb(var(--text-primary));
+}
+.wickd-day-picker .rdp-caption_label { font-size: 12px; font-weight: 600; }
+.wickd-day-picker .rdp-weekday { font-size: 10px; color: rgb(var(--text-muted)); }
+.wickd-day-picker .rdp-day_button { font-size: 12px; font-weight: 400; }
+.wickd-day-picker .rdp-selected .rdp-day_button { font-weight: 600; }
+.wickd-day-picker .rdp-chevron { fill: rgb(var(--text-secondary)); }
+
+/* Quarter guides on the dashboard while a widget's width is being dragged (WidgetFrame useResize) */
+.dash-guides { display: none; bottom: -400px; }
+body[data-dash-resize="x"] .dash-guides { display: block; }

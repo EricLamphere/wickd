@@ -14,6 +14,7 @@ from app.api import ai_proposal_apply as ai_proposal_apply_api
 from app.api import ai_proposals as ai_proposals_api
 from app.api import ai_query as ai_query_api
 from app.api import column_lineage as column_lineage_api
+from app.api import dashboards as dashboards_api
 from app.api import debug as debug_api
 from app.api import docs as docs_api
 from app.api import document as document_api
@@ -124,6 +125,7 @@ app.include_router(propagation_api.router)
 app.include_router(test_gaps_api.router)
 app.include_router(semantic_api.router)
 app.include_router(metric_monitors_api.router)
+app.include_router(dashboards_api.router)
 app.include_router(refactor_api.router)
 app.include_router(exports_api.router)
 app.include_router(exports_api.global_router)

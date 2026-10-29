@@ -83,6 +83,7 @@ Per-project settings are stored in `project_env_vars` and injected into every db
 | `REQUIREMENTS_PATH` | Environment tab | Project-specific `requirements.txt`, installed after the global one | _(none)_ |
 | `WORKSPACE_PATH` | Environment tab | Directory (relative to the project root) for SQL Workspace files | `wickd/workspace` |
 | `PROPAGATE_TAGS` | Environment tab | Comma-separated column tags traced through lineage on the Docs Tags tab (Pro) | `pii,sensitive` |
+| `DASHBOARDS_PATH` | Environment tab | Folder (inside the project) for metric dashboard YAML files | `wickd/dashboards` |
 | `MONITOR_INTERVAL_HOURS` | Environment tab / Metrics → Monitors | Metric monitors' automatic check while wickd is open, in hours (Pro; unset = off) | `6` |
 | `dbt_target` | Target dropdown | Active dbt target, passed as `--target` on every invocation | _(profiles.yml default)_ |
 | _(any key)_ | Init scripts | Any `export KEY=value` in a custom init script is captured automatically | — |

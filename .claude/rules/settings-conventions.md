@@ -44,6 +44,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `WORKSPACE_PATH` | `ProjectEnvVar` | `wickd/workspace` | `analysis/scratch` |
 | `PROPAGATE_TAGS` | `ProjectEnvVar` | `pii,sensitive` | `pii,sensitive` |
 | `METRICFLOW_MODE` | `projects.metricflow_mode` | (empty = global default) | `off` |
+| `DASHBOARDS_PATH` | `ProjectEnvVar` | `wickd/dashboards` | `wickd/dashboards` |
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
 
 ## Current Global Settings

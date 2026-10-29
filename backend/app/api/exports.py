@@ -1,4 +1,4 @@
-"""DAG exports. The frontend renders the file (it owns the layout and the on-screen
+"""DAG and dashboard exports. The frontend renders the file (it owns the layout and the on-screen
 filter); this writes it into the folder the user picked, so the desktop app — whose webview has
 no download manager — can save anywhere, defaulting to ~/Downloads."""
 
@@ -71,12 +71,7 @@ def _write_atomic(target: Path, data: bytes) -> None:
         tmp.unlink(missing_ok=True)
 
 
-@router.post("/{project_id}/exports/dag", response_model=ExportResultDto, status_code=201)
-async def export_dag(
-    project_id: int,
-    body: DagExportRequestDto,
-    session: AsyncSession = Depends(get_session),
-) -> ExportResultDto:
+async def _export(project_id: int, body: DagExportRequestDto, session: AsyncSession, kind: str) -> ExportResultDto:
     if await session.get(Project, project_id) is None:
         raise HTTPException(status_code=404, detail="project not found")
 
@@ -94,11 +89,30 @@ async def export_dag(
     try:
         await asyncio.to_thread(_write_atomic, target, data)
     except OSError as exc:
-        log.warning("dag_export_write_failed", path=str(target), error=str(exc))
+        log.warning("export_write_failed", kind=kind, path=str(target), error=str(exc))
         raise _bad_request("directory", f"Couldn't write {target.name}: {exc.strerror}") from exc
 
-    log.info("dag_exported", project_id=project_id, path=str(target), format=body.format)
+    log.info(f"{kind}_exported", project_id=project_id, path=str(target), format=body.format)
     return ExportResultDto(path=str(target), bytes=len(data))
+
+
+@router.post("/{project_id}/exports/dag", response_model=ExportResultDto, status_code=201)
+async def export_dag(
+    project_id: int,
+    body: DagExportRequestDto,
+    session: AsyncSession = Depends(get_session),
+) -> ExportResultDto:
+    return await _export(project_id, body, session, "dag")
+
+
+@router.post("/{project_id}/exports/dashboard", response_model=ExportResultDto, status_code=201)
+async def export_dashboard(
+    project_id: int,
+    body: DagExportRequestDto,
+    session: AsyncSession = Depends(get_session),
+) -> ExportResultDto:
+    """A metric dashboard rendered by the frontend (self-contained HTML, or PNG)."""
+    return await _export(project_id, body, session, "dashboard")
 
 
 @global_router.get("/default-dir", response_model=DefaultDirDto)

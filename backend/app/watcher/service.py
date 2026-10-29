@@ -19,11 +19,12 @@ from sqlalchemy import select
 from watchfiles import Change, watch
 
 from app.db.engine import SessionLocal
-from app.db.models import ModelStatus, Project
+from app.db.models import ModelStatus, Project, ProjectEnvVar
 from app.events.bus import Event, bus
 from app.git.repo import find_repo_root
 from app.logging_setup import get_logger
 from app.semantic import autoparse
+from app.semantic import dashboards as dashboard_store
 
 log = get_logger(__name__)
 
@@ -49,6 +50,7 @@ class WatchedProject:
     project_id: int
     path: Path
     git_dir: Path | None
+    dashboards_dir: Path | None = None  # DASHBOARDS_PATH, resolved; changes → dashboards_changed
 
 
 @dataclass(frozen=True)
@@ -71,8 +73,16 @@ def collapse_roots(paths: list[Path]) -> tuple[Path, ...]:
     return tuple(sorted(kept))
 
 
-def build_plan(projects: list[tuple[int, Path]]) -> WatchPlan:
+def _dashboards_dir(path: Path, setting: str | None) -> Path | None:
+    try:
+        return dashboard_store.dashboards_dir(path, setting)
+    except dashboard_store.DashboardError:
+        return None
+
+
+def build_plan(projects: list[tuple[int, Path]], dashboard_settings: dict[int, str] | None = None) -> WatchPlan:
     """Resolve each existing project's git dir and the minimal set of roots to watch."""
+    settings = dashboard_settings or {}
     watched: list[WatchedProject] = []
     for project_id, path in projects:
         if not path.is_dir():
@@ -81,7 +91,7 @@ def build_plan(projects: list[tuple[int, Path]]) -> WatchPlan:
         git_dir = repo_root / ".git" if repo_root is not None else None
         if git_dir is not None and not git_dir.is_dir():
             git_dir = None  # worktree/submodule .git file — nothing to watch
-        watched.append(WatchedProject(project_id, path, git_dir))
+        watched.append(WatchedProject(project_id, path, git_dir, _dashboards_dir(path, settings.get(project_id))))
     roots = [w.path for w in watched] + [w.git_dir for w in watched if w.git_dir is not None]
     return WatchPlan(projects=tuple(watched), roots=collapse_roots(roots))
 
@@ -98,6 +108,16 @@ def is_relevant(plan: WatchPlan, path: Path) -> bool:
             if not any(part in _IGNORED_PROJECT_DIRS for part in rel):
                 return True
     return False
+
+
+def dashboard_slugs(dashboards_dir: Path | None, changed: list[Path]) -> list[str]:
+    """Slugs of dashboard files among `changed` (created, edited or deleted)."""
+    if dashboards_dir is None:
+        return []
+    return sorted({
+        f.stem for f in changed
+        if f.suffix == dashboard_store.SUFFIX and f.parent.resolve() == dashboards_dir and not f.name.startswith(".")
+    })
 
 
 def route_changes(plan: WatchPlan, changes: Changes) -> dict[int, Changes]:
@@ -168,8 +188,11 @@ class WatcherManager:
         async with SessionLocal() as session:
             result = await session.execute(select(Project.id, Project.path))
             rows = [(pid, Path(path)) for pid, path in result.all()]
+            settings = dict((await session.execute(
+                select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == dashboard_store.SETTING_KEY)
+            )).all())
         started = time.perf_counter()
-        plan = await asyncio.to_thread(build_plan, rows)
+        plan = await asyncio.to_thread(build_plan, rows, settings)
         plan_ms = round((time.perf_counter() - started) * 1000)
         if plan == self._plan:
             return
@@ -222,7 +245,8 @@ class WatcherManager:
                 wp = by_id[project_id]
                 try:
                     await self._handle_changes(
-                        project_id, wp.path, wp.git_dir, f"project:{project_id}", project_changes
+                        project_id, wp.path, wp.git_dir, f"project:{project_id}", project_changes,
+                        wp.dashboards_dir,
                     )
                 except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("watcher_dispatch_error", project_id=project_id, error=str(exc))
@@ -234,8 +258,12 @@ class WatcherManager:
         git_dir: Path | None,
         topic: str,
         changes: set[tuple[Change, str]],
+        dashboards_dir: Path | None = None,
     ) -> None:
         changed_files = [Path(p) for _, p in changes]
+
+        for slug in dashboard_slugs(dashboards_dir, changed_files):
+            await bus.publish(Event(topic=topic, type="dashboards_changed", data={"slug": slug}))
 
         # Git index/branch changes
         if git_dir is not None:

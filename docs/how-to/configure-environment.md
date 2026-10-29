@@ -112,6 +112,8 @@ Use global profiles for credentials or env vars that apply to multiple projects 
 
 Use this to point the SQL Workspace at a different folder — for example `analysis/scratch` if you want workspace files committed alongside your models, or a path outside the project root for throwaway queries.
 
+**DASHBOARDS_PATH** — the folder (inside the project) where metric dashboards are stored as YAML files. Defaults to `wickd/dashboards`. Click the value to edit; clear it to reset to the default. See [Build metric dashboards](metric-dashboards.md).
+
 **MONITOR_INTERVAL_HOURS** — how often metric monitors are checked automatically while wickd is open (wickd Pro), in whole hours (1 or more). Unset means off; builds and **Check now** still check them. See [Monitor metrics for anomalies](metric-monitors.md).
 
 **PROPAGATE_TAGS** — the column tags the Docs **Tags** tab follows through lineage (wickd Pro), comma-separated. Defaults to `pii,sensitive`. See [Inherit docs and trace tagged columns](inherit-docs-and-trace-tags.md).

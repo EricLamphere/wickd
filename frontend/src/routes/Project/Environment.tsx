@@ -258,6 +258,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 
   const requirementsPath = envVars.find((v) => v.key === 'REQUIREMENTS_PATH')?.value ?? '';
   const workspacePath = envVars.find((v) => v.key === 'WORKSPACE_PATH')?.value ?? '';
+  const dashboardsPath = envVars.find((v) => v.key === 'DASHBOARDS_PATH')?.value ?? '';
   const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
   const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
 
@@ -285,6 +286,21 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
       await api.init.deleteEnvVar(projectId, 'WORKSPACE_PATH');
     }
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+  };
+
+  // Metric dashboards' folder (YAML files), relative to the project; empty = wickd/dashboards
+  const handleSaveDashboardsPath = async (val: string) => {
+    const normalized = val.trim().replace(/\/+$/, '');
+    if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
+      throw new Error('DASHBOARDS_PATH must be a folder inside the project, e.g. wickd/dashboards');
+    }
+    if (normalized) {
+      await api.init.setEnvVar(projectId, 'DASHBOARDS_PATH', normalized);
+    } else {
+      await api.init.deleteEnvVar(projectId, 'DASHBOARDS_PATH');
+    }
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+    qc.invalidateQueries({ queryKey: ['dashboards', projectId] });
   };
 
   const { data: appSettings } = useQuery({ queryKey: ['app-settings'], queryFn: () => api.settings.get() });
@@ -357,6 +373,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               onResizeLabel={handleResizeLabel}
             />
             <ProjectSettingRow
+              label="DASHBOARDS_PATH"
+              value={dashboardsPath}
+              placeholder="wickd/dashboards"
+              kind="default"
+              onSave={handleSaveDashboardsPath}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
               label="PROPAGATE_TAGS"
               value={propagateTags}
               placeholder="pii,sensitive"
@@ -391,7 +416,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

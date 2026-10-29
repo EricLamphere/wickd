@@ -25,7 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MetricQueryResult
 
-MAX_RESULTS_PER_PROJECT = 100
+# A dashboard needs several results per widget (current + previous, total + trend)
+MAX_RESULTS_PER_PROJECT = 400
 
 
 @dataclass(frozen=True)

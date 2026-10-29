@@ -10,6 +10,7 @@ from app.watcher.service import (
     WatcherManager,
     build_plan,
     collapse_roots,
+    dashboard_slugs,
     is_relevant,
     route_changes,
 )
@@ -106,3 +107,16 @@ async def test_manager_publishes_events_from_real_file_changes(
     finally:
         await manager.stop()
         await bus.unsubscribe(topic, queue)
+
+
+def test_dashboards_dir_in_plan_and_slugs(tmp_path: Path) -> None:
+    _, (p1, p2) = _repo_with_projects(tmp_path, "a", "b")
+    plan = build_plan([(1, p1), (2, p2)], {2: "boards"})
+    dirs = {wp.project_id: wp.dashboards_dir for wp in plan.projects}
+    assert dirs == {1: (p1 / "wickd" / "dashboards").resolve(), 2: (p2 / "boards").resolve()}
+    assert build_plan([(1, p1)], {1: "../outside"}).projects[0].dashboards_dir is None
+    folder = dirs[1]
+    changed = [folder / "rev.yml", folder / ".rev.yml.wickd-tmp", folder / "notes.txt", folder / "sub" / "x.yml",
+               p1 / "models" / "a.yml"]
+    assert dashboard_slugs(folder, changed) == ["rev"]
+    assert dashboard_slugs(None, changed) == []

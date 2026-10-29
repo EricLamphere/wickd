@@ -20,6 +20,8 @@ interface DataTableProps {
   className?: string;
   maxHeight?: string;
   fontSize?: 'xs' | 'sm' | '2xs';
+  /** right-click on a row (e.g. a dashboard table's value menu); the browser menu is suppressed */
+  onRowContextMenu?: (rowIndex: number, x: number, y: number) => void;
 }
 
 type ViewMode = 'grid' | 'text';
@@ -60,6 +62,7 @@ export function DataTable({
   className,
   maxHeight,
   fontSize = 'xs',
+  onRowContextMenu,
 }: DataTableProps) {
   // ── Grid state ────────────────────────────────────────────────────────────
   const [selection, setSelection]   = useState<Selection | null>(null);
@@ -349,7 +352,8 @@ export function DataTable({
             </thead>
             <tbody>
               {rows.map((row, ri) => (
-                <tr key={ri} className="border-b border-gray-800/50 hover:bg-surface-elevated/30">
+                <tr key={ri} className="border-b border-gray-800/50 hover:bg-surface-elevated/30"
+                  onContextMenu={onRowContextMenu ? (e) => { e.preventDefault(); onRowContextMenu(ri, e.clientX, e.clientY); } : undefined}>
                   <td
                     onClick={() => selectRow(ri)}
                     className="w-10 min-w-10 px-2 py-1 text-center text-gray-600 border-r border-gray-800/50 cursor-pointer hover:bg-surface-elevated/70 whitespace-nowrap font-mono"

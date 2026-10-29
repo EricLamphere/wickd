@@ -159,6 +159,32 @@ async def post_cached_query(project_id: int, dto: ExplainDto, session: AsyncSess
     return outcome.to_dict() if outcome is not None else None
 
 
+class DimensionValuesDto(BaseModel):
+    metric: Name
+    dimension: Name
+    limit: int = Field(default=200, ge=1, le=1000)
+
+
+@router.post("/{project_id}/semantic/dimension-values")
+async def post_dimension_values(
+    project_id: int, dto: DimensionValuesDto, session: AsyncSession = Depends(get_session)
+) -> dict:
+    """A dimension's values, largest `metric` first, for filter suggestions: {values, ran_at, source}.
+
+    Served from the stored result when there is one; else one small `dbt show`."""
+    project = await _project(session, project_id)
+    status = await _require_available(session, project, query=True)
+    query = {"metrics": [dto.metric], "group_by": [dto.dimension], "order_by": [f"-{dto.metric}"], "limit": dto.limit}
+    try:
+        outcome = await run_metric_query(session, project, query, status.adapter_type, cache="prefer")
+    except (service.SemanticError, RuntimeUnavailable, ExecutionError, QueryInvalid) as exc:
+        raise _semantic_http(exc) from exc
+    assert outcome is not None
+    idx = outcome.columns.index(dto.dimension) if dto.dimension in outcome.columns else 0
+    values = [row[idx] for row in outcome.rows if idx < len(row) and row[idx] is not None]
+    return {"values": values, "ran_at": outcome.ran_at.isoformat(), "source": outcome.source}
+
+
 class SaveQueryDto(ExplainDto):
     name: Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[a-z_][a-z0-9_]*$", max_length=200)]
     label: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] | None = None

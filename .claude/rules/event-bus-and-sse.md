@@ -94,6 +94,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `metric_monitor_started` | project | `semantic/monitors.py` — a monitor check started; includes `run_id`, `count`, `trigger` (build/manual/interval) |
 | `metric_monitor_progress` | project | `semantic/monitors.py` — includes `run_id`, `step` (slices/querying/detecting), `total` |
 | `metric_monitor_finished` | project | `semantic/monitors.py` — includes `run_id`, `ok`, `counts` by monitor status |
+| `dashboards_changed` | project | `api/dashboards.py` (create/save/delete/exposure) and `watcher/service.py` (a `.yml` in the project's DASHBOARDS_PATH changed on disk) — includes `slug` |
 | `metricflow_env` | global | `semantic/runtime.py` — MetricFlow sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useGlobalEvents` in `components/semantic/useSemantic.ts`) |
 | `ai_model_download` | global | `ai/download.py` — includes `model_id`, `state`, `bytes_done`, `bytes_total`, `error` (frontend: `useGlobalEvents`) |
 

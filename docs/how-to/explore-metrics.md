@@ -37,6 +37,10 @@ Saved queries are listed under the metrics. Click one to run it. The pencil open
 
 **Save as saved query…** writes the current query to your YAML as a `saved_queries:` entry. It goes in your existing saved-queries file, or else the file that defines the first metric. wickd only adds lines in the file's own indentation style and checks the result parses to exactly the old file plus the new entry before writing. A date range is saved as `metric_time` filters, since saved queries have no time constraint. The new saved query shows up in the list after dbt re-parses (wickd does that automatically).
 
+## Add it to a dashboard
+
+**Add to dashboard…** pins the current query to a dashboard as a tile. See [Build metric dashboards](metric-dashboards.md).
+
 ## Other ways in
 
 - **Side pane** (DAG or Files) and **Docs**: metric, semantic model and saved query nodes have an **Explore** button. In Docs, a metric also shows its last stored result as a sparkline.

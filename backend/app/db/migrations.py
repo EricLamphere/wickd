@@ -696,6 +696,44 @@ async def run_migrations() -> None:
             await session.commit()
 
 
+        # Data diff (Pro, plan 06): a changed model's dev relation compared with prod's
+        if not await _table_exists(session, "data_diff_snapshots"):
+            await session.execute(text(
+                "CREATE TABLE data_diff_snapshots ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "unique_id TEXT NOT NULL, "
+                "name TEXT NOT NULL DEFAULT '', "
+                "scope VARCHAR(16) NOT NULL DEFAULT 'working', "
+                "base_ref TEXT, "
+                "dev_target TEXT, "
+                "prod_target TEXT, "
+                "dev_relation TEXT, "
+                "prod_relation TEXT, "
+                "mode VARCHAR(16), "
+                "key_json TEXT NOT NULL DEFAULT '[]', "
+                "key_source VARCHAR(32), "
+                "columns_json TEXT, "
+                "where_sql TEXT, "
+                "built BOOLEAN NOT NULL DEFAULT 0, "
+                "status VARCHAR(32) NOT NULL DEFAULT 'running', "
+                "phase VARCHAR(32), "
+                "results_json TEXT, "
+                "error_message TEXT, "
+                "started_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "finished_at DATETIME)"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_data_diff_snapshots_project_id ON data_diff_snapshots (project_id)"
+            ))
+            await session.commit()
+        await session.execute(text(
+            "UPDATE data_diff_snapshots SET status = 'error', error_message = 'Interrupted: wickd restarted', "
+            "phase = NULL WHERE status = 'running'"
+        ))
+        await session.commit()
+
+
 async def init_db() -> None:
     await ensure_db_initialized()
     await run_migrations()

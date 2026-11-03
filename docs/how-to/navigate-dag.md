@@ -188,6 +188,10 @@ Changes to a model with an enforced contract or versions are errors when somethi
 
 If the base can't be compiled (some adapters need a warehouse connection to compile), only the enforced contracts are checked and a note says why.
 
+### Data diff (Pro)
+
+Turn on **Data** in the toolbar (Uncommitted / Branch) to build the changed models in dev and compare their rows with prod (`DIFF_BASE_TARGET`). A **Data** column shows each model's result (`+12 −3 ~140 rows`, `no changes`, …); click it for counts, changed columns, schema differences and sample rows. See [Diff data between dev and prod](diff-data.md).
+
 In the git modes the first group is **Changed**, and each node shows why it counts: `edited`, `new file`, the schema YAML that documents it, or `via macro <name>` when you changed a macro it calls (directly or through another macro). A notice above the list says what was compared. It also warns when `dbt_project.yml`, `packages.yml` or similar project-wide files changed, and lists changed files the manifest doesn't know yet (new files appear after **Refresh DAG**). Editing a schema YAML marks every model it documents as changed, even if you only touched one of them. Exposures are listed but left out of **Build impacted**.
 
 ## Viewing model details in the SidePane

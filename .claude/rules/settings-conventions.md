@@ -47,7 +47,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `DASHBOARDS_PATH` | `ProjectEnvVar` | `wickd/dashboards` | `wickd/dashboards` |
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
 | `MONITOR_SCHEDULE` | `ProjectEnvVar` (saved through PUT …/metric-monitors/settings, which validates it) | (empty = off) | `0 9 * * 1-5` |
-| `DIFF_BASE_TARGET` | `ProjectEnvVar` | (empty = the active target) | `prod` |
+| `DIFF_BASE_TARGET` | `ProjectEnvVar` (metric compare's "before" side; data diff's prod side, required there) | (empty = the active target) | `prod` |
 
 ## Current Global Settings
 

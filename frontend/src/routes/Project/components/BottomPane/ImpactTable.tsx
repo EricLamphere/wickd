@@ -1,4 +1,4 @@
-import { GitCompare } from 'lucide-react';
+import { Database, GitCompare } from 'lucide-react';
 import type { MouseEvent } from 'react';
 import type { ImpactLevel, ImpactNode } from '../../lib/impact';
 import { getModelCoverageStats, type CoverageMap } from '../../lib/testCoverage';
@@ -6,6 +6,7 @@ import { typeIconFor } from '../../lib/nodeTypeIcon';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE } from '../../lib/openInFiles';
 import type { AffectedColumnsLabel } from '../../lib/columnImpact';
 import type { BreakingBadge } from '../../lib/contractChecks';
+import { isDiffable, type DiffBadge } from '../../lib/dataDiff';
 import { FlagBadge } from '../impact/impactUi';
 import { statusStyle, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
 
@@ -26,6 +27,10 @@ interface ImpactTableProps {
   onCompareMetric?: (metric: string) => void;
   /** Contract check results per changed model (Pro), shown as a `breaking` flag. */
   breaking?: ReadonlyMap<string, BreakingBadge>;
+  /** Data diff (Pro): the latest diff's badge per model; set → a Data column is shown. */
+  dataDiff?: ReadonlyMap<string, DiffBadge>;
+  /** open a model's diff (a badge) or diff it (a diffable row without one) */
+  onDataDiff?: (uniqueId: string, existing: boolean) => void;
 }
 
 const BREAKING_CLS: Record<BreakingBadge['severity'], string> = {
@@ -48,6 +53,38 @@ const GRID_COLS_WITH_AFFECTED = 'grid-cols-[minmax(12rem,1.5fr)_minmax(11rem,1.5
 
 const COLUMNS = ['Node', 'Type', 'Materialization', 'Status', 'Tests', 'Column coverage', 'Flags'];
 const COLUMNS_WITH_AFFECTED = ['Node', 'Affected columns', ...COLUMNS.slice(1)];
+const COLUMNS_WITH_DATA = ['Node', 'Data', ...COLUMNS.slice(1)];
+
+/** Data column (Pro) tint: a dim, dark teal band so it stands out from the rest of the row. */
+const DATA_COLUMN_CLS = 'self-stretch -mx-2 px-2 flex items-center min-w-0 bg-brand-950/40 border-x border-brand-900/30';
+
+const DIFF_TONE: Record<DiffBadge['tone'], string> = {
+  ok: 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300',
+  warn: 'border-amber-900/60 bg-amber-950/40 text-amber-300',
+  error: 'border-red-900/60 bg-red-950/40 text-red-300',
+  running: 'border-brand-900/60 bg-brand-950/40 text-brand-300 animate-pulse',
+  muted: 'border-gray-700 bg-gray-800/60 text-gray-400',
+};
+
+function DataCell({ uid, badge, diffable, onDataDiff }: {
+  uid: string; badge?: DiffBadge; diffable: boolean; onDataDiff?: ImpactTableProps['onDataDiff'];
+}) {
+  if (badge) {
+    return (
+      <button onClick={() => onDataDiff?.(uid, true)} title={`${badge.title}\nClick for details`}
+        className={`justify-self-start max-w-full truncate px-1.5 py-0.5 rounded border text-[10px] font-mono ${DIFF_TONE[badge.tone]}`}>
+        {badge.text}
+      </button>
+    );
+  }
+  if (!diffable || !onDataDiff) return <Muted />;
+  return (
+    <button onClick={() => onDataDiff(uid, false)} title="Compare this model in dev with prod"
+      className="justify-self-start flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-800 text-[10px] text-gray-500 hover:border-brand-600 hover:text-brand-300">
+      <Database className="w-3 h-3" />Diff
+    </button>
+  );
+}
 
 const AFFECTED_TONE: Record<AffectedColumnsLabel['tone'], string> = {
   columns: 'font-mono text-brand-300',
@@ -119,7 +156,7 @@ function CoverageCell({ item, coverage }: { item: ImpactNode; coverage: Coverage
   );
 }
 
-function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor, onCompare, breaking }: {
+function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor, onCompare, breaking, data }: {
   item: ImpactNode;
   coverage: CoverageMap;
   onNodeClick: ImpactTableProps['onNodeClick'];
@@ -132,6 +169,8 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
   /** metric rows in Uncommitted / Branch modes: open metric compare */
   onCompare?: () => void;
   breaking?: BreakingBadge;
+  /** Data column (Pro, change modes) */
+  data?: { badge?: DiffBadge; onDataDiff?: ImpactTableProps['onDataDiff'] };
 }) {
   const { node } = item;
   const rowFlags = item.flags.filter((f) => f !== 'exposure');
@@ -154,6 +193,11 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
           </button>
         )}
       </span>
+      {data && (
+        <span className={DATA_COLUMN_CLS}>
+          <DataCell uid={node.unique_id} badge={data.badge} diffable={isDiffable(node)} onDataDiff={data.onDataDiff} />
+        </span>
+      )}
       {affected !== undefined && (
         affected
           ? <span className={`truncate ${AFFECTED_TONE[affected.tone]}`} title={affected.title}>{affected.text}</span>
@@ -194,13 +238,18 @@ function GroupHeader({ depth, count, seedLabel }: { depth: number; count: number
   );
 }
 
-export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses, onCompareMetric, breaking }: ImpactTableProps) {
-  const grid = `${GRID_BASE} ${affectedColumns ? GRID_COLS_WITH_AFFECTED : GRID_COLS}`;
-  const columns = affectedColumns ? COLUMNS_WITH_AFFECTED : COLUMNS;
+export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses, onCompareMetric, breaking, dataDiff, onDataDiff }: ImpactTableProps) {
+  const wide = !!affectedColumns || !!dataDiff;
+  const grid = `${GRID_BASE} ${wide ? GRID_COLS_WITH_AFFECTED : GRID_COLS}`;
+  const columns = affectedColumns ? COLUMNS_WITH_AFFECTED : dataDiff ? COLUMNS_WITH_DATA : COLUMNS;
   return (
-    <div className={affectedColumns ? 'min-w-[72rem]' : 'min-w-[60rem]'}>
+    <div className={wide ? 'min-w-[72rem]' : 'min-w-[60rem]'}>
       <div className={`${grid} sticky top-0 z-10 h-7 bg-surface-panel border-b border-gray-800 text-[10px] uppercase tracking-wider font-medium text-gray-500 select-none`}>
-        {columns.map((c) => <span key={c} className="truncate">{c}</span>)}
+        {columns.map((c) => (
+          c === 'Data' && dataDiff
+            ? <span key={c} className={`${DATA_COLUMN_CLS} text-brand-300/80`}><span className="truncate">{c}</span></span>
+            : <span key={c} className="truncate">{c}</span>
+        ))}
       </div>
       {groups.map(({ depth, nodes }) => (
         <div key={depth}>
@@ -217,6 +266,7 @@ export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons,
               monitor={item.node.resource_type === 'metric' ? monitorStatuses?.get(item.node.name) : undefined}
               onCompare={item.node.resource_type === 'metric' && onCompareMetric ? () => onCompareMetric(item.node.name) : undefined}
               breaking={depth === 0 ? breaking?.get(item.node.unique_id) : undefined}
+              data={dataDiff ? { badge: dataDiff.get(item.node.unique_id), onDataDiff } : undefined}
             />
           ))}
         </div>

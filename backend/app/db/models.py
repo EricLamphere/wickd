@@ -260,6 +260,38 @@ class ContractCheckSnapshot(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class DataDiffSnapshot(Base):
+    """One model's data diff (wickd Pro, plan 06): its dev relation compared with prod's.
+    `mode` is how: joined (one connection reads both) or separate (each side on its own
+    connection, bucketed checksums); `key_json` the key used and `key_source` where it came from;
+    `results_json` wickd_pro.data_diff's result (counts, columns, schema, samples, headline)."""
+
+    __tablename__ = "data_diff_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    unique_id: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text, default="")
+    scope: Mapped[str] = mapped_column(String(16), default="working")  # working | branch
+    base_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dev_target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prod_target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dev_relation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prod_relation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mode: Mapped[str | None] = mapped_column(String(16), nullable=True)  # joined | separate
+    key_json: Mapped[str] = mapped_column(Text, default="[]")
+    key_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    columns_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # null = all shared columns
+    where_sql: Mapped[str | None] = mapped_column(Text, nullable=True)
+    built: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(32), default="running")  # running | done | error
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    results_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class TestGapIgnore(Base):
     """A Test gaps row the user doesn't want tests for (hidden from the list until unignored)."""
 

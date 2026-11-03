@@ -20,6 +20,9 @@ import { useContractCheck } from '../../lib/useContractCheck';
 import { breakingBadges, checkMatchesBase } from '../../lib/contractChecks';
 import { ContractsBar } from './ContractsBar';
 import { ContractFindings } from './ContractFindings';
+import { DataDiffBar } from './DataDiffBar';
+import { DataDiffDrawer } from './DataDiffDrawer';
+import { useImpactDataDiff } from './useImpactDataDiff';
 
 interface ImpactPanelProps {
   projectId: number;
@@ -40,6 +43,9 @@ interface ImpactPanelProps {
   /** Contract checks (Pro) in Uncommitted / Branch modes. */
   contracts: boolean;
   onContractsChange: (on: boolean) => void;
+  /** Data diff (Pro) in Uncommitted / Branch modes. */
+  dataDiff: boolean;
+  onDataDiffChange: (on: boolean) => void;
 }
 
 function EmptyState({ message, tone = 'muted' }: { message: string; tone?: 'muted' | 'error' }) {
@@ -108,6 +114,9 @@ export function ImpactPanel(props: ImpactPanelProps) {
     : null;
   const showContracts = contractsOn && !!changes.data && changes.data.changed_files > 0;
   const breaking = useMemo(() => (contractResults ? breakingBadges(contractResults) : undefined), [contractResults]);
+  const showDataDiff = isChangeMode && props.dataDiff && !!changes.data && changes.data.changed_files > 0;
+  const scope = mode === 'branch' ? 'branch' : 'working';
+  const dataDiff = useImpactDataDiff(projectId, graph, impact, showDataDiff, scope, base);
 
   // Column-level builds exactly the affected nodes; node-level builds everything downstream.
   const selector = columnResult && impact
@@ -148,6 +157,8 @@ export function ImpactPanel(props: ImpactPanelProps) {
           affectedColumns={columnResult ? columns.labels : undefined}
           monitorStatuses={monitorStatuses}
           breaking={breaking}
+          dataDiff={showDataDiff ? dataDiff.badges : undefined}
+          onDataDiff={showDataDiff && !dataDiff.state.locked ? dataDiff.onDataDiff : undefined}
           onCompareMetric={isChangeMode
             ? (metric) => navigate(compareUrl(projectId, metric, { mode: mode === 'branch' ? 'branch' : 'working', base: mode === 'branch' ? base ?? '' : '' }))
             : undefined}
@@ -180,6 +191,8 @@ export function ImpactPanel(props: ImpactPanelProps) {
         monitorStatuses={monitorStatuses}
         contracts={props.contracts}
         onContractsChange={props.onContractsChange}
+        dataDiff={props.dataDiff}
+        onDataDiffChange={props.onDataDiffChange}
       />
       {columnLevel && seedNodes.length > 0 && (
         <ImpactColumnBar
@@ -192,19 +205,38 @@ export function ImpactPanel(props: ImpactPanelProps) {
         />
       )}
       {isChangeMode && changes.data && changes.data.changed_files > 0 && <ImpactNotices data={changes.data} />}
-      {showContracts ? (
-        // one scroll area: the contract check, then the downstream table
+      {showContracts || showDataDiff ? (
+        // one scroll area: the Pro checks, then the downstream table
         <div className="flex-1 overflow-y-auto">
-          <section className="flex flex-col gap-2 mx-3 my-2 px-3 py-2 rounded-lg border border-brand-900/60 bg-brand-950/20">
-            <ContractsBar state={contracts} base={base} resolvedBase={resolvedBase} />
-            {contractResults && <ContractFindings projectId={projectId} results={contractResults} onNodeClick={openInFilesClick} />}
-          </section>
+          {showContracts && (
+            <section className="flex flex-col gap-2 mx-3 my-2 px-3 py-2 rounded-lg border border-brand-900/60 bg-brand-950/20">
+              <ContractsBar state={contracts} base={base} resolvedBase={resolvedBase} />
+              {contractResults && <ContractFindings projectId={projectId} results={contractResults} onNodeClick={openInFilesClick} />}
+            </section>
+          )}
+          {showDataDiff && (
+            <section className="flex flex-col gap-2 mx-3 my-2 px-3 py-2 rounded-lg border border-gray-800 bg-surface-elevated/40">
+              <DataDiffBar state={dataDiff.state} diffable={dataDiff.diffable} targets={dataDiff.targets}
+                onDiff={(uids, build) => dataDiff.start(uids, build)} />
+            </section>
+          )}
           <div className="flex items-center gap-1.5 px-4 pt-2 pb-1.5 border-t border-gray-800 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
             <ListTree size={13} />Downstream impact
           </div>
           <div className="flex flex-col min-h-[12rem]">{body}</div>
         </div>
       ) : body}
+      {showDataDiff && dataDiff.open && (
+        <DataDiffDrawer
+          projectId={projectId}
+          diff={dataDiff.open}
+          running={dataDiff.state.running}
+          metrics={dataDiff.metricsFor(dataDiff.open.unique_id)}
+          onCompareMetric={(metric, prod) => navigate(compareUrl(projectId, metric, { mode: 'targets', base: prod }))}
+          onRerun={(o) => dataDiff.open && dataDiff.rerun(dataDiff.open.unique_id, o)}
+          onClose={dataDiff.close}
+        />
+      )}
     </div>
   );
 }

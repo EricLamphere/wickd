@@ -97,6 +97,9 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `contract_check_started` | project | `api/contracts.py` — a contract check (Pro, plan 05) started; includes `snapshot_id`, `scope`, `types` |
 | `contract_check_progress` | project | `api/contracts.py` — includes `snapshot_id`, `phase` (compiling_head/compiling_base/types/checking) |
 | `contract_check_finished` | project | `api/contracts.py` — includes `snapshot_id`, `scope`, `ok`, `errors`, `warnings` |
+| `data_diff_started` | project | `data_diff/job.py` — a data diff (Pro, plan 06) started; includes `snapshot_ids`, `count` |
+| `data_diff_progress` | project | `data_diff/job.py` — includes `snapshot_ids`, `phase` (building/resolving/probing/comparing), and while comparing `round`, `pending` |
+| `data_diff_finished` | project | `data_diff/job.py` — includes `snapshot_ids`, `ok`, `counts` (done/error/different) or `cancelled: true` |
 | `dashboards_changed` | project | `api/dashboards.py` (create/save/delete/exposure) and `watcher/service.py` (a `.yml` in the project's DASHBOARDS_PATH changed on disk) — includes `slug` |
 | `metricflow_env` | global | `semantic/runtime.py` — MetricFlow sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useGlobalEvents` in `components/semantic/useSemantic.ts`) |
 | `ai_model_download` | global | `ai/download.py` — includes `model_id`, `state`, `bytes_done`, `bytes_total`, `error` (frontend: `useGlobalEvents`) |

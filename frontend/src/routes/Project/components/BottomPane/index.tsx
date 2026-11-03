@@ -70,6 +70,7 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
   const [impactBase, setImpactBase] = useState<string | null>(null);
   const [impactColumnLevel, setImpactColumnLevel] = useState(false);
   const [impactContracts, setImpactContracts] = useState(false);
+  const [impactDataDiff, setImpactDataDiff] = useState(false);
   const [height, setHeight] = useState(readStoredHeight);
   const resizing = useRef(false);
   const startY = useRef(0);
@@ -284,6 +285,8 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
             onColumnLevelChange={setImpactColumnLevel}
             contracts={impactContracts}
             onContractsChange={setImpactContracts}
+            dataDiff={impactDataDiff}
+            onDataDiffChange={setImpactDataDiff}
           />
         </div>
       )}

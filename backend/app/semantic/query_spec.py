@@ -69,6 +69,20 @@ def check_where(where: str, adapter_type: str | None) -> None:
             raise QueryInvalid(f"filters can't contain {token!r}")
     if count == 0:
         raise QueryInvalid("a filter must reference a dimension, e.g. {{ Dimension('customer__country') }} = 'US'")
+    _check_condition(plain, adapter_type)
+
+
+def check_sql_condition(where: str, adapter_type: str | None) -> None:
+    """Raise QueryInvalid unless `where` is one plain SQL condition (no templates): data diff's filter."""
+    if len(where) > MAX_WHERE_CHARS:
+        raise QueryInvalid("the filter is too long")
+    for token in _FORBIDDEN_TEXT:
+        if token in where:
+            raise QueryInvalid(f"filters can't contain {token!r}")
+    _check_condition(where, adapter_type)
+
+
+def _check_condition(plain: str, adapter_type: str | None) -> None:
     try:
         statement = sqlglot.parse_one(f"select 1 where {plain}", read=dialect_for(adapter_type))
     except ParseError as exc:

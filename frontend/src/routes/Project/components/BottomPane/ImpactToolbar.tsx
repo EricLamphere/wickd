@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Columns3, Copy, FileCheck2, Hammer, Loader2 } from 'lucide-react';
+import { Check, Columns3, Copy, Database, FileCheck2, Hammer, Loader2 } from 'lucide-react';
 import { api } from '../../../../lib/api';
 import { formatImpactCounts, IMPACT_FLAGS, type Impact } from '../../lib/impact';
 import type { ImpactMode } from '../../lib/impactChanges';
@@ -49,18 +49,20 @@ function ColumnLevelToggle({ on, onChange, forced }: { on: boolean; onChange: (o
   );
 }
 
-function ContractsToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+function ProToggle({ on, onChange, icon, label, title }: {
+  on: boolean; onChange: (on: boolean) => void; icon: ReactNode; label: string; title: string;
+}) {
   return (
     <button
       onClick={() => onChange(!on)}
       aria-pressed={on}
-      title="Contract checks (Pro): columns your changes remove, rename or retype that models, tests, exposures or the semantic layer still use"
+      title={title}
       className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] shrink-0 transition-colors ${
         on ? 'border-brand-600 bg-brand-900/50 text-brand-200' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
       }`}
     >
-      <FileCheck2 size={12} />
-      Contracts
+      {icon}
+      {label}
       <span className="px-1 rounded bg-brand-900/70 text-[9px] font-semibold uppercase tracking-wider text-brand-300">Pro</span>
     </button>
   );
@@ -135,6 +137,9 @@ interface ImpactToolbarProps {
   /** Contract checks (Pro) in Uncommitted / Branch modes. */
   contracts: boolean;
   onContractsChange: (on: boolean) => void;
+  /** Data diff (Pro) in Uncommitted / Branch modes. */
+  dataDiff: boolean;
+  onDataDiffChange: (on: boolean) => void;
 }
 
 export function ImpactToolbar(props: ImpactToolbarProps) {
@@ -159,7 +164,14 @@ export function ImpactToolbar(props: ImpactToolbarProps) {
       {mode === 'selection' && (
         <ColumnLevelToggle on={props.columnLevel} onChange={props.onColumnLevelChange} forced={props.columnLevelForced} />
       )}
-      {mode !== 'selection' && <ContractsToggle on={props.contracts} onChange={props.onContractsChange} />}
+      {mode !== 'selection' && (
+        <>
+          <ProToggle on={props.contracts} onChange={props.onContractsChange} icon={<FileCheck2 size={12} />} label="Contracts"
+            title="Contract checks (Pro): columns your changes remove, rename or retype that models, tests, exposures or the semantic layer still use" />
+          <ProToggle on={props.dataDiff} onChange={props.onDataDiffChange} icon={<Database size={12} />} label="Data"
+            title="Data diff (Pro): build the changed models in dev and compare their rows with prod (DIFF_BASE_TARGET)" />
+        </>
+      )}
       {hasSeeds && summary && (
         <>
           <span className="w-px h-4 bg-gray-800 shrink-0" />

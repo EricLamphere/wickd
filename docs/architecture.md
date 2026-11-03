@@ -277,7 +277,7 @@ project_env_vars
   --   DASHBOARDS_PATH   folder (inside the project) for metric dashboard YAML files (default "wickd/dashboards")
   --   MONITOR_INTERVAL_HOURS  metric monitors' automatic check while wickd is open (Pro; whole hours ≥ 1, unset = off)
   --   MONITOR_SCHEDULE  metric monitors' automatic check as a cron expression, local time (Pro; exclusive with the interval)
-  --   DIFF_BASE_TARGET  the target metric compare's "before" side reads (Pro; unset = the active target)
+  --   DIFF_BASE_TARGET  the target metric compare's "before" side and data diff's prod side read (Pro; unset = the active target; data diff requires it)
   --   Any KEY=value exported by an init script is upserted here automatically
 
 app_settings
@@ -383,6 +383,13 @@ contract_check_snapshots   -- Pro, plan 05: one contract check of the Impact tab
   status (running|done|error), phase (compiling_head|compiling_base|types|checking while running), target,
   results_json (per changed model: contract_findings, column_diff, breaking_changes with consumers, severity, suggestion),
   notes_json, lineage_used (BOOLEAN), error_message, started_at, finished_at
+
+data_diff_snapshots        -- Pro, plan 06: one model's dev relation compared with its prod relation (last 5 per model)
+  project_id, unique_id, name, scope (working|branch), base_ref, dev_target, prod_target (DIFF_BASE_TARGET),
+  dev_relation, prod_relation, mode (joined|separate), key_json, key_source (user|contract|unique_test|unique_combination|detected),
+  columns_json (null = all shared), where_sql, built (BOOLEAN), status (running|done|error),
+  phase (queued|building|resolving|probing|comparing), results_json (wickd_pro.data_diff result: counts, columns, schema,
+  samples, scanned, headline, findings, notes, error), error_message, started_at, finished_at
 
 semantic_check_snapshots
   id              INTEGER PK
@@ -699,6 +706,10 @@ GET    /api/projects/{id}/git/log                    commit history (?path= &lim
 GET    /api/projects/{id}/impact/changes             changed files → manifest nodes (?scope=working|branch &base=<ref>)
 POST   /api/projects/{id}/impact/contracts           start a contract check (Pro) {scope, base?, types}; 202, 409 while one runs
 GET    /api/projects/{id}/impact/contracts           latest contract check for ?scope=working|branch (Pro)
+POST   /api/projects/{id}/data-diff                  start a data diff (Pro) {unique_ids, scope, base?, keys?, columns?, where?, build, mode auto|separate, tolerance}; 202 with a snapshot per model, 409 while one runs, 400 without DIFF_BASE_TARGET / bad filter
+GET    /api/projects/{id}/data-diff/latest           newest data diff per model (?unique_id=) (Pro)
+GET    /api/projects/{id}/data-diff/{snapshot_id}    one data diff (Pro)
+POST   /api/projects/{id}/data-diff/cancel           stop the running data diff and its dbt command (Pro)
 ```
 
 ---
@@ -773,6 +784,9 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `contract_check_started` | `api/contracts.py` | A contract check started (`snapshot_id`, `scope`, `types`); invalidates `['contract-check', id]` |
 | `contract_check_progress` | `api/contracts.py` | `snapshot_id`, `phase` (compiling_head / compiling_base / types / checking); the Impact tab's status line |
 | `contract_check_finished` | `api/contracts.py` | `snapshot_id`, `scope`, `ok`, `errors`, `warnings` (models at that severity); invalidates `['contract-check', id]` |
+| `data_diff_started` | `data_diff/job.py` | A data diff started (`snapshot_ids`, `count`); invalidates `['data-diff', id]` |
+| `data_diff_progress` | `data_diff/job.py` | `snapshot_ids`, `phase` (building / resolving / probing / comparing), `round` / `pending` while comparing |
+| `data_diff_finished` | `data_diff/job.py` | `snapshot_ids`, `ok`, `counts` (done / error / different) or `cancelled`; invalidates `['data-diff', id]` |
 | `ai_proposal_progress` | `ai_proposals.py` | Wicky chat renders descriptions / suggested tests as they stream (`phase`: columns, sampling, writing, checking; partial JSON `text`, throttled to ~4/s) |
 
 ### Init Session Event Types
@@ -904,6 +918,13 @@ It's shown in two places: `SidePane/ImpactSummary.tsx` (a card in PropertiesTab,
 - `dbt/contract_usage.py` collects dashboards (by widget metrics) and monitors per metric; the latest done column lineage snapshot (any version) carries consumers past direct children;
 - `wickd_pro.contracts` (shim `dbt/contracts.py`) derives each side's columns from compiled SQL (no YAML fallback), reports enforced-contract `missing` / `extra` / `type_mismatch` (dialect-normalised types), diffs base → head (`removed`, `added`, `renamed` when traced from the same upstream column, `retyped`), and lists consumers per removed / renamed / retyped column: children re-traced against the old + new columns, the snapshot's downstream walk, tests on the column (incl. combinations and `relationships` pointing at it), exposures, semantic model fields (`expr` parsed with sqlglot; unparseable = uncertain), metrics on them (and derived metrics), saved queries, dashboards, monitors. Severity: `error` for contracted or versioned models with consumers, `warning` with consumers, `info` without; governed models get an "add a new version" hint;
 - results are stored in `contract_check_snapshots`; `dbt_state_contract` on each result is null until plan 18 provides a state directory. `ImpactTable` shows a `N breaking` / `contract` badge in the changed rows' Flags; the Git page's Impact section shows a one-line summary ("2 breaking changes for 5 consumers, incl. 1 dashboard") that opens the Impact tab with contracts on. Nothing blocks a commit. Pure helpers in `lib/contractChecks.ts` (tested); query in `lib/useContractCheck.ts` (`['contract-check', id, scope]`)
+
+**Data diff (Pro, plan 06).** In Uncommitted / Branch mode the toolbar's **Data** toggle shows `DataDiffBar.tsx` (Diff N changed models, Build in dev first, phase, Cancel), a **Data** column in `ImpactTable` (badge per model from `lib/dataDiff.ts` `diffBadge()`, or a Diff button) and `DataDiffDrawer.tsx` (headline, chips, count bar, changed columns, schema, `DataDiffSamples` with changed cells highlighted via DataTable `cellClassName`, Compare metrics links, `DataDiffRerun`: key / filter / tolerance / across connections). `POST /data-diff` (`api/data_diff.py`) runs `data_diff/job.py`:
+- optional `dbt run --select <models>` on the active target through `api/runs.py` (in Run History); never anything on prod;
+- `dbt/connection_info.py`: each target's "Connection:" block from `dbt debug --target` (adapter's non-secret keys; cached per profiles.yml + env); `dbt/relations.py`: prod relation names from `revisions.side_manifest(ref=None, target=DIFF_BASE_TARGET)`'s manifest.json;
+- `probe_many_warehouse_columns()` per target (prod with `--target-path` in the data dir); keys by `data_diff/keys.py` (user → contract primary_key → unique test → unique_combination_of_columns → lineage v4 grain);
+- strategy per model (`data_diff/prepare.py`): different instance keys → **separate**; same relation name → separate (or refused on the same instance); else a zero-row read of the prod relation on the dev connection → **joined** if it works;
+- `wickd_pro.data_diff` (shim `dbt/data_diff.py`) yields statements per connection; `data_diff/driver.py` runs every model's statements for one connection in one `run_many()` per round. Joined: duplicate keys + row counts (prod counted on both connections; mismatch → separate), then a FULL OUTER JOIN for counts, per-column changes and samples. Separate: duplicate keys + 1024 hash buckets (count + checksum) per side, big differing buckets split once more, then only differing buckets' rows fetched (≤ 50k per side) and aligned in Python; estimates scaled when capped. Floats compare with a 1e-9 relative tolerance.
 
 ### 7. Integrated Terminal
 
@@ -1231,7 +1252,7 @@ Per-project env vars (stored in `project_env_vars`, injected into every dbt subp
 | `DASHBOARDS_PATH` | Environment tab (UI) | Folder inside the project for metric dashboard YAML files (default `wickd/dashboards`) |
 | `MONITOR_INTERVAL_HOURS` | Environment tab / Metrics → Monitors (UI) | Metric monitors' automatic check while wickd is open, in whole hours ≥ 1 (Pro; unset = off) |
 | `MONITOR_SCHEDULE` | Environment tab / Metrics → Monitors (UI) | Metric monitors' automatic check as a cron expression in local time, at most every 15 min (Pro; replaces the interval; unset = off) |
-| `DIFF_BASE_TARGET` | Environment tab (UI) | The dbt target metric compare's "before" side reads (Pro; unset = the active target, so only semantic YAML changes show) |
+| `DIFF_BASE_TARGET` | Environment tab (UI) | The dbt target metric compare's "before" side and data diff's prod side read (Pro; unset = the active target, so only semantic YAML changes show; data diff requires it) |
 | _(any exported var)_ | Init scripts automatically | Any `export KEY=value` in a custom init script is captured and upserted here after the step succeeds; persists across restarts |
 
 `load_project_env()` builds the subprocess env as: `os.environ` + `project_env_vars` rows + active profile vars (from `env_profiles` / `profile_env_vars`).

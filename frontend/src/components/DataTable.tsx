@@ -22,6 +22,8 @@ interface DataTableProps {
   fontSize?: 'xs' | 'sm' | '2xs';
   /** right-click on a row (e.g. a dashboard table's value menu); the browser menu is suppressed */
   onRowContextMenu?: (rowIndex: number, x: number, y: number) => void;
+  /** extra classes for one cell (e.g. data diff's changed values) */
+  cellClassName?: (rowIndex: number, colIndex: number) => string | undefined;
 }
 
 type ViewMode = 'grid' | 'text';
@@ -63,6 +65,7 @@ export function DataTable({
   maxHeight,
   fontSize = 'xs',
   onRowContextMenu,
+  cellClassName,
 }: DataTableProps) {
   // ── Grid state ────────────────────────────────────────────────────────────
   const [selection, setSelection]   = useState<Selection | null>(null);
@@ -362,12 +365,13 @@ export function DataTable({
                   </td>
                   {columns.map((col, ci) => {
                     const selected = isCellSelected(selection, ri, ci);
+                    const extra = cellClassName?.(ri, ci);
                     return (
                       <td
                         key={ci}
                         onMouseDown={(e) => handleCellMouseDown(ri, ci, e)}
                         onMouseEnter={() => handleCellMouseEnter(ri, ci)}
-                        className={`px-3 py-1 font-mono whitespace-nowrap cursor-cell ${col.align === 'right' ? 'text-right' : ''}${col.className ? ` ${col.className}` : ''} ${selected ? 'bg-blue-500/20 outline outline-1 outline-blue-500/50' : ''}`}
+                        className={`px-3 py-1 font-mono whitespace-nowrap cursor-cell ${col.align === 'right' ? 'text-right' : ''}${col.className ? ` ${col.className}` : ''}${extra ? ` ${extra}` : ''} ${selected ? 'bg-blue-500/20 outline outline-1 outline-blue-500/50' : ''}`}
                       >
                         {String(row[ci] ?? '')}
                       </td>

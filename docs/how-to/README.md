@@ -20,6 +20,7 @@ Step-by-step guides for using wickd.
 | [Use the semantic layer (MetricFlow)](semantic-layer.md) | See semantic models, metrics and saved queries in the DAG, Docs and Impact; validate them in Health; pick a compatible dbt-core when MetricFlow can't run |
 | [Explore metrics](explore-metrics.md) | Query metrics by dimension, grain, filters and dates; see MetricFlow's SQL live, run it, chart the result, and save it as a saved query |
 | [Debug metrics](debug-metrics.md) | See MetricFlow's plan for a metric step by step and check it on the warehouse: input rows, filters, nulls, join fan-out, dimension quality; reconcile with SQL; explain the number (Pro) |
+| [Diff data between dev and prod (Pro)](diff-data.md) | Build changed models in dev and compare their rows with prod: added, removed and changed rows, per-column changes, schema, samples |
 | [Compare metrics (Pro)](compare-metrics.md) | See what uncommitted changes, a branch, another target or another metric do to a metric's numbers, with the rows that moved and the SQL diff |
 | [Build metric dashboards](metric-dashboards.md) | Pin metric queries as tiles on a grid, apply one date range and filters to all of them, refresh in one batch, register the dashboard as a dbt exposure, export to HTML or PNG |
 | [Monitor metrics for anomalies (Pro)](metric-monitors.md) | Watch metrics for spikes, drops, level shifts, missing periods and restatements; checked after builds, on Check now, or on an interval while wickd is open |

@@ -127,15 +127,20 @@ async def probe_many_warehouse_columns(
     node_names: tuple[str, ...],
     env: dict[str, str],
     target: str | None,
+    target_path: Path | None = None,
 ) -> dict[str, ProbeResult] | None:
     """Read several built nodes' column names with one `dbt show` (adapter metadata, no table scan).
 
     Returns None when the batch as a whole failed (one bad relation fails the whole
     compile), so the caller can fall back to probe_warehouse_columns() per node.
+    `target_path` keeps dbt's artifacts out of the project's target/ when probing
+    another target (data diff's prod side).
     """
     if not node_names:
         return {}
     target_args: tuple[str, ...] = ("--target", target) if target else ()
+    if target_path is not None:
+        target_args += ("--target-path", str(target_path))
     req = RunRequest(
         project_id=project_id,
         project_path=project_path,

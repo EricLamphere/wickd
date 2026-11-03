@@ -20,6 +20,7 @@ const PROJECT_EVENT_TYPES = [
   'metric_monitor_started', 'metric_monitor_progress', 'metric_monitor_finished',
   'dashboards_changed',
   'contract_check_started', 'contract_check_progress', 'contract_check_finished',
+  'data_diff_started', 'data_diff_progress', 'data_diff_finished',
 ];
 
 /** Events on the `global` topic (not tied to a project). */

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Columns3, Copy, Hammer, Loader2 } from 'lucide-react';
+import { Check, Columns3, Copy, FileCheck2, Hammer, Loader2 } from 'lucide-react';
 import { api } from '../../../../lib/api';
 import { formatImpactCounts, IMPACT_FLAGS, type Impact } from '../../lib/impact';
 import type { ImpactMode } from '../../lib/impactChanges';
@@ -44,6 +44,23 @@ function ColumnLevelToggle({ on, onChange, forced }: { on: boolean; onChange: (o
     >
       <Columns3 size={12} />
       Columns
+      <span className="px-1 rounded bg-brand-900/70 text-[9px] font-semibold uppercase tracking-wider text-brand-300">Pro</span>
+    </button>
+  );
+}
+
+function ContractsToggle({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <button
+      onClick={() => onChange(!on)}
+      aria-pressed={on}
+      title="Contract checks (Pro): columns your changes remove, rename or retype that models, tests, exposures or the semantic layer still use"
+      className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[11px] shrink-0 transition-colors ${
+        on ? 'border-brand-600 bg-brand-900/50 text-brand-200' : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200'
+      }`}
+    >
+      <FileCheck2 size={12} />
+      Contracts
       <span className="px-1 rounded bg-brand-900/70 text-[9px] font-semibold uppercase tracking-wider text-brand-300">Pro</span>
     </button>
   );
@@ -115,6 +132,9 @@ interface ImpactToolbarProps {
   onBuild: () => void;
   /** monitored metrics' latest status (Pro; empty otherwise) */
   monitorStatuses: ReadonlyMap<string, MetricMonitorState>;
+  /** Contract checks (Pro) in Uncommitted / Branch modes. */
+  contracts: boolean;
+  onContractsChange: (on: boolean) => void;
 }
 
 export function ImpactToolbar(props: ImpactToolbarProps) {
@@ -139,6 +159,7 @@ export function ImpactToolbar(props: ImpactToolbarProps) {
       {mode === 'selection' && (
         <ColumnLevelToggle on={props.columnLevel} onChange={props.onColumnLevelChange} forced={props.columnLevelForced} />
       )}
+      {mode !== 'selection' && <ContractsToggle on={props.contracts} onChange={props.onContractsChange} />}
       {hasSeeds && summary && (
         <>
           <span className="w-px h-4 bg-gray-800 shrink-0" />

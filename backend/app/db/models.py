@@ -235,6 +235,31 @@ class FreshnessSnapshot(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ContractCheckSnapshot(Base):
+    """One contract check (wickd Pro, plan 05) of the Impact tab's Uncommitted / Branch changes:
+    `base_sha` is the commit compared with, `types` whether column types were probed,
+    `results_json` the per-model findings from wickd_pro.contracts, `notes_json` what to know
+    about the comparison (reduced accuracy, packages differ, …)."""
+
+    __tablename__ = "contract_check_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    scope: Mapped[str] = mapped_column(String(16), default="working")  # working | branch
+    base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    base_sha: Mapped[str | None] = mapped_column(Text, nullable=True)
+    types: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(32), default="running")  # running | done | error
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True)  # compiling_head | compiling_base | types | checking
+    target: Mapped[str | None] = mapped_column(Text, nullable=True)
+    results_json: Mapped[str] = mapped_column(Text, default="[]")
+    notes_json: Mapped[str] = mapped_column(Text, default="[]")
+    lineage_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class TestGapIgnore(Base):
     """A Test gaps row the user doesn't want tests for (hidden from the list until unignored)."""
 

@@ -7,6 +7,7 @@ branch vs. a base (``scope=branch``), mapped to manifest nodes.
 """
 import asyncio
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -118,6 +119,46 @@ def _to_dto(
     )
 
 
+class NotARepo(Exception):
+    """The project isn't inside a git repository."""
+
+
+@dataclass(frozen=True)
+class ChangeSet:
+    branch: str | None
+    base: str | None         # resolved base ref (branch scope only)
+    merge_base: str | None   # full sha (branch scope only)
+    mapping: ChangeMapping
+    manifest_available: bool
+
+
+async def load_change_set(project: Project, scope: ChangeScope, base: str | None) -> ChangeSet:
+    """Changed files mapped to manifest nodes. Raises NotARepo / ChangeSetError."""
+    project_path = Path(project.path)
+    repo = find_repo_root(project_path)
+    if repo is None:
+        raise NotARepo()
+
+    async def git(*args: str) -> tuple[int, str]:
+        return await git_runner.run(GitRequest(project_id=project.id, repo_root=repo, args=args))
+
+    branch = await current_branch(git)
+    resolved_base: str | None = None
+    merge_base: str | None = None
+    if scope == "branch":
+        resolved_base = await resolve_base(git, base)
+        merge_base, repo_changes = await branch_changes(git, resolved_base)
+    else:
+        repo_changes = await working_changes(git)
+
+    files = to_project_files(repo_changes, _project_subpath(project_path, repo))
+    loop = asyncio.get_running_loop()
+    manifest = await loop.run_in_executor(None, _load_manifest_dict, project_path / "target" / "manifest.json")
+    project_yml = await loop.run_in_executor(None, _read_text, project_path / "dbt_project.yml")
+    mapping = map_changed_files(manifest or {}, files, resource_dirs_from_project_yml(project_yml))
+    return ChangeSet(branch, resolved_base, merge_base, mapping, manifest is not None)
+
+
 @router.get("/{project_id}/impact/changes", response_model=ImpactChangesDto)
 async def get_impact_changes(
     project_id: int,
@@ -128,29 +169,10 @@ async def get_impact_changes(
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
-    project_path = Path(project.path)
-    repo = find_repo_root(project_path)
-    if repo is None:
-        raise HTTPException(status_code=422, detail="project is not inside a git repository")
-
-    async def git(*args: str) -> tuple[int, str]:
-        return await git_runner.run(GitRequest(project_id=project_id, repo_root=repo, args=args))
-
     try:
-        branch = await current_branch(git)
-        resolved_base: str | None = None
-        merge_base: str | None = None
-        if scope == "branch":
-            resolved_base = await resolve_base(git, base)
-            merge_base, repo_changes = await branch_changes(git, resolved_base)
-        else:
-            repo_changes = await working_changes(git)
+        changes = await load_change_set(project, scope, base)
+    except NotARepo as exc:
+        raise HTTPException(status_code=422, detail="project is not inside a git repository") from exc
     except ChangeSetError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    files = to_project_files(repo_changes, _project_subpath(project_path, repo))
-    loop = asyncio.get_running_loop()
-    manifest = await loop.run_in_executor(None, _load_manifest_dict, project_path / "target" / "manifest.json")
-    project_yml = await loop.run_in_executor(None, _read_text, project_path / "dbt_project.yml")
-    mapping = map_changed_files(manifest or {}, files, resource_dirs_from_project_yml(project_yml))
-    return _to_dto(scope, branch, resolved_base, merge_base, mapping, manifest is not None)
+    return _to_dto(scope, changes.branch, changes.base, changes.merge_base, changes.mapping, changes.manifest_available)

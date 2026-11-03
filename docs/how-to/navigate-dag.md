@@ -178,6 +178,16 @@ Shortcut: with column lineage loaded on the DAG, clicking a column in an expande
 
 Without a Pro license, the toggle offers an upgrade instead. Uncommitted and Branch modes stay node-level for now.
 
+### Contract checks (Pro)
+
+In **Uncommitted** or **Branch** mode, turn on **Contracts** in the toolbar and click **Check contracts**. wickd compiles your changed models and the version you're comparing with (HEAD, or where your branch left its base) into its own folder, then compares each changed model's columns:
+- **Enforced contracts**: a model with `contract: {enforced: true}` whose SQL no longer produces its declared columns (missing or extra columns, which would fail `dbt build`). **Check types** also reads the column types from your target with an empty `LIMIT 0` query and compares them with the declared `data_type`s (`varchar` and `text`, `int` and `integer` count as the same).
+- **Breaking changes**: columns the change removes, renames or retypes, and everything that still uses them: downstream models (including ones that filter, join or group on the column), tests, exposures, and the semantic layer (semantic model entities, dimensions and measures, the metrics and saved queries built on them, and the dashboards and metric monitors that show those metrics). A rename is recognized when the new column comes from the same upstream column as the old one.
+
+Changes to a model with an enforced contract or versions are errors when something uses the column, with a hint to add a new model version instead; on other models they're warnings, and unused columns are just listed. Changed models get a **breaking** badge in the table's Flags column. Cmd/ctrl-click a model, test or exposure to open its file; metric, dashboard and monitor chips open them on the Metrics page. Load column lineage (Columns in Selection mode) to follow consumers past direct children. The Git page's **Impact** section shows a one-line summary of the last Uncommitted check. Nothing blocks a commit.
+
+If the base can't be compiled (some adapters need a warehouse connection to compile), only the enforced contracts are checked and a note says why.
+
 In the git modes the first group is **Changed**, and each node shows why it counts: `edited`, `new file`, the schema YAML that documents it, or `via macro <name>` when you changed a macro it calls (directly or through another macro). A notice above the list says what was compared. It also warns when `dbt_project.yml`, `packages.yml` or similar project-wide files changed, and lists changed files the manifest doesn't know yet (new files appear after **Refresh DAG**). Editing a schema YAML marks every model it documents as changed, even if you only touched one of them. Exposures are listed but left out of **Build impacted**.
 
 ## Viewing model details in the SidePane

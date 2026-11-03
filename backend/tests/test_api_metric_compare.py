@@ -10,11 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.db import engine as db_engine
 from app.db.engine import get_session
 from app.db.models import Base, Project, ProjectEnvVar
+from app.dbt.revisions import SideManifest
 from app.licensing import entitlements
 from app.main import app
 from app.semantic import compare, compare_pro, service, status
 from app.semantic.batch import BatchResult
-from app.semantic.revisions import SideManifest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "semantic"
 

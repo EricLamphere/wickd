@@ -138,3 +138,29 @@ def test_load_manifest_without_unit_tests_key(tmp_path: Path) -> None:
     manifest = load_manifest(path)
     assert manifest is not None
     assert manifest.unit_tests == ()
+
+
+def test_load_manifest_parses_contract_versions_and_access(tmp_path: Path) -> None:
+    contracted = {
+        **_make_node("model.proj.dim_customers"),
+        "contract": {"enforced": True, "alias_types": True},
+        "constraints": [{"type": "primary_key", "columns": ["id"]}],
+        "version": 2,
+        "latest_version": 2,
+        "access": "public",
+        "columns": {"id": {"name": "id", "data_type": "int", "constraints": [{"type": "not_null"}, {"bad": 1}]}},
+    }
+    # older manifests only carry the contract in config
+    config_only = {**_make_node("model.proj.orders"), "config": {"materialized": "view", "contract": {"enforced": True}}}
+    plain = _make_node("model.proj.payments")
+    path = _write_manifest(tmp_path, {"nodes": {n["unique_id"]: n for n in (contracted, config_only, plain)}})
+    nodes = {n.unique_id: n for n in load_manifest(path).nodes}
+
+    dim = nodes["model.proj.dim_customers"]
+    assert dim.contract_enforced and dim.constraints == ("primary_key",)
+    assert dim.version == "2" and dim.latest_version == "2" and dim.access == "public"
+    assert dim.columns[0].constraints == ("not_null",)
+    assert nodes["model.proj.orders"].contract_enforced
+    payments = nodes["model.proj.payments"]
+    assert not payments.contract_enforced and payments.version is None and payments.access is None
+    assert payments.to_dict()["constraints"] == []

@@ -19,6 +19,7 @@ from app.api.ai_dtos import AiProposalDto, proposal_dto
 from app.api.ai_proposals import _publish
 from app.db.engine import get_session
 from app.db.models import AiProposal, AiProposalFile, Project, SemanticCheckSnapshot
+from app.dbt.revisions import RevisionError
 from app.dbt.runner import RunRequest, runner
 from app.dbt.schema_yaml import SchemaYamlError
 from app.dbt.schema_yaml import _write as _write_yaml
@@ -37,7 +38,6 @@ from app.semantic import (
 from app.semantic.execute import MAX_ROW_LIMIT, ExecutionError
 from app.semantic.query_service import explain_checked, query_context, run_metric_query
 from app.semantic.query_spec import QueryInvalid, check_query
-from app.semantic.revisions import RevisionError
 from app.semantic.runtime import RuntimeUnavailable
 from app.semantic.spec import is_latest_spec_parse_error
 from app.semantic.status import SemanticStatus, semantic_status

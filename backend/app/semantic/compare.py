@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project, ProjectEnvVar
+from app.dbt.revisions import RevisionError, SideManifest, side_manifest
 from app.git.changeset import ChangeSetError, resolve_base
 from app.git.repo import find_repo_root
 from app.git.runner import GitRequest, git_runner
@@ -31,7 +32,6 @@ from app.semantic import compare_pro, service
 from app.semantic.batch import run_many
 from app.semantic.query_service import query_context
 from app.semantic.query_spec import QueryInvalid, check_query, checked_sql
-from app.semantic.revisions import RevisionError, SideManifest, side_manifest
 
 Mode = Literal["working", "branch", "targets", "metrics"]
 BASE_TARGET_KEY = "DIFF_BASE_TARGET"

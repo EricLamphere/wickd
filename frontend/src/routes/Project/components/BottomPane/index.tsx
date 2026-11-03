@@ -69,6 +69,7 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
   const [impactMode, setImpactMode] = useState<ImpactMode>('selection');
   const [impactBase, setImpactBase] = useState<string | null>(null);
   const [impactColumnLevel, setImpactColumnLevel] = useState(false);
+  const [impactContracts, setImpactContracts] = useState(false);
   const [height, setHeight] = useState(readStoredHeight);
   const resizing = useRef(false);
   const startY = useRef(0);
@@ -138,9 +139,10 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
   // Other components (e.g. the SidePane impact card) can ask for a tab
   useEffect(() => {
     const onOpenTab = (e: Event) => {
-      const { tab, impactMode: mode } = (e as CustomEvent<OpenBottomTabDetail>).detail;
+      const { tab, impactMode: mode, contracts } = (e as CustomEvent<OpenBottomTabDetail>).detail;
       setActiveTab(tab);
       if (mode) setImpactMode(mode);
+      if (contracts) setImpactContracts(true);
       setOpen(true);
     };
     window.addEventListener(OPEN_BOTTOM_TAB_EVENT, onOpenTab);
@@ -280,6 +282,8 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
             onBaseChange={setImpactBase}
             columnLevel={impactColumnLevel}
             onColumnLevelChange={setImpactColumnLevel}
+            contracts={impactContracts}
+            onContractsChange={setImpactContracts}
           />
         </div>
       )}

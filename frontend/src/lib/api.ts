@@ -137,6 +137,8 @@ export interface ColumnInfo {
   name: string;
   description: string;
   data_type: string;
+  /** constraint types declared on the column (not_null, unique, primary_key, …) */
+  constraints?: string[];
 }
 
 export interface ModelNode {
@@ -161,6 +163,12 @@ export interface ModelNode {
   /** semantic_model / metric / saved_query only */
   label?: string | null;
   semantic?: SemanticInfo | null;
+  /** models: `contract: {enforced: true}`, model-level constraint types, versions, access */
+  contract_enforced?: boolean;
+  constraints?: string[];
+  version?: string | null;
+  latest_version?: string | null;
+  access?: string | null;
 }
 
 export interface SemanticEntity { name: string; type: string | null; expr: string | null; description: string }

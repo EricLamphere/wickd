@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Hammer, ListTree, Loader2 } from 'lucide-react';
+import { AlertOctagon, AlertTriangle, Hammer, ListTree, Loader2 } from 'lucide-react';
 import { api } from '../../../../lib/api';
 import { buildImpactSelector, computeImpact, formatImpactCounts, IMPACT_FLAGS } from '../../lib/impact';
 import { changeErrorMessage, seedIdsFrom } from '../../lib/impactChanges';
@@ -8,6 +8,8 @@ import { useImpactChanges } from '../../lib/useImpactChanges';
 import { openBottomTab } from '../../lib/bottomPaneEvents';
 import { FlagBadge, useBuildImpacted } from '../../components/impact/impactUi';
 import { PaneSectionHeader, usePersistedOpen } from './PaneSection';
+import { useContractCheck } from '../../lib/useContractCheck';
+import { summarizeCheck, summaryLine } from '../../lib/contractChecks';
 
 const OPEN_KEY = 'wickd:git-impact-open';
 
@@ -44,6 +46,7 @@ export function ImpactSection({ projectId }: { projectId: number }) {
             </p>
           )}
           {impact && <ImpactFlags impact={impact} />}
+          {impact && <ContractsLine projectId={projectId} />}
           {impact && (
             <div className="grid grid-cols-2 gap-1.5">
               <button
@@ -90,5 +93,25 @@ function ImpactFlags({ impact }: { impact: ReturnType<typeof computeImpact> }) {
     <div className="flex flex-wrap gap-1">
       {flags.map((f) => <FlagBadge key={f} flag={f} count={impact.summary.flagCounts[f]} />)}
     </div>
+  );
+}
+
+/** The latest Uncommitted contract check (Pro), as one line linking to the Impact tab. Never blocks committing. */
+function ContractsLine({ projectId }: { projectId: number }) {
+  const { check, stale } = useContractCheck(projectId, 'working', true);
+  if (!check || check.status !== 'done') return null;
+  const summary = summarizeCheck(check.results);
+  const line = summaryLine(summary);
+  if (!line) return null;
+  const tone = summary.severity === 'error' ? 'text-red-300' : 'text-amber-300';
+  return (
+    <button
+      onClick={() => openBottomTab('impact', { impactMode: 'working', contracts: true })}
+      title={stale ? 'Files changed since this check; open the Impact tab to re-check' : 'Show the contract check in the Impact tab'}
+      className={`flex items-start gap-1.5 text-left text-[11px] hover:underline ${tone}`}
+    >
+      <AlertOctagon size={12} className="mt-0.5 shrink-0" />
+      <span>{line}{stale ? ' (before your latest edits)' : ''}</span>
+    </button>
   );
 }

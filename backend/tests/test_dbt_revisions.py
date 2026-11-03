@@ -1,4 +1,4 @@
-"""semantic/revisions.py: base revisions checked out as worktrees and parsed into wickd's data dir."""
+"""dbt/revisions.py: base revisions checked out as worktrees and parsed into wickd's data dir."""
 
 from pathlib import Path
 
@@ -6,10 +6,10 @@ import pytest
 
 from app.config import settings
 from app.db.models import Project
+from app.dbt import revisions
+from app.dbt.revisions import RevisionError, compiled_manifest, side_manifest
 from app.dbt.runner import runner
 from app.git.runner import git_runner
-from app.semantic import revisions
-from app.semantic.revisions import RevisionError, side_manifest
 
 
 @pytest.fixture
@@ -41,6 +41,8 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         out = Path(req.extra[req.extra.index("--target-path") + 1])
         out.mkdir(parents=True, exist_ok=True)
         (out / "semantic_manifest.json").write_text("{}")
+        if req.command == "compile":
+            (out / "manifest.json").write_text("{}")
         return 0, b"", b""
 
     monkeypatch.setattr(git_runner, "run", fake_git)
@@ -113,3 +115,38 @@ async def test_old_worktrees_are_removed(repo, monkeypatch) -> None:
     await side_manifest(project, ref="HEAD", target=None)
     removed = [a[-1] for a in calls["git"] if a[:2] == ("worktree", "remove")]
     assert sorted(Path(r).name for r in removed) == ["old1", "old2"]  # the 3 newest stay, this one included
+
+
+async def test_compile_mode_compiles_the_selection_once_per_commit(repo) -> None:
+    project, calls = repo
+    side = await compiled_manifest(project, ref="HEAD", select="1+orders 1+customers")
+    assert side.path.name == "manifest.json" and side.sha == "abc123def4567890"
+    compile_req = calls["dbt"][0]
+    assert compile_req.command == "compile" and compile_req.select == "1+orders 1+customers"
+    assert compile_req.project_path.name == "analytics"  # monorepo subpath inside the worktree
+    assert str(settings.data_dir) in compile_req.extra[1] and "-compiled-" in compile_req.extra[1]
+
+    same = await compiled_manifest(project, ref="HEAD", select="1+customers 1+orders")  # same selection
+    assert same.path == side.path and len(calls["dbt"]) == 1
+    other = await compiled_manifest(project, ref="HEAD", select="1+payments")
+    assert other.path != side.path and len(calls["dbt"]) == 2
+
+
+async def test_compile_mode_recompiles_the_working_copy(repo) -> None:
+    project, calls = repo
+    await compiled_manifest(project, ref=None, select="orders")
+    await compiled_manifest(project, ref=None, select="orders")
+    assert len(calls["dbt"]) == 2 and calls["dbt"][0].project_path == Path(project.path)
+    assert not any(a[:2] == ("worktree", "add") for a in calls["git"])
+
+
+async def test_failed_compiles_are_errors(repo, monkeypatch) -> None:
+    project, _ = repo
+
+    async def failing(req):
+        return 1, b"Encountered an error:\nDatabase Error: could not connect", b""
+
+    monkeypatch.setattr(runner, "run", failing)
+    with pytest.raises(RevisionError) as failed:
+        await compiled_manifest(project, ref="HEAD", select="orders")
+    assert failed.value.code == "compile_failed" and "could not connect" in failed.value.message

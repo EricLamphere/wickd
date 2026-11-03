@@ -13,8 +13,10 @@ export interface OpenBottomTabDetail {
   tab: BottomTabRequest;
   /** For the Impact tab: which source to show. */
   impactMode?: ImpactMode;
+  /** For the Impact tab: turn contract checks on. */
+  contracts?: boolean;
 }
 
-export function openBottomTab(tab: BottomTabRequest, options: { impactMode?: ImpactMode } = {}): void {
+export function openBottomTab(tab: BottomTabRequest, options: { impactMode?: ImpactMode; contracts?: boolean } = {}): void {
   window.dispatchEvent(new CustomEvent<OpenBottomTabDetail>(OPEN_BOTTOM_TAB_EVENT, { detail: { tab, ...options } }));
 }

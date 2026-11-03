@@ -5,6 +5,7 @@ import { getModelCoverageStats, type CoverageMap } from '../../lib/testCoverage'
 import { typeIconFor } from '../../lib/nodeTypeIcon';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE } from '../../lib/openInFiles';
 import type { AffectedColumnsLabel } from '../../lib/columnImpact';
+import type { BreakingBadge } from '../../lib/contractChecks';
 import { FlagBadge } from '../impact/impactUi';
 import { statusStyle, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
 
@@ -23,6 +24,22 @@ interface ImpactTableProps {
   monitorStatuses?: ReadonlyMap<string, MetricMonitorState>;
   /** Uncommitted / Branch modes: a metric row's "Compare numbers" (metric compare, Pro) */
   onCompareMetric?: (metric: string) => void;
+  /** Contract check results per changed model (Pro), shown as a `breaking` flag. */
+  breaking?: ReadonlyMap<string, BreakingBadge>;
+}
+
+const BREAKING_CLS: Record<BreakingBadge['severity'], string> = {
+  error: 'bg-red-950/40 border-red-900/60 text-red-300',
+  warning: 'bg-amber-950/40 border-amber-900/60 text-amber-300',
+  info: 'bg-gray-800/60 border-gray-700 text-gray-400',
+};
+
+function BreakingFlag({ badge }: { badge: BreakingBadge }) {
+  return (
+    <span title={badge.title} className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono ${BREAKING_CLS[badge.severity]}`}>
+      {badge.text}
+    </span>
+  );
 }
 
 const GRID_BASE = 'grid items-center gap-4 px-4';
@@ -102,7 +119,7 @@ function CoverageCell({ item, coverage }: { item: ImpactNode; coverage: Coverage
   );
 }
 
-function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor, onCompare }: {
+function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monitor, onCompare, breaking }: {
   item: ImpactNode;
   coverage: CoverageMap;
   onNodeClick: ImpactTableProps['onNodeClick'];
@@ -114,6 +131,7 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
   monitor?: MetricMonitorState;
   /** metric rows in Uncommitted / Branch modes: open metric compare */
   onCompare?: () => void;
+  breaking?: BreakingBadge;
 }) {
   const { node } = item;
   const rowFlags = item.flags.filter((f) => f !== 'exposure');
@@ -147,7 +165,8 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
       <TestsCell item={item} />
       <CoverageCell item={item} coverage={coverage} />
       <span className="flex items-center gap-1 overflow-hidden">
-        {rowFlags.length > 0 || monitor ? rowFlags.map((f) => <FlagBadge key={f} flag={f} />) : <Muted />}
+        {breaking && <BreakingFlag badge={breaking} />}
+        {rowFlags.length > 0 || monitor || breaking ? rowFlags.map((f) => <FlagBadge key={f} flag={f} />) : <Muted />}
         {monitor && <MonitorBadge monitor={monitor} />}
       </span>
     </div>
@@ -175,7 +194,7 @@ function GroupHeader({ depth, count, seedLabel }: { depth: number; count: number
   );
 }
 
-export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses, onCompareMetric }: ImpactTableProps) {
+export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons, affectedColumns, monitorStatuses, onCompareMetric, breaking }: ImpactTableProps) {
   const grid = `${GRID_BASE} ${affectedColumns ? GRID_COLS_WITH_AFFECTED : GRID_COLS}`;
   const columns = affectedColumns ? COLUMNS_WITH_AFFECTED : COLUMNS;
   return (
@@ -197,6 +216,7 @@ export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons,
               affected={affectedColumns ? affectedColumns.get(item.node.unique_id) ?? null : undefined}
               monitor={item.node.resource_type === 'metric' ? monitorStatuses?.get(item.node.name) : undefined}
               onCompare={item.node.resource_type === 'metric' && onCompareMetric ? () => onCompareMetric(item.node.name) : undefined}
+              breaking={depth === 0 ? breaking?.get(item.node.unique_id) : undefined}
             />
           ))}
         </div>

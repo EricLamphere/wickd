@@ -43,7 +43,10 @@ package or git submodule.
   edits over Jinja-masked SQL, behind `backend/app/refactor/pro.py`) and
   `wickd_pro/ai/refactor_intent.py` (Wicky request → operation). Also `structure.py` (join pairs + grain per
   model) and `test_targets.py` (ranked test suggestions with evidence), behind
-  `backend/app/test_targets/pro.py`. Its
+  `backend/app/test_targets/pro.py`. Also `contracts/` (contract checks: columns
+  from compiled SQL, rename detection, consumers incl. the semantic layer,
+  severity) and `column_usage.py` (the downstream column walk shared with
+  test suggestions), behind `backend/app/dbt/contracts.py`. Its
   tests run against sqlglot 30.18 in its own venv, but the shipped app uses
   the backend venv's sqlglot (30.20 at time of writing), and sqlglot renames
   internals between minor versions, so run its tests under both.

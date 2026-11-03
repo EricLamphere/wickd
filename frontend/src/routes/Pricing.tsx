@@ -46,6 +46,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Metric debugging — plan steps, warehouse checks (fan-out, nulls, coverage) & reconcile with SQL', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },
+  { label: 'Contract checks — breaking column changes & who still uses them, before you merge', base: false, pro: true },
   { label: 'Lineage propagation — inherit descriptions & trace tagged (PII) columns', base: false, pro: true },
   { label: 'Run performance insights — critical path, regressions & recommendations', base: false, pro: true },
   { label: 'Refactors — rename models & columns everywhere, extract CTEs into models', base: false, pro: true },

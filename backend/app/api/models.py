@@ -39,6 +39,7 @@ class ColumnDto(BaseModel):
     name: str
     description: str = ""
     data_type: str = ""
+    constraints: list[str] = []
 
 
 class ModelDto(BaseModel):
@@ -61,6 +62,11 @@ class ModelDto(BaseModel):
     patch_path: str | None = None
     label: str | None = None
     semantic: dict[str, Any] | None = None
+    contract_enforced: bool = False
+    constraints: list[str] = []
+    version: str | None = None
+    latest_version: str | None = None
+    access: str | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -98,7 +104,7 @@ def _node_to_dto(node: ModelNode, status: ModelStatus | None) -> ModelDto:
         status=status.status if status else "idle",
         message=status.message if status else None,
         columns=[
-            ColumnDto(name=c.name, description=c.description, data_type=c.data_type)
+            ColumnDto(name=c.name, description=c.description, data_type=c.data_type, constraints=list(c.constraints))
             for c in node.columns
         ],
         test_metadata_name=node.test_metadata_name,
@@ -107,6 +113,11 @@ def _node_to_dto(node: ModelNode, status: ModelStatus | None) -> ModelDto:
         patch_path=node.patch_path,
         label=node.label,
         semantic=node.semantic,
+        contract_enforced=node.contract_enforced,
+        constraints=list(node.constraints),
+        version=node.version,
+        latest_version=node.latest_version,
+        access=node.access,
     )
 
 

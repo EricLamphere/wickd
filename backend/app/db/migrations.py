@@ -670,6 +670,31 @@ async def run_migrations() -> None:
             await session.execute(text("ALTER TABLE metric_monitors ADD COLUMN schedule TEXT"))
             await session.commit()
 
+        # Contract checks (Pro, plan 05): breaking changes in the Impact tab's Uncommitted / Branch modes
+        if not await _table_exists(session, "contract_check_snapshots"):
+            await session.execute(text(
+                "CREATE TABLE contract_check_snapshots ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "scope VARCHAR(16) NOT NULL DEFAULT 'working', "
+                "base TEXT, "
+                "base_sha TEXT, "
+                "types BOOLEAN NOT NULL DEFAULT 0, "
+                "status VARCHAR(32) NOT NULL DEFAULT 'running', "
+                "phase VARCHAR(32), "
+                "target TEXT, "
+                "results_json TEXT NOT NULL DEFAULT '[]', "
+                "notes_json TEXT NOT NULL DEFAULT '[]', "
+                "lineage_used BOOLEAN NOT NULL DEFAULT 0, "
+                "error_message TEXT, "
+                "started_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "finished_at DATETIME)"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_contract_check_snapshots_project_id ON contract_check_snapshots (project_id)"
+            ))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

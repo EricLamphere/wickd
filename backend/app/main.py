@@ -14,6 +14,7 @@ from app.api import ai_proposal_apply as ai_proposal_apply_api
 from app.api import ai_proposals as ai_proposals_api
 from app.api import ai_query as ai_query_api
 from app.api import column_lineage as column_lineage_api
+from app.api import contracts as contracts_api
 from app.api import dashboards as dashboards_api
 from app.api import debug as debug_api
 from app.api import docs as docs_api
@@ -137,6 +138,7 @@ app.include_router(ai_proposals_api.router)
 app.include_router(ai_proposal_apply_api.router)
 app.include_router(ai_query_api.router)
 app.include_router(impact_api.router)
+app.include_router(contracts_api.router)
 app.include_router(runs_api.router)
 app.include_router(performance_api.router)
 app.include_router(sql_api.router)

@@ -14,6 +14,8 @@ class ColumnInfo:
     name: str
     description: str
     data_type: str
+    # constraint types declared on the column (not_null, unique, primary_key, …)
+    constraints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,12 @@ class ModelNode:
     # semantic_model / metric / saved_query only
     label: str | None = None
     semantic: dict[str, Any] | None = field(default=None, hash=False, compare=False)
+    # model governance: `contract: {enforced: true}`, model-level constraint types, versions, access
+    contract_enforced: bool = False
+    constraints: tuple[str, ...] = ()
+    version: str | None = None
+    latest_version: str | None = None
+    access: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -55,7 +63,8 @@ class ModelNode:
             "original_file_path": self.original_file_path,
             "source_name": self.source_name,
             "columns": [
-                {"name": c.name, "description": c.description, "data_type": c.data_type}
+                {"name": c.name, "description": c.description, "data_type": c.data_type,
+                 "constraints": list(c.constraints)}
                 for c in self.columns
             ],
             "test_metadata_name": self.test_metadata_name,
@@ -64,6 +73,11 @@ class ModelNode:
             "patch_path": self.patch_path,
             "label": self.label,
             "semantic": self.semantic,
+            "contract_enforced": self.contract_enforced,
+            "constraints": list(self.constraints),
+            "version": self.version,
+            "latest_version": self.latest_version,
+            "access": self.access,
         }
 
 
@@ -98,6 +112,23 @@ class Manifest:
 _NODE_RESOURCE_TYPES = {"model", "seed", "snapshot", "test"}
 
 
+def _constraint_types(raw: Any) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(c["type"]) for c in raw if isinstance(c, dict) and c.get("type"))
+
+
+def _version(raw: Any) -> str | None:
+    return None if raw is None or raw == "" else str(raw)
+
+
+def _contract_enforced(raw: dict[str, Any], config: Any) -> bool:
+    contract = raw.get("contract") if isinstance(raw.get("contract"), dict) else None
+    if contract is None and isinstance(config, dict) and isinstance(config.get("contract"), dict):
+        contract = config["contract"]
+    return bool(contract and contract.get("enforced"))
+
+
 def _extract_node(
     unique_id: str, raw: dict[str, Any], *, allowed_types: set[str] = _NODE_RESOURCE_TYPES
 ) -> ModelNode | None:
@@ -111,6 +142,7 @@ def _extract_node(
             name=k,
             description=v.get("description") or "" if isinstance(v, dict) else "",
             data_type=v.get("data_type") or "" if isinstance(v, dict) else "",
+            constraints=_constraint_types(v.get("constraints")) if isinstance(v, dict) else (),
         )
         for k, v in raw_columns.items()
     )
@@ -133,6 +165,11 @@ def _extract_node(
         column_name=raw.get("column_name") if resource_type == "test" else None,
         attached_node=raw.get("attached_node") if resource_type == "test" else None,
         patch_path=raw.get("patch_path"),
+        contract_enforced=resource_type == "model" and _contract_enforced(raw, config),
+        constraints=_constraint_types(raw.get("constraints")) if resource_type == "model" else (),
+        version=_version(raw.get("version")) if resource_type == "model" else None,
+        latest_version=_version(raw.get("latest_version")) if resource_type == "model" else None,
+        access=raw.get("access") if resource_type == "model" and isinstance(raw.get("access"), str) else None,
     )
 
 

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { ListTree } from 'lucide-react';
 import type { GraphDto } from '../../../../lib/api';
 import { buildExactSelector, buildImpactSelector, computeImpact } from '../../lib/impact';
 import { changeErrorMessage, reasonsByNode, seedIdsFrom, type ImpactMode } from '../../lib/impactChanges';
@@ -15,6 +16,10 @@ import { ImpactToolbar } from './ImpactToolbar';
 import { useColumnLevelImpact } from './useColumnLevelImpact';
 import { useNavigate } from 'react-router-dom';
 import { compareUrl } from '../../Metrics/lib/compareView';
+import { useContractCheck } from '../../lib/useContractCheck';
+import { breakingBadges, checkMatchesBase } from '../../lib/contractChecks';
+import { ContractsBar } from './ContractsBar';
+import { ContractFindings } from './ContractFindings';
 
 interface ImpactPanelProps {
   projectId: number;
@@ -32,6 +37,9 @@ interface ImpactPanelProps {
   /** Column-level impact (Pro) in Selection mode. */
   columnLevel: boolean;
   onColumnLevelChange: (on: boolean) => void;
+  /** Contract checks (Pro) in Uncommitted / Branch modes. */
+  contracts: boolean;
+  onContractsChange: (on: boolean) => void;
 }
 
 function EmptyState({ message, tone = 'muted' }: { message: string; tone?: 'muted' | 'error' }) {
@@ -92,6 +100,15 @@ export function ImpactPanel(props: ImpactPanelProps) {
   const coverage = useMemo(() => (graph ? buildCoverageMap(graph) : new Map()), [graph]);
   const reasons = useMemo(() => (isChangeMode ? reasonsByNode(changes.data) : undefined), [isChangeMode, changes.data]);
 
+  const contractsOn = isChangeMode && props.contracts;
+  const contracts = useContractCheck(projectId, mode === 'branch' ? 'branch' : 'working', contractsOn);
+  const resolvedBase = changes.data?.base ?? null;
+  const contractResults = contractsOn && contracts.check?.status === 'done' && checkMatchesBase(contracts.check, base, resolvedBase)
+    ? contracts.check.results
+    : null;
+  const showContracts = contractsOn && !!changes.data && changes.data.changed_files > 0;
+  const breaking = useMemo(() => (contractResults ? breakingBadges(contractResults) : undefined), [contractResults]);
+
   // Column-level builds exactly the affected nodes; node-level builds everything downstream.
   const selector = columnResult && impact
     ? buildExactSelector([...impact.seeds, ...impact.levels.flatMap((l) => l.nodes)].map((n) => n.node))
@@ -130,6 +147,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
           reasons={reasons}
           affectedColumns={columnResult ? columns.labels : undefined}
           monitorStatuses={monitorStatuses}
+          breaking={breaking}
           onCompareMetric={isChangeMode
             ? (metric) => navigate(compareUrl(projectId, metric, { mode: mode === 'branch' ? 'branch' : 'working', base: mode === 'branch' ? base ?? '' : '' }))
             : undefined}
@@ -160,6 +178,8 @@ export function ImpactPanel(props: ImpactPanelProps) {
         buildError={buildError}
         onBuild={() => buildSelector(selector)}
         monitorStatuses={monitorStatuses}
+        contracts={props.contracts}
+        onContractsChange={props.onContractsChange}
       />
       {columnLevel && seedNodes.length > 0 && (
         <ImpactColumnBar
@@ -172,7 +192,19 @@ export function ImpactPanel(props: ImpactPanelProps) {
         />
       )}
       {isChangeMode && changes.data && changes.data.changed_files > 0 && <ImpactNotices data={changes.data} />}
-      {body}
+      {showContracts ? (
+        // one scroll area: the contract check, then the downstream table
+        <div className="flex-1 overflow-y-auto">
+          <section className="flex flex-col gap-2 mx-3 my-2 px-3 py-2 rounded-lg border border-brand-900/60 bg-brand-950/20">
+            <ContractsBar state={contracts} base={base} resolvedBase={resolvedBase} />
+            {contractResults && <ContractFindings projectId={projectId} results={contractResults} onNodeClick={openInFilesClick} />}
+          </section>
+          <div className="flex items-center gap-1.5 px-4 pt-2 pb-1.5 border-t border-gray-800 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            <ListTree size={13} />Downstream impact
+          </div>
+          <div className="flex flex-col min-h-[12rem]">{body}</div>
+        </div>
+      ) : body}
     </div>
   );
 }

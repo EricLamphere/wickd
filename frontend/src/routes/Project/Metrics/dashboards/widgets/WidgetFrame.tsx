@@ -6,7 +6,7 @@
 // metric is dragged over it, it says whether it can take it.
 import { Component, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
-  Bug, CopyPlus, FileBarChart, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
+  CopyPlus, FileBarChart, Search, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
@@ -20,7 +20,7 @@ import { DrillPanel } from './DrillPanel';
 import { InspectDialog } from './InspectDialog';
 import { ValueMenu } from './ValueMenu';
 import { startDrag } from '../builder/drag';
-import { Menu } from './WidgetMenu';
+import { Menu, type WidgetMenuItem } from './WidgetMenu';
 import { useChartExports } from '../../chartMenu/useChartExports';
 import { useSaveAsSavedQuery } from '../../chartMenu/useSaveAsSavedQuery';
 import { compareLabel, currentLabel, rangeLabel } from '../periods';
@@ -55,6 +55,17 @@ class WidgetErrorBoundary extends Component<{ resetKey: string; children: ReactN
   }
 }
 
+/** Open metric page: straight to it for one metric, a choice of them for several. */
+function openMetricItem(metrics: string[], labels: Map<string, string>, open: ((metric: string) => void) | null): WidgetMenuItem[] {
+  if (!open || !metrics.length) return [];
+  const icon = <FileBarChart className="w-3.5 h-3.5" />;
+  if (metrics.length === 1) return [{ label: 'Open metric page', icon, onClick: () => open(metrics[0]) }];
+  return [{
+    label: 'Open metric page', icon, onClick: () => {},
+    submenu: metrics.map((m) => ({ label: labels.get(m) ?? m, onClick: () => open(m) })),
+  }];
+}
+
 export interface DropHint {
   ok: boolean;
   text: string;
@@ -62,10 +73,10 @@ export interface DropHint {
 
 export interface FrameActions {
   onSelect: () => void;
-  /** the widget's metric's page (single-metric widgets only) */
-  onOpenMetric: (() => void) | null;
-  /** the widget in the query view (Investigate) on its Debug tab (widgets with a metric only) */
-  onDebug: (() => void) | null;
+  /** a metric's page (widgets with metrics only; several metrics: the menu asks which) */
+  onOpenMetric: ((metric: string) => void) | null;
+  /** the widget in the query view (Investigate), as it ran here (widgets with a metric only) */
+  onInvestigate: (() => void) | null;
   onDuplicate: () => void;
   onRemove: () => void;
   onResize: (size: Size) => void;
@@ -273,8 +284,8 @@ export function WidgetFrame(props: Props) {
             {menu && (
               <Menu onClose={() => setMenu(false)} items={[
                 ...(text ? [] : [
-                  ...(props.onOpenMetric ? [{ label: 'Open metric page', icon: <FileBarChart className="w-3.5 h-3.5" />, onClick: props.onOpenMetric }] : []),
-                  ...(props.onDebug ? [{ label: 'Debug in Investigate', icon: <Bug className="w-3.5 h-3.5" />, onClick: props.onDebug }] : []),
+                  ...openMetricItem(widget.metrics ?? [], props.labels, props.onOpenMetric),
+                  ...(props.onInvestigate ? [{ label: 'Investigate', icon: <Search className="w-3.5 h-3.5" />, onClick: props.onInvestigate }] : []),
                   saveQuery.item(result),
                   ...exports.items({
                     result, element: () => sectionRef.current, title: `${props.doc.title} — ${title}`, name: [props.slug, title],

@@ -5,7 +5,7 @@ When a metric looks wrong, the **Debug** tab shows what MetricFlow does to compu
 ## Ways in
 
 - **Metrics → a metric's page → Investigate**: the **Debug** tab under the widget, next to Table and SQL. Debug checks the widget's main query: its metrics, group-bys, filters and period.
-- **A dashboard widget's ⋯ → Debug in Investigate**: opens the widget in the query view, as it ran on the dashboard (its filters and dates), straight on the Debug tab.
+- **A dashboard widget's ⋯ → Investigate**: opens the widget in the query view, as it ran on the dashboard (its filters and dates); Debug is one of the tabs under it.
 
 The tab is sticky like the others. Saved queries can't be debugged directly: pick their metrics in Configure.
 

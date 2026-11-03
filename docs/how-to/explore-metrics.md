@@ -24,7 +24,7 @@ Back and forward step between the index, pages and queries.
 
 ## Build a query
 
-The query view (**Investigate** on a metric's page, a dashboard value's right-click **Investigate** or a widget's ⋯ **Debug in Investigate**, a saved query, Docs' **Explore**, ⌘K, or the box above the metric index) opens in a window over the metric's page, titled with the metric; close it (✕, Esc or a click outside) to get back to the page. It's one widget — any of the dashboard widget types — that you edit two ways, which always agree: type it in the line across the top, or click through its settings on the right, exactly as on a dashboard.
+The query view (**Investigate** on a metric's page, a dashboard value's right-click **Investigate** or a widget's ⋯ **Investigate**, a saved query, Docs' **Explore**, ⌘K, or the box above the metric index) opens in a window over the metric's page, titled with the metric; close it (✕, Esc or a click outside) to get back to the page. It's one widget — any of the dashboard widget types — that you edit two ways, which always agree: type it in the line across the top, or click through its settings on the right, exactly as on a dashboard.
 
 ### Type it
 

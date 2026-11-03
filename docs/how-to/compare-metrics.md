@@ -4,9 +4,8 @@ Compare mode runs one metric query two ways and shows what differs: the change i
 
 ## Ways in
 
-- **Metrics → Metrics tab** (the query view): the **Compare** button next to Add to dashboard; the compare panel opens above the widget. It compares the widget's query: its metrics, group-bys, filters and current period.
-- A metric's page: **Compare** (opens the explorer with the metric over time, comparing uncommitted changes with HEAD).
-- **Impact** (bottom pane), in **Uncommitted** or **Branch** mode: metric rows get **Compare numbers**, with the same base as Impact.
+- **Metrics → a metric's page → Investigate**: the **Compare** tab under the widget, next to Debug. It compares the widget's query: its metrics, group-bys, filters and current period. Without Pro the tab says it's a Pro feature.
+- **Impact** (bottom pane), in **Uncommitted** or **Branch** mode: metric rows get **Compare numbers**, which opens the Compare tab with the same base as Impact set (it still waits for **Run comparison**).
 
 Compare mode lives in the URL with the widget (`cmp=` / `cmp_base=`), so a compare can be linked and back/forward steps through it.
 
@@ -19,7 +18,7 @@ Compare mode lives in the URL with the widget (`cmp=` / `cmp_base=`), so a compa
 | **Two targets** | your active target | another dbt target (e.g. `prod`), same definitions |
 | **Two metrics** | the query's metric | another metric, same query otherwise (e.g. `revenue` vs `revenue_v2`) |
 
-It runs when you switch it on or change the mode or base. After changing the widget, press **Compare** again (each compare is two warehouse queries, so it doesn't follow every edit).
+Nothing runs until you've chosen what to compare with and clicked **Run comparison** (each compare is two warehouse queries). After changing the widget or the options, the result is marked out of date; run it again.
 
 ## What you see
 

@@ -44,6 +44,10 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<DiffEditorInstance | null>(null);
+  // for the diff's first-change reveal (read inside Monaco's callback)
+  const activeIdRef = useRef<number | null>(null);
+  const focusedRef = useRef<string | null>(null);
+  const revealedFor = useRef<number | null>(null);
   const highlight = useRef<{ clear: () => void } | null>(null);
 
   const files = proposal.files;
@@ -51,6 +55,8 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const manual = proposal.result.manual ?? [];
   const kept = selectedKeys(proposal);
   const active = files.find((f) => f.id === activeId) ?? files[0];
+  activeIdRef.current = active?.id ?? null;
+  focusedRef.current = focused;
   const allItems = proposalItems(proposal);
   const multiFile = files.length > 1;
   // a multi-file proposal only has per-item review when its items name their file
@@ -64,7 +70,7 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   );
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); onClose(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -186,7 +192,7 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={onClose}>
-      <div
+      <div role="dialog" aria-modal="true" aria-label={proposal.title}
         className="flex flex-col w-full max-w-6xl h-full max-h-[85vh] bg-surface-panel border border-gray-700 rounded-lg shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
@@ -238,7 +244,19 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
                 modified={diff.modified}
                 language={languageFor(active.new_path ?? active.path)}
                 theme={theme === 'light' ? 'vs-light' : 'vs-dark'}
-                onMount={(editor) => { editorRef.current = editor; }}
+                onMount={(editor) => {
+                  editorRef.current = editor;
+                  // each file opens on its first change (a long file's appended entry would be off-screen),
+                  // unless a change was picked in the list
+                  editor.onDidUpdateDiff(() => {
+                    const file = activeIdRef.current;
+                    if (file === null || revealedFor.current === file || focusedRef.current) return;
+                    const first = editor.getLineChanges()?.[0];
+                    if (!first) return;
+                    revealedFor.current = file;
+                    editor.getModifiedEditor().revealLineInCenter(Math.max(1, first.modifiedStartLineNumber || first.originalStartLineNumber));
+                  });
+                }}
                 options={{
                   readOnly: true,
                   renderSideBySide: true,

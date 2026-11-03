@@ -436,7 +436,8 @@ class AiProposalFile(Base):
 class MetricMonitor(Base):
     """A metric watched for anomalies (wickd Pro), see app/semantic/monitors.py.
 
-    `target` pins a dbt target (NULL = the project's active one); `slices_json` holds
+    `target` pins a dbt target (NULL = the project's active one); `schedule` overrides the
+    project's auto-check schedule (app/semantic/monitor_schedule.py); `slices_json` holds
     the top values of `dimension` (recomputed weekly); `last_result_json` is the latest
     detection summary, so a monitor skipped by a build-triggered refresh keeps its status.
     """
@@ -459,6 +460,8 @@ class MetricMonitor(Base):
     last_result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)  # order on the Monitors tab (drag to reorder)
+    # auto-check override: NULL follows the project's schedule, "off", or a cron expression
+    schedule: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

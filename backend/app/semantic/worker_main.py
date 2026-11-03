@@ -9,7 +9,7 @@ Protocol: one JSON object per line on stdin, one reply per line on stdout.
   reply    {"id": "...", "ok": true, "result": {...}}
          | {"id": "...", "ok": false, "error": {"code": "...", "message": "..."}}
 
-Ops: ping, load, catalog, explain, dimension_values, validate, validate_draft. MetricFlow prints
+Ops: ping, load, catalog, explain, explain_plan, dimension_values, validate, validate_draft. MetricFlow prints
 warnings with print(), so stdout is reserved for replies and sys.stdout points at
 stderr while requests run.
 """
@@ -387,6 +387,339 @@ def op_validate_draft(req: dict[str, Any]) -> dict[str, Any]:
     return {"errors": [], "warnings": warnings, "smoke": smoke}
 
 
+# ── explain_plan (metric debugging, plan 15) ──────────────────────────────────
+# MetricFlow's dataflow plan, flattened for the Debug panel, plus what the backend needs to
+# build its check queries: the simple-metric inputs, the semantic models they read, the
+# joins and the group-bys, each resolved to source expressions. Defensive throughout: an
+# attribute a MetricFlow version doesn't have leaves its field out (the plan still shows).
+
+# Plan nodes that only reshape columns: folded into their parents so the pipeline reads
+# as read → join → filter → aggregate → compute.
+_PASSTHROUGH_NODES = {
+    "SelectorNode", "AliasSpecsNode", "WriteToResultDataTableNode", "WriteToResultTableNode",
+    "AddGeneratedUuidColumnNode",
+}
+_NODE_KINDS = {
+    "ReadSqlSourceNode": "read",
+    "MetricTimeDimensionTransformNode": "metric_time",
+    "JoinOnEntitiesNode": "join",
+    "WhereFilterNode": "filter",
+    "ConstrainTimeRangeNode": "constrain_time",
+    "AggregateSimpleMetricInputsNode": "aggregate",
+    "AggregateMeasuresNode": "aggregate",
+    "ComputeMetricsNode": "compute",
+    "CombineAggregatedOutputsNode": "combine",
+    "JoinOverTimeRangeNode": "join_over_time",
+    "JoinToTimeSpineNode": "join_time_spine",
+    "JoinConversionEventsNode": "join_conversion",
+    "SemiAdditiveJoinNode": "semi_additive",
+    "OrderByLimitNode": "order_limit",
+    "MinMaxNode": "min_max",
+    "WindowReaggregationNode": "window",
+    "JoinToCustomGranularityNode": "custom_granularity",
+}
+_MAX_PLAN_NODES = 400
+
+
+def _name_of(ref: Any) -> str | None:
+    for attr in ("element_name", "semantic_model_name", "name"):
+        value = getattr(ref, attr, None)
+        if isinstance(value, str):
+            return value
+    return None
+
+
+def _read_models(node: Any, seen: set[int] | None = None) -> list[str]:
+    """Semantic models read anywhere under `node`, in plan order."""
+    seen = set() if seen is None else seen
+    if id(node) in seen:
+        return []
+    seen.add(id(node))
+    if type(node).__name__ == "ReadSqlSourceNode":
+        name = _name_of(getattr(getattr(node, "data_set", None), "semantic_model_reference", None))
+        return [name] if name else []
+    found: list[str] = []
+    for parent in getattr(node, "parent_nodes", ()) or ():
+        found.extend(m for m in _read_models(parent, seen) if m not in found)
+    return found
+
+
+def _join_type(value: Any) -> str | None:
+    """SqlJoinType ('LEFT OUTER JOIN') → 'left_outer'."""
+    if value is None:
+        return None
+    text = str(_enum_value(value)).lower().replace(" join", "").strip()
+    return text.replace(" ", "_") or None
+
+
+def _time_range(constraint: Any) -> dict[str, str] | None:
+    if constraint is None:
+        return None
+    start = getattr(constraint, "start_time", None)
+    end = getattr(constraint, "end_time", None)
+    return {"start": str(start) if start else None, "end": str(end) if end else None}
+
+
+def _node_details(node: Any) -> dict[str, Any]:
+    cls = type(node).__name__
+    if cls == "ReadSqlSourceNode":
+        return {"semantic_model": _name_of(getattr(getattr(node, "data_set", None), "semantic_model_reference", None))}
+    if cls == "MetricTimeDimensionTransformNode":
+        return {"agg_time_dimension": _name_of(getattr(node, "aggregation_time_dimension_reference", None))}
+    if cls == "JoinOnEntitiesNode":
+        left = getattr(node, "left_node", None)
+        targets = []
+        for t in getattr(node, "join_targets", ()) or ():
+            targets.append({
+                "entity": _name_of(getattr(t, "join_on_entity", None)),
+                "join_type": _join_type(getattr(t, "join_type", None)),
+                "semantic_models": _read_models(getattr(t, "join_node", None)) if getattr(t, "join_node", None) else [],
+            })
+        return {"left_models": _read_models(left) if left is not None else [], "targets": targets}
+    if cls == "WhereFilterNode":
+        return {"filters": [str(getattr(s, "where_sql", "")) for s in getattr(node, "filter_specs", ()) or ()]}
+    if cls in ("ConstrainTimeRangeNode", "JoinOverTimeRangeNode"):
+        details: dict[str, Any] = {"time_range": _time_range(getattr(node, "time_range_constraint", None))}
+        if cls == "JoinOverTimeRangeNode":
+            window = getattr(node, "window", None)
+            details["window"] = f"{window.count} {_enum_value(window.granularity)}" if window is not None else None
+            grain = getattr(node, "grain_to_date", None)
+            details["grain_to_date"] = str(_enum_value(grain)) if grain else None
+        return details
+    if cls == "AggregateSimpleMetricInputsNode":
+        mapping = getattr(node, "null_fill_value_mapping", None)
+        items = getattr(mapping, "_element_name_and_null_fill_value_items", None) or ()
+        return {"metrics": [str(name) for name, _ in items]}
+    if cls == "ComputeMetricsNode":
+        specs = getattr(node, "computed_metric_specs", None) or getattr(node, "metric_specs", None) or ()
+        return {"metrics": [s.element_name for s in specs]}
+    if cls in ("JoinToTimeSpineNode", "CombineAggregatedOutputsNode"):
+        join_type = getattr(node, "join_type", None)
+        return {"join_type": _join_type(join_type) or ("full_outer" if cls == "CombineAggregatedOutputsNode" else None)}
+    if cls == "OrderByLimitNode":
+        return {"limit": getattr(node, "limit", None)}
+    return {}
+
+
+def _plan_nodes(sinks: Any) -> list[dict[str, Any]]:
+    """The plan as a flat list, sources first; `inputs` are the ids of the nodes feeding each one."""
+    out: list[dict[str, Any]] = []
+    ids: dict[int, list[str]] = {}
+
+    def visit(node: Any) -> list[str]:
+        key = id(node)
+        if key in ids:
+            return ids[key]
+        ids[key] = []  # a cycle can't happen in a DAG, but never recurse forever
+        inputs: list[str] = []
+        for parent in getattr(node, "parent_nodes", ()) or ():
+            inputs.extend(i for i in visit(parent) if i not in inputs)
+        cls = type(node).__name__
+        if cls in _PASSTHROUGH_NODES or len(out) >= _MAX_PLAN_NODES:
+            ids[key] = inputs
+            return inputs
+        node_id = str(getattr(getattr(node, "node_id", None), "id_str", None) or f"n{len(out)}")
+        try:
+            details = _node_details(node)
+        except Exception:  # noqa: BLE001 — one odd node shouldn't lose the plan
+            details = {}
+        out.append({"id": node_id, "kind": _NODE_KINDS.get(cls, "other"), "node_type": cls,
+                    "label": str(getattr(node, "description", cls)), "inputs": inputs, **details})
+        ids[key] = [node_id]
+        return [node_id]
+
+    for sink in sinks:
+        visit(sink)
+    return out
+
+
+def _by_name(items: Any) -> dict[str, Any]:
+    return {getattr(x, "name", None): x for x in items or []}
+
+
+def _filters(where: Any) -> list[str]:
+    return [str(f.where_sql_template) for f in getattr(where, "where_filters", None) or []]
+
+
+class _InputCollector:
+    """The simple-metric inputs feeding a set of metrics, with the filters that apply to each."""
+
+    def __init__(self, manifest: Any) -> None:
+        self.metrics = _by_name(manifest.metrics)
+        self.models = _by_name(manifest.semantic_models)
+        self.inputs: list[dict[str, Any]] = []
+        # every metric reached: its type, expression and inputs (Reconcile drafts SQL from these)
+        self.defs: dict[str, dict[str, Any]] = {}
+
+    def _define(self, name: str, metric: Any) -> None:
+        params = metric.type_params
+        kind = str(_enum_value(metric.type))
+        entry: dict[str, Any] = {"type": kind, "expr": getattr(params, "expr", None) if kind == "derived" else None,
+                                 "filters": _filters(getattr(metric, "filter", None)), "inputs": []}
+        for role, child in [("numerator", getattr(params, "numerator", None)),
+                            ("denominator", getattr(params, "denominator", None)),
+                            *[("input", c) for c in getattr(params, "metrics", None) or []]]:
+            if child is None:
+                continue
+            entry["inputs"].append({
+                "role": role, "name": child.name, "alias": getattr(child, "alias", None),
+                "filters": _filters(getattr(child, "filter", None)),
+                "offset": bool(getattr(child, "offset_window", None) or getattr(child, "offset_to_grain", None)),
+            })
+        self.defs[name] = entry
+
+    def collect(self, name: str, filters: list[str], via: str, depth: int = 0) -> None:
+        metric = self.metrics.get(name)
+        if metric is None or depth > 20:
+            self._from_measure(name, filters, via)
+            return
+        own = filters + _filters(getattr(metric, "filter", None))
+        params = metric.type_params
+        if name not in self.defs:
+            try:
+                self._define(name, metric)
+            except Exception as exc:  # noqa: BLE001 — a definition we can't describe only loses the reconcile draft
+                print(f"metric definition {name}: {exc}", file=sys.stderr)
+        if str(_enum_value(metric.type)) == "simple":
+            agg = getattr(params, "metric_aggregation_params", None)
+            if agg is None and getattr(params, "measure", None) is not None:
+                self._from_measure(params.measure.name, own + _filters(params.measure.filter), via)
+                return
+            self._add(name, via, getattr(agg, "semantic_model", None), getattr(params, "expr", None) or name,
+                      getattr(agg, "agg", None), getattr(agg, "agg_time_dimension", None), own)
+            return
+        for child in self._children(params):
+            self.collect(child.name, own + _filters(getattr(child, "filter", None)), via, depth + 1)
+
+    @staticmethod
+    def _children(params: Any) -> list[Any]:
+        children = [c for c in (getattr(params, "numerator", None), getattr(params, "denominator", None)) if c]
+        children += list(getattr(params, "metrics", None) or [])
+        cumulative = getattr(params, "cumulative_type_params", None)
+        if cumulative is not None and getattr(cumulative, "metric", None) is not None:
+            children.append(cumulative.metric)
+        elif getattr(params, "measure", None) is not None:
+            children.append(params.measure)
+        conversion = getattr(params, "conversion_type_params", None)
+        for attr in ("base_metric", "conversion_metric", "base_measure", "conversion_measure"):
+            value = getattr(conversion, attr, None) if conversion is not None else None
+            if value is not None:
+                children.append(value)
+        return children
+
+    def _from_measure(self, measure: str, filters: list[str], via: str) -> None:
+        for model in self.models.values():
+            for m in getattr(model, "measures", None) or []:
+                if m.name == measure:
+                    self._add(measure, via, model.name, m.expr or m.name, m.agg, m.agg_time_dimension, filters)
+                    return
+
+    def _add(self, name: str, via: str, model_name: str | None, expr: str, agg: Any, agg_time: str | None,
+             filters: list[str]) -> None:
+        model = self.models.get(model_name)
+        defaults = getattr(model, "defaults", None) if model is not None else None
+        agg_time = agg_time or getattr(defaults, "agg_time_dimension", None)
+        entry = {"metric": name, "via": via, "semantic_model": model_name, "expr": str(expr),
+                 "agg": str(_enum_value(agg)) if agg is not None else None, "agg_time_dimension": agg_time,
+                 "filters": filters}
+        if entry not in self.inputs:
+            self.inputs.append(entry)
+
+
+def _model_info(model: Any) -> dict[str, Any]:
+    relation = getattr(model, "node_relation", None)
+    return {
+        "relation": getattr(relation, "relation_name", None),
+        "entities": [{"name": e.name, "type": str(_enum_value(e.type)), "expr": e.expr or e.name}
+                     for e in getattr(model, "entities", None) or []],
+        "dimensions": [{"name": d.name, "type": str(_enum_value(d.type)), "expr": d.expr or d.name}
+                       for d in getattr(model, "dimensions", None) or []],
+    }
+
+
+def _group_bys(query_spec: Any, models: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for kind, specs in (("dimension", getattr(query_spec, "dimension_specs", ())),
+                        ("time_dimension", getattr(query_spec, "time_dimension_specs", ())),
+                        ("entity", getattr(query_spec, "entity_specs", ()))):
+        for spec in specs or ():
+            links = [_name_of(e) for e in getattr(spec, "entity_links", ()) or ()]
+            grain = getattr(getattr(spec, "time_granularity", None), "name", None)
+            name = "__".join([*links, spec.element_name, *([str(grain)] if grain else [])])
+            entry: dict[str, Any] = {"name": name, "kind": kind, "element": spec.element_name, "entity_links": links}
+            if kind == "time_dimension" and not links and spec.element_name == "metric_time":
+                entry["kind"] = "metric_time"
+            elif kind != "entity":
+                entry.update(_locate_dimension(spec.element_name, links, models))
+            out.append(entry)
+    return out
+
+
+def _locate_dimension(element: str, links: list[str], models: dict[str, Any]) -> dict[str, Any]:
+    """The semantic model a linked dimension lives in: the one with it and the last link entity."""
+    candidates = [m for m in models.values() if any(d.name == element for d in getattr(m, "dimensions", None) or [])]
+    if links:
+        linked = [m for m in candidates if any(e.name == links[-1] for e in getattr(m, "entities", None) or [])]
+        candidates = linked or candidates
+    if not candidates:
+        return {}
+    model = candidates[0]
+    dim = next(d for d in model.dimensions if d.name == element)
+    return {"semantic_model": model.name, "expr": dim.expr or dim.name}
+
+
+def op_explain_plan(req: dict[str, Any]) -> dict[str, Any]:
+    """op_explain's request → {sql, columns, plan: [node], inputs, models, group_by, time_range}.
+
+    A plan MetricFlow can't describe still returns the SQL with `plan_error` (the UI falls
+    back to the SQL's CTE names)."""
+    engine = _engine(req, needs_sql=True)
+    metrics = _str_list(req, "metrics")
+    if not metrics:
+        raise WorkerError("bad_request", "debugging needs at least one metric")
+    try:
+        request = MetricFlowQueryRequest.create(
+            metric_names=metrics,
+            group_by_names=_str_list(req, "group_by"),
+            where_constraints=_str_list(req, "where"),
+            order_by_names=_str_list(req, "order_by"),
+            limit=req.get("limit") if isinstance(req.get("limit"), int) else None,
+            time_constraint_start=_datetime(req, "start"),
+            time_constraint_end=_datetime(req, "end"),
+        )
+        result = engine.explain(request)
+    except WorkerError:
+        raise
+    except Exception as exc:
+        raise _invalid_query(exc) from exc
+    out: dict[str, Any] = _explained(result, req["dialect"])
+    manifest, _ = _manifest(_require_str(req, "manifest_path"))
+    try:
+        out["plan"] = _plan_nodes(result.dataflow_plan.sink_nodes)
+    except Exception as exc:  # noqa: BLE001 — MetricFlow internals move between versions
+        out["plan"], out["plan_error"] = [], f"{type(exc).__name__}: {exc}"[:500]
+    try:
+        collector = _InputCollector(manifest)
+        for metric in metrics:
+            collector.collect(metric, [], metric)
+        models = _by_name(manifest.semantic_models)
+        used = {i["semantic_model"] for i in collector.inputs}
+        for node in out["plan"]:
+            used.update(m for m in [node.get("semantic_model"), *node.get("left_models", [])] if m)
+            for t in node.get("targets", []):
+                used.update(t.get("semantic_models", []))
+        group_by = _group_bys(result.query_spec, models)
+        used.update(g["semantic_model"] for g in group_by if g.get("semantic_model"))
+        out["inputs"] = collector.inputs
+        out["metric_defs"] = collector.defs
+        out["group_by"] = group_by
+        out["models"] = {name: _model_info(models[name]) for name in sorted(n for n in used if n in models)}
+        out["time_range"] = _time_range(getattr(result.query_spec, "time_range_constraint", None))
+    except Exception as exc:  # noqa: BLE001 — the checks are skipped, the plan still shows
+        out.update(inputs=[], group_by=[], models={}, time_range=None, metric_defs={}, inputs_error=f"{type(exc).__name__}: {exc}"[:500])
+    return out
+
+
 OPS = {
     "ping": op_ping,
     "load": op_load,
@@ -395,6 +728,7 @@ OPS = {
     "dimension_values": op_dimension_values,
     "validate": op_validate,
     "validate_draft": op_validate_draft,
+    "explain_plan": op_explain_plan,
 }
 
 

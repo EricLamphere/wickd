@@ -2,7 +2,7 @@
 // chart by the first shared dimension no filter uses, and a table by period below. Click a widget to configure it in the side pane with every setting a dashboard
 // widget has; Add to dashboard inserts the chosen ones (as configured) after the source widget.
 import { useEffect, useRef, useState } from 'react';
-import { ExternalLink, Filter, X } from 'lucide-react';
+import { Filter, Microscope, X } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { rangeLabel, sharedDimensions, widgetInfo } from '../dashboardModel';
@@ -120,7 +120,7 @@ export function InspectDialog({ projectId, slug, doc, widget, result, pick, labe
         <div className="flex flex-wrap items-center justify-end gap-2 px-5 py-3 border-t border-gray-800">
           {notice && <span className="flex-1 min-w-0 text-[11px] text-amber-300 truncate">{notice}</span>}
           <button onClick={run(actions.onOpenInExplorer)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">
-            <ExternalLink className="w-3.5 h-3.5" />Open in explorer
+            <Microscope className="w-3.5 h-3.5" />Open in Investigate
           </button>
           <button onClick={run(actions.onApplyFilter)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">
             <Filter className="w-3.5 h-3.5" />Apply as dashboard filter

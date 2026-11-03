@@ -1,4 +1,4 @@
-"""DAG and dashboard exports. The frontend renders the file (it owns the layout and the on-screen
+"""DAG, dashboard and metric chart exports. The frontend renders the file (it owns the layout and the on-screen
 filter); this writes it into the folder the user picked, so the desktop app — whose webview has
 no download manager — can save anywhere, defaulting to ~/Downloads."""
 
@@ -113,6 +113,16 @@ async def export_dashboard(
 ) -> ExportResultDto:
     """A metric dashboard rendered by the frontend (self-contained HTML, or PNG)."""
     return await _export(project_id, body, session, "dashboard")
+
+
+@router.post("/{project_id}/exports/chart", response_model=ExportResultDto, status_code=201)
+async def export_chart(
+    project_id: int,
+    body: DagExportRequestDto,
+    session: AsyncSession = Depends(get_session),
+) -> ExportResultDto:
+    """One metric chart (a metric page chart or the Investigate widget) as a PNG, or its rows as CSV."""
+    return await _export(project_id, body, session, "chart")
 
 
 @global_router.get("/default-dir", response_model=DefaultDirDto)

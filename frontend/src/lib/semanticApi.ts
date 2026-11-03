@@ -1,5 +1,6 @@
 // Typed helpers for the semantic layer (MetricFlow) routes. Kept out of api.ts,
 // which is already past the file-size limit; same request helpers and error type.
+import type { AiProposalDto } from './aiApi';
 import { ApiError, get, post } from './api';
 
 export type MetricflowMode = 'auto' | 'off';
@@ -296,4 +297,7 @@ export const semanticApi = {
   compare: (projectId: number, body: CompareBody) => post<CompareResultDto>(`/projects/${projectId}/semantic/compare`, body),
   saveQuery: (projectId: number, body: SaveQueryBody) =>
     post<{ path: string }>(`/projects/${projectId}/semantic/saved-queries`, body),
+  /** the saved query as a proposal to review (kind `saved_query`): written only when accepted */
+  proposeSavedQuery: (projectId: number, body: SaveQueryBody) =>
+    post<AiProposalDto>(`/projects/${projectId}/semantic/saved-queries/propose`, body),
 };

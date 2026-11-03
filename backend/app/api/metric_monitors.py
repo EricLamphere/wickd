@@ -20,8 +20,9 @@ from app.db.engine import get_session
 from app.db.models import MetricMonitor, MetricMonitorRun, ProjectEnvVar
 from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
-from app.semantic import anomaly, monitor_points, monitors, service
+from app.semantic import anomaly, cron, monitor_points, monitors, service
 from app.semantic import monitor_queries as mq
+from app.semantic import monitor_schedule as ms
 from app.semantic.runtime import RuntimeUnavailable
 
 router = APIRouter(prefix="/api/projects", tags=["metric-monitors"])
@@ -31,6 +32,7 @@ Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max
 Grain = Literal["day", "week", "month"]
 Sensitivity = Literal["low", "normal", "high"]
 Period = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+Schedule = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class MonitorCreateDto(BaseModel):
@@ -47,6 +49,7 @@ class MonitorPatchDto(BaseModel):
     lookback: int | None = Field(default=None, ge=1)
     enabled: bool | None = None
     target: Name | None = None  # send null explicitly to unpin
+    schedule: Schedule | None = None  # "off" or cron; send null explicitly to follow the project
 
 
 class RefreshDto(BaseModel):
@@ -64,7 +67,10 @@ class OrderDto(BaseModel):
 
 
 class SettingsDto(BaseModel):
-    interval_hours: int | None = Field(default=None, ge=monitors.MIN_INTERVAL_HOURS, le=24 * 7)
+    """The project's auto-check: every `interval_hours`, a cron `schedule`, or neither (off)."""
+
+    interval_hours: int | None = Field(default=None, ge=ms.MIN_INTERVAL_HOURS, le=ms.MAX_INTERVAL_HOURS)
+    schedule: Schedule | None = None
 
 
 async def _gate(session: AsyncSession) -> None:
@@ -84,12 +90,15 @@ def _json(raw: str | None, default: object) -> object:
         return default
 
 
-def monitor_dto(m: MetricMonitor) -> dict:
+def monitor_dto(m: MetricMonitor, project_rule: ms.Rule | None) -> dict:
+    rule = ms.effective_rule(m.schedule, project_rule) if m.enabled else None
+    last = monitors.last_attempt(m.id, m.last_checked_at)
     return {
         "id": m.id, "metric": m.metric, "grain": m.grain, "dimension": m.dimension, "sensitivity": m.sensitivity,
         "lookback": m.lookback, "enabled": m.enabled, "target": m.target, "slices": _json(m.slices_json, []),
         "position": m.position, "created_at": _iso(m.created_at), "last_checked_at": _iso(m.last_checked_at),
-        "latest": _json(m.last_result_json, None),
+        "latest": _json(m.last_result_json, None), "schedule": m.schedule,
+        "next_check_at": _iso(ms.next_check(rule, last, datetime.now(UTC))),
     }
 
 
@@ -110,11 +119,23 @@ async def _monitor(session: AsyncSession, project_id: int, monitor_id: int) -> M
     return m
 
 
-async def _interval(session: AsyncSession, project_id: int) -> int | None:
-    raw = (await session.execute(
-        select(ProjectEnvVar.value).where(ProjectEnvVar.project_id == project_id, ProjectEnvVar.key == monitors.INTERVAL_KEY)
-    )).scalar_one_or_none()
-    return monitors.parse_interval(raw)
+async def _settings_rows(session: AsyncSession, project_id: int) -> dict[str, ProjectEnvVar]:
+    rows = (await session.execute(
+        select(ProjectEnvVar).where(
+            ProjectEnvVar.project_id == project_id, ProjectEnvVar.key.in_([ms.INTERVAL_KEY, ms.SCHEDULE_KEY])
+        )
+    )).scalars()
+    return {row.key: row for row in rows}
+
+
+async def _project_rule(session: AsyncSession, project_id: int) -> ms.Rule | None:
+    rows = await _settings_rows(session, project_id)
+    raw = {key: row.value for key, row in rows.items()}
+    return ms.project_rule(raw.get(ms.INTERVAL_KEY), raw.get(ms.SCHEDULE_KEY))
+
+
+def _schedule_error(exc: cron.CronError) -> HTTPException:
+    return _http_error(400, "invalid_schedule", f"Invalid schedule: {exc}")
 
 
 async def _latest_run(session: AsyncSession, project_id: int) -> MetricMonitorRun | None:
@@ -155,10 +176,12 @@ async def list_monitors(project_id: int, session: AsyncSession = Depends(get_ses
         select(MetricMonitor).where(MetricMonitor.project_id == project_id)
         .order_by(MetricMonitor.position, MetricMonitor.id)
     )).scalars()
+    rule = await _project_rule(session, project_id)
     return {
-        "monitors": [monitor_dto(m) for m in rows],
+        "monitors": [monitor_dto(m, rule) for m in rows],
         "running": project_id in monitors.running,
-        "interval_hours": await _interval(session, project_id),
+        "interval_hours": rule.hours if rule else None,
+        "schedule": rule.expr if rule else None,
         "max_monitors": mq.MAX_MONITORS,
         "active_target": await _active_target(session, project_id) or None,
         "last_run": run_dto(await _latest_run(session, project_id)),
@@ -204,7 +227,7 @@ async def create_monitor(project_id: int, dto: MonitorCreateDto, session: AsyncS
     await session.refresh(m)
     await monitors.request_refresh(project_id, [m.id], "manual")
     log.info("metric_monitor_created", project_id=project_id, monitor_id=m.id, metric=dto.metric, grain=dto.grain)
-    return monitor_dto(m)
+    return monitor_dto(m, await _project_rule(session, project_id))
 
 
 @router.patch("/{project_id}/metric-monitors/{monitor_id}")
@@ -222,9 +245,14 @@ async def patch_monitor(
         m.enabled = dto.enabled
     if "target" in dto.model_fields_set:
         m.target = dto.target
+    if "schedule" in dto.model_fields_set:
+        try:
+            m.schedule = ms.check_override(dto.schedule)
+        except cron.CronError as exc:
+            raise _schedule_error(exc) from exc
     await session.commit()
     await session.refresh(m)
-    return monitor_dto(m)
+    return monitor_dto(m, await _project_rule(session, project_id))
 
 
 @router.delete("/{project_id}/metric-monitors/{monitor_id}", status_code=204)
@@ -279,21 +307,45 @@ async def put_order(project_id: int, dto: OrderDto, session: AsyncSession = Depe
 
 @router.put("/{project_id}/metric-monitors/settings")
 async def put_settings(project_id: int, dto: SettingsDto, session: AsyncSession = Depends(get_session)) -> dict:
-    """The automatic check interval while wickd is open (null = off); a project env var row."""
+    """The automatic check while wickd is open: an interval, a cron schedule, or off (both
+    null). Stored as the MONITOR_INTERVAL_HOURS / MONITOR_SCHEDULE project env vars; setting
+    one clears the other. Monitors with their own schedule keep it."""
     await _project(session, project_id)
     await _gate(session)
-    row = (await session.execute(
-        select(ProjectEnvVar).where(ProjectEnvVar.project_id == project_id, ProjectEnvVar.key == monitors.INTERVAL_KEY)
-    )).scalar_one_or_none()
-    if dto.interval_hours is None:
-        if row is not None:
-            await session.delete(row)
-    elif row is None:
-        session.add(ProjectEnvVar(project_id=project_id, key=monitors.INTERVAL_KEY, value=str(dto.interval_hours)))
-    else:
-        row.value = str(dto.interval_hours)
+    if dto.interval_hours is not None and dto.schedule is not None:
+        raise _http_error(400, "invalid_schedule", "Choose an interval or a schedule, not both.")
+    try:
+        schedule = cron.normalize(dto.schedule) if dto.schedule is not None else None
+    except cron.CronError as exc:
+        raise _schedule_error(exc) from exc
+    wanted = {
+        ms.INTERVAL_KEY: str(dto.interval_hours) if dto.interval_hours is not None else None,
+        ms.SCHEDULE_KEY: schedule,
+    }
+    rows = await _settings_rows(session, project_id)
+    for key, value in wanted.items():
+        row = rows.get(key)
+        if value is None:
+            if row is not None:
+                await session.delete(row)
+        elif row is None:
+            session.add(ProjectEnvVar(project_id=project_id, key=key, value=value))
+        else:
+            row.value = value
     await session.commit()
-    return {"interval_hours": dto.interval_hours}
+    return {"interval_hours": dto.interval_hours, "schedule": schedule}
+
+
+@router.get("/{project_id}/metric-monitors/schedule-preview")
+async def schedule_preview(project_id: int, expr: str, session: AsyncSession = Depends(get_session)) -> dict:
+    """A cron expression checked as you type: {expr (as stored), next: [the next 3 times]}."""
+    await _project(session, project_id)
+    await _gate(session)
+    try:
+        normalized = cron.normalize(expr[:200])
+    except cron.CronError as exc:
+        raise _schedule_error(exc) from exc
+    return {"expr": normalized, "next": [_iso(t) for t in ms.upcoming(normalized, datetime.now(UTC))]}
 
 
 @router.get("/{project_id}/metric-monitors/{monitor_id}/series")
@@ -311,7 +363,7 @@ async def series(
     stored = await monitor_points.series(session, m.id, target_name, slice, since)
     detected = anomaly.detect(stored, grain=m.grain, sensitivity=m.sensitivity, previous=None, now=date.today())
     return {
-        "monitor": monitor_dto(m),
+        "monitor": monitor_dto(m, await _project_rule(session, project_id)),
         "slice": slice,
         "slices": [mq.slice_key(s) for s in spec.slices] if spec.dimension else [],
         "target": target_name or None,

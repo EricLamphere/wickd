@@ -6,8 +6,9 @@ Triggers (plan 10 decision 1):
 - after a successful run/build that touched an ancestor of a monitored metric
   (`schedule_after_run`, called from api/runs.py);
 - Check now (POST /metric-monitors/refresh);
-- an optional interval while wickd is open (`MONITOR_INTERVAL_HOURS`, off by default,
-  at least 1 h; one scheduler loop for all projects).
+- an optional schedule while wickd is open: every N hours or a cron expression per
+  project, overridable per monitor (monitor_schedule.py; off by default; one scheduler
+  loop for all projects, ticking every minute).
 
 wickd only runs while it's open: this is "checked when you build or look", not 3 a.m.
 alerting. One refresh per project at a time; requests that arrive meanwhile are
@@ -20,16 +21,17 @@ import json
 import os
 from collections.abc import Coroutine, Iterable
 from dataclasses import dataclass, replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.semantic import anomaly, monitor_points
 from app.semantic import monitor_queries as mq
+from app.semantic import monitor_schedule as ms
 from app.semantic.batch import BatchResult, run_many
 
 log = get_logger(__name__)
@@ -37,14 +39,13 @@ log = get_logger(__name__)
 STATUS_RANK = {"error": 4, "anomaly": 3, "warn": 2, "ok": 1, "not_enough_history": 0}
 MAX_FLAGGED = 20
 RECENT_POINTS = 60
-INTERVAL_KEY = "MONITOR_INTERVAL_HOURS"
-MIN_INTERVAL_HOURS = 1
-SCHEDULER_TICK_S = 300
+SCHEDULER_TICK_S = 60
 
 running: set[int] = set()
 _pending: dict[int, tuple[frozenset[int] | None, str]] = {}  # project → (ids, None = all; trigger)
 _tasks: set[asyncio.Task] = set()
 _scheduler: asyncio.Task | None = None
+_attempts: dict[int, datetime] = {}  # monitor → last scheduled request (a failed check isn't retried every tick)
 
 
 class RefreshFailed(Exception):
@@ -446,16 +447,7 @@ async def _after_run(project_id: int, project_path: Path, succeeded: set[str]) -
         log.exception("metric_monitor_after_run_failed", project_id=project_id)
 
 
-# ── interval while open ──────────────────────────────────────────────────────
-
-
-def parse_interval(raw: str | None) -> int | None:
-    """Hours between automatic refreshes, None when off (empty, invalid or under the minimum)."""
-    text = (raw or "").strip()
-    if not text.isdigit():
-        return None
-    hours = int(text)
-    return hours if hours >= MIN_INTERVAL_HOURS else None
+# ── schedule while open ──────────────────────────────────────────────────────
 
 
 def start_scheduler() -> None:
@@ -485,30 +477,45 @@ async def _scheduler_loop() -> None:
 
 
 async def tick(now: datetime) -> list[int]:
-    """Start the interval refreshes that are due; the project ids started."""
+    """Start the scheduled refreshes that are due; the project ids started."""
     from app.db import engine as db_engine
-    from app.db.models import MetricMonitor, MetricMonitorRun, ProjectEnvVar
+    from app.db.models import MetricMonitor, ProjectEnvVar
 
     async with db_engine.SessionLocal() as session:
+        settings: dict[int, dict[str, str]] = {}
+        for project_id, key, value in (await session.execute(
+            select(ProjectEnvVar.project_id, ProjectEnvVar.key, ProjectEnvVar.value)
+            .where(ProjectEnvVar.key.in_([ms.INTERVAL_KEY, ms.SCHEDULE_KEY]))
+        )).all():
+            settings.setdefault(project_id, {})[key] = value
         rows = (await session.execute(
-            select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == INTERVAL_KEY)
+            select(MetricMonitor.project_id, MetricMonitor.id, MetricMonitor.schedule, MetricMonitor.last_checked_at)
+            .where(MetricMonitor.enabled.is_(True))
         )).all()
-        due = []
-        for project_id, raw in rows:
-            hours = parse_interval(raw)
-            if hours is None or project_id in running:
+        by_project: dict[int, list[ms.MonitorTiming]] = {}
+        for project_id, monitor_id, schedule, checked in rows:
+            by_project.setdefault(project_id, []).append(ms.MonitorTiming(
+                id=monitor_id, schedule=schedule, last=last_attempt(monitor_id, checked),
+            ))
+        due: list[tuple[int, list[int], str]] = []
+        for project_id, timings in by_project.items():
+            if project_id in running:
                 continue
-            enabled = (await session.execute(
-                select(func.count()).select_from(MetricMonitor)
-                .where(MetricMonitor.project_id == project_id, MetricMonitor.enabled.is_(True))
-            )).scalar_one()
-            last = (await session.execute(
-                select(func.max(MetricMonitorRun.started_at)).where(MetricMonitorRun.project_id == project_id)
-            )).scalar_one_or_none()
-            if enabled and (last is None or now - _as_utc(last) >= timedelta(hours=hours)):
-                due.append(project_id)
+            raw = settings.get(project_id, {})
+            ids, trigger = ms.due(timings, ms.project_rule(raw.get(ms.INTERVAL_KEY), raw.get(ms.SCHEDULE_KEY)), now)
+            if ids:
+                due.append((project_id, ids, trigger))
         if not due or not await _entitled(session):
             return []
-    for project_id in due:
-        await request_refresh(project_id, None, "interval")
-    return due
+    for project_id, ids, trigger in due:
+        for monitor_id in ids:
+            _attempts[monitor_id] = now
+        all_enabled = len(ids) == len(by_project[project_id])
+        await request_refresh(project_id, None if all_enabled else ids, trigger)
+    return [project_id for project_id, _, _ in due]
+
+
+def last_attempt(monitor_id: int, checked: datetime | None) -> datetime | None:
+    """A monitor's last check or scheduled attempt, whichever is later (aware)."""
+    times = [t for t in (_as_utc(checked), _attempts.get(monitor_id)) if t is not None]
+    return max(times) if times else None

@@ -1,7 +1,8 @@
 // The metric explorer's query view is one widget (the dashboards' widget types and settings),
 // kept in the URL as `?view=query&w=<json>` so back/forward and links work. Older links — the
 // query params of lib/metricQuery.ts (Docs' Explore, ⌘K, Wicky's Query data, saved queries) —
-// are turned into a widget on arrival. Pure; tested in exploreWidget.test.ts.
+// are turned into a widget on arrival. The query view is a modal over a metric's page (or the
+// index). Pure; tested in exploreWidget.test.ts.
 import type { ComparePeriod, CurrentPeriod, DashboardWidget, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import type { MetricQueryBody, SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { widgetFromQuery } from '../dashboards/dashboardModel';
@@ -38,17 +39,17 @@ export function readExploreWidget(params: URLSearchParams): DashboardWidget | nu
   }
 }
 
-/** `prev` showing the query view with `widget` (an older link's keys and the metric page dropped). */
+/** `prev` showing the query view with `widget` (an older link's keys dropped; the metric page, if
+ *  any, stays: the query view opens over it and closing returns to it). */
 export function writeExploreWidget(prev: URLSearchParams, widget: DashboardWidget): URLSearchParams {
   const next = writeState(prev, EMPTY_STATE);
-  next.delete('metric');
   next.set(VIEW_PARAM, 'query');
   const { id: _id, width: _w, height: _h, ...rest } = widget;
   next.set(WIDGET_PARAM, JSON.stringify(rest));
   return next;
 }
 
-/** `prev` without the query view (back to the index). */
+/** `prev` without the query view (back to the metric page, or the index). */
 export function clearExplore(prev: URLSearchParams): URLSearchParams {
   const next = writeState(prev, EMPTY_STATE);
   next.delete(VIEW_PARAM);
@@ -57,6 +58,17 @@ export function clearExplore(prev: URLSearchParams): URLSearchParams {
   next.delete('cmp');
   next.delete('cmp_base');
   return next;
+}
+
+/**
+ * The metric page under the query view (closing the modal goes there): the page it was opened
+ * from (`?metric=`), else the widget's metric when it has exactly one that exists; null = the index.
+ */
+export function exploreBase(params: URLSearchParams, widget: DashboardWidget | null, metrics: readonly string[]): string | null {
+  const page = params.get('metric');
+  if (page) return page;
+  const own = widget?.metrics ?? [];
+  return own.length === 1 && metrics.includes(own[0]) ? own[0] : null;
 }
 
 /** An older explorer link's query as the explorer's widget (its type picked from the query's shape). */

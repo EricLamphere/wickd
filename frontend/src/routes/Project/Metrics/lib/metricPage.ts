@@ -1,7 +1,7 @@
 // Metric pages and the metric index (plan 13): the chart's queries for a period, where a metric
 // comes from (lineage), where it's used, its health issues, and the index's grouping and search.
 // Pure; tested in metricPage.test.ts.
-import type { GraphDto, ModelNode } from '../../../../lib/api';
+import type { GraphDto, ModelNode, SemanticInfo } from '../../../../lib/api';
 import type { ComparePeriod, CurrentPeriod, DashboardSummaryDto, DateRange, WidgetQueryDto, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import type {
   CatalogMetric, CatalogSavedQuery, MetricQueryBody, QueryBatchItemDto, SemanticCatalogDto, SemanticIssue,
@@ -49,15 +49,63 @@ export function chartQueries(metric: string, period: MetricPeriod, today: Date =
   return { grain, current, previous, currentBody: overTime(metric, column, current), previousBody: previous ? overTime(metric, column, previous) : null };
 }
 
-/** The batch's answers for `q` as a widget result, drawn by the dashboards' time series renderer. */
-export function chartResult(q: ChartQueries, items: QueryBatchItemDto[]): WidgetResultDto {
-  const query = (body: MetricQueryBody, item: QueryBatchItemDto | undefined): WidgetQueryDto => ({
-    status: item?.status ?? 'not_run', query: body, sql: item?.result?.sql ?? null, columns: item?.result?.columns ?? [],
-    rows: item?.result?.rows ?? [], truncated: item?.result?.truncated ?? false, ran_at: item?.result?.ran_at ?? null, error: item?.error ?? null,
-  });
-  const current = query(q.currentBody, items[0]);
-  const queries: Record<string, WidgetQueryDto> = { current };
-  if (q.previousBody) queries.current_previous = query(q.previousBody, items[1]);
+/** How many values the page's "By dimension" chart shows. */
+export const BREAKDOWN_TOP_N = 10;
+
+/** A role on the metric page, each one query of its batch. */
+export type PageRole = 'current' | 'current_previous' | 'total' | 'total_previous' | 'by_dimension' | 'by_dimension_previous';
+
+export interface PageQueries extends ChartQueries {
+  /** the breakdown's dimension (null: the metric has none, so no breakdown) */
+  dimension: string | null;
+  /** the batch: each role's query, in order */
+  roles: [PageRole, MetricQueryBody][];
+}
+
+function ranged(body: MetricQueryBody, range: DateRange | null): MetricQueryBody {
+  return range ? { ...body, start: range.start, end: range.end } : body;
+}
+
+/**
+ * The metric page's queries: over time (the chart), the period's total (its own query, never
+ * the sum of the trend), and the top values of `dimension` — each with its comparison period.
+ * The roles mirror the dashboards' planner (dashboard_plan.py) so their renderers draw them.
+ */
+export function pageQueries(metric: string, period: MetricPeriod, dimension: string | null, today: Date = new Date()): PageQueries {
+  const chart = chartQueries(metric, period, today);
+  const { current, previous } = chart;
+  const roles: [PageRole, MetricQueryBody][] = [['current', chart.currentBody]];
+  if (chart.previousBody) roles.push(['current_previous', chart.previousBody]);
+  roles.push(['total', ranged({ metrics: [metric] }, current)]);
+  if (previous) roles.push(['total_previous', ranged({ metrics: [metric] }, previous)]);
+  if (dimension) {
+    const by: MetricQueryBody = { metrics: [metric], group_by: [dimension], order_by: [`-${metric}`] };
+    roles.push(['by_dimension', ranged({ ...by, limit: BREAKDOWN_TOP_N }, current)]);
+    if (previous) roles.push(['by_dimension_previous', ranged(by, previous)]);
+  }
+  return { ...chart, dimension, roles };
+}
+
+/** Which page role fills each of a dashboard widget's roles. */
+export const WIDGET_ROLES = {
+  summary: { total: 'total', total_previous: 'total_previous', trend: 'current', trend_previous: 'current_previous' },
+  timeseries: { current: 'current', current_previous: 'current_previous' },
+  bar: { current: 'by_dimension', current_previous: 'by_dimension_previous' },
+} as const satisfies Record<string, Record<string, PageRole>>;
+
+/** The batch's answers as one widget's result (`roles`: widget role → page role), for its renderer. */
+export function pageResult(q: PageQueries, items: QueryBatchItemDto[], roles: Record<string, PageRole>): WidgetResultDto {
+  const byRole = new Map(q.roles.map(([role, body], i) => [role, { body, item: items[i] }]));
+  const queries: Record<string, WidgetQueryDto> = {};
+  for (const [widgetRole, pageRole] of Object.entries(roles)) {
+    const found = byRole.get(pageRole);
+    if (!found) continue;
+    const { body, item } = found;
+    queries[widgetRole] = {
+      status: item?.status ?? 'not_run', query: body, sql: item?.result?.sql ?? null, columns: item?.result?.columns ?? [],
+      rows: item?.result?.rows ?? [], truncated: item?.result?.truncated ?? false, ran_at: item?.result?.ran_at ?? null, error: item?.error ?? null,
+    };
+  }
   const all = Object.values(queries);
   const error = all.find((x) => x.status === 'error')?.error ?? null;
   const ran = all.map((x) => x.ran_at).filter((x): x is string => !!x).sort();
@@ -65,6 +113,47 @@ export function chartResult(q: ChartQueries, items: QueryBatchItemDto[]): Widget
     widget_id: 'metric-page', status: error ? 'error' : all.some((x) => x.status === 'not_run') ? 'not_run' : 'ok', error, notes: [],
     grain: q.grain, current: q.current, previous: q.previous, ran_at: ran[0] ?? null, queries,
   };
+}
+
+/** A metric filter as people read it: `{{ Dimension('order__status') }} = 'x'` → `order__status = 'x'`. */
+export function readableFilter(filter: string): string {
+  return filter
+    .replace(/\{\{\s*(?:Dimension|Entity|TimeDimension)\(\s*'([^']+)'(?:\s*,\s*'([^']+)')?\s*\)(?:\.grain\(\s*'([^']+)'\s*\))?\s*\}\}/g,
+      (_m, name: string, grain?: string, grain2?: string) => (grain ?? grain2 ? `${name} (${grain ?? grain2})` : name))
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const AGG_LABELS: Record<string, string> = {
+  sum: 'Sum', count: 'Count', count_distinct: 'Distinct count', average: 'Average', avg: 'Average', min: 'Minimum',
+  max: 'Maximum', median: 'Median', percentile: 'Percentile', sum_boolean: 'Count of true',
+};
+
+/** One step of how a metric is calculated, in words: `text` with `code` parts (names, expressions). */
+export type CalcPart = { text: string } | { code: string };
+
+/** How a metric is calculated, as a sentence (the metric page's "How it's calculated"). */
+export function calculationParts(s: SemanticInfo): CalcPart[] {
+  const type = s.type ?? '';
+  if (type === 'simple') {
+    if (s.agg) {
+      const agg = AGG_LABELS[s.agg] ?? s.agg;
+      return s.expr ? [{ text: `${agg} of ` }, { code: s.expr }] : [{ text: agg }];
+    }
+    return s.measure ? [{ text: 'The measure ' }, { code: s.measure }] : [];
+  }
+  if (type === 'ratio' && s.numerator && s.denominator) {
+    return [{ code: s.numerator }, { text: ' divided by ' }, { code: s.denominator }];
+  }
+  if (type === 'derived' && s.expr) return [{ code: s.expr }];
+  if (type === 'cumulative') {
+    const input = s.measure ?? s.input_metrics?.[0];
+    if (!input) return [{ text: 'A running total' }];
+    const tail = s.window ? ` over a ${s.window} window` : s.grain_to_date ? `, ${s.grain_to_date} to date` : ' over all time';
+    return [{ text: 'Running total of ' }, { code: input }, { text: tail }];
+  }
+  if (type === 'conversion') return [{ text: 'Conversion rate between two events' }];
+  return [];
 }
 
 // ── lineage ──────────────────────────────────────────────────────────────────

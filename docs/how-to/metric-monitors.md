@@ -11,9 +11,8 @@ build, they tell you whether the change you just made moved a metric.
 
 ## Create a monitor
 
-1. Open **Metrics → Monitors** and click **New monitor**, or pick one metric in the
-   explorer and click **Monitor this metric** (the grain and a categorical group-by
-   carry over).
+1. Open **Metrics → Monitors** and click **New monitor**, or click **Monitor** on a
+   metric's page (the metric and the page's grain carry over).
 2. Choose:
    - **Grain**: day, week or month.
    - **Slice by** (optional): one categorical dimension. wickd watches its top 10
@@ -72,9 +71,18 @@ baselines. **Undo** flags it again.
   monitored metric checks those monitors in the background.
 - **Check now:** on the Monitors tab, in a monitor's detail view, or on the Health
   overview card.
-- **Auto-check:** set an interval (1, 3, 6, 12 or 24 hours) on the Monitors tab, or
-  `MONITOR_INTERVAL_HOURS` in **Environment → Settings → Project**. It's off by default
-  and only runs while wickd is open.
+- **Auto-check:** on the Monitors tab, pick an interval (1, 3, 6, 12 or 24 hours) or
+  **Custom schedule…** for a cron expression such as `0 9 * * 1-5` (weekdays at 9:00),
+  in your computer's local time. Presets cover the common ones, and the next three
+  times are shown as you type. Schedules can fire at most every 15 minutes. The same
+  settings are `MONITOR_INTERVAL_HOURS` / `MONITOR_SCHEDULE` in **Environment →
+  Settings → Project**. It's off by default and only runs while wickd is open. A
+  scheduled time that passed while wickd was closed is checked once when it next opens.
+- **Per monitor:** in a monitor's detail view, **Settings → Auto-check** follows the
+  project's schedule by default. Choose **Own schedule…** to give it a cron expression of
+  its own (for example, a monthly metric checked on the 2nd), or **Off for this monitor**
+  to check it only after builds and on Check now. Cards with their own schedule show a
+  clock next to their next check time.
 
 Every check runs all due monitors in one `dbt show` per target. Only one check runs per
 project at a time; requests that arrive meanwhile are combined into one follow-up.

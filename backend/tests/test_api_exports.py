@@ -110,3 +110,18 @@ async def test_default_dir(client, tmp_path: Path, monkeypatch: pytest.MonkeyPat
 async def test_reveal_rejects_missing_file(client, tmp_path: Path):
     res = await client.post("/api/exports/reveal", json={"path": str(tmp_path / "nope.svg")})
     assert res.status_code == 404
+
+
+async def test_chart_export_writes_csv_and_png(client, project, tmp_path: Path):
+    csv = await client.post(
+        f"/api/projects/{project.id}/exports/chart",
+        json=_body(tmp_path, filename="revenue", format="csv", content="day,revenue\n2026-10-01,12\n"),
+    )
+    assert csv.status_code == 201
+    assert (tmp_path / "revenue.csv").read_text() == "day,revenue\n2026-10-01,12\n"
+    png = await client.post(
+        f"/api/projects/{project.id}/exports/chart",
+        json=_body(tmp_path, filename="revenue", format="png", content=base64.b64encode(b"png").decode(), encoding="base64"),
+    )
+    assert png.status_code == 201
+    assert (tmp_path / "revenue.png").read_bytes() == b"png"

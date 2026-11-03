@@ -92,7 +92,19 @@ function shapesIn(el: Element, origin: DOMRect, out: Shape[], isRoot = true): vo
   }
 }
 
-/** The PNG's scene: a header, then every widget with its contents, as on screen. */
+/** `text`'s width in `font` (0 where a canvas can't measure, e.g. in tests). */
+function textWidth(text: string, font: string): number {
+  try {
+    const ctx = document.createElement('canvas').getContext('2d');
+    if (!ctx) return 0;
+    ctx.font = font;
+    return ctx.measureText(text).width;
+  } catch {
+    return 0;
+  }
+}
+
+/** The PNG's scene: a header, then every widget with its contents, as on screen (`grid` may be one widget). */
 export function captureScene(grid: HTMLElement, header: { title: string; subtitle: string }): SvgScene {
   const pad = 24;
   const headerH = 56;
@@ -105,15 +117,20 @@ export function captureScene(grid: HTMLElement, header: { title: string; subtitl
     { kind: 'text', x: pad, y: pad + 16, text: header.title, color: color('--text-primary'), size: 18, weight: '600', family },
     { kind: 'text', x: pad, y: pad + 38, text: header.subtitle, color: color('--text-secondary'), size: 12, weight: '400', family },
   ];
-  grid.querySelectorAll<HTMLElement>('[data-widget-id]').forEach((tile) => {
+  // a single widget (a chart's Download PNG) is its own one tile, drawn with the plain border (not selected/hovered)
+  const single = grid.matches('[data-widget-id]');
+  const tiles = single ? [grid] : Array.from(grid.querySelectorAll<HTMLElement>('[data-widget-id]'));
+  tiles.forEach((tile) => {
     const r = tile.getBoundingClientRect();
     const style = getComputedStyle(tile);
     shapes.push({ kind: 'rect', x: r.left - shifted.left, y: r.top - shifted.top, w: r.width, h: r.height,
-      fill: style.backgroundColor, stroke: style.borderTopColor, rx: parseFloat(style.borderTopLeftRadius) || 0 });
+      fill: style.backgroundColor, stroke: single ? color('--gray-800') : style.borderTopColor, rx: parseFloat(style.borderTopLeftRadius) || 0 });
     shapesIn(tile, shifted, shapes);
   });
+  // the header may be wider than a single small widget: widen the image rather than cut it off
+  const headerWidth = Math.max(...shapes.slice(0, 2).map((t) => (t.kind === 'text' ? textWidth(t.text, `${t.weight} ${t.size}px ${family}`) : 0)));
   return {
-    width: origin.width + pad * 2,
+    width: Math.max(origin.width, Math.ceil(headerWidth)) + pad * 2,
     height: origin.height + pad * 2 + headerH,
     background: color('--bg-app'),
     fontFamily: family,

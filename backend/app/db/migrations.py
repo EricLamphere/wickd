@@ -665,6 +665,11 @@ async def run_migrations() -> None:
             await session.execute(text("UPDATE metric_monitors SET position = id"))
             await session.commit()
 
+        # Metric monitors: per-monitor auto-check schedule override (NULL = the project's)
+        if not await _column_exists(session, "metric_monitors", "schedule"):
+            await session.execute(text("ALTER TABLE metric_monitors ADD COLUMN schedule TEXT"))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

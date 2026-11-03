@@ -35,6 +35,14 @@ def test_error_detail_keeps_dbts_message() -> None:
     assert error_detail("") == "dbt show failed"
 
 
+def test_error_detail_strips_colours_and_keeps_the_specific_error() -> None:
+    text = ("\x1b[0m18:25:21  Running with dbt=1.10.13\n"
+            "\x1b[0m18:25:21  Error while parsing node: inline_query\n  depends on a node named 'nope' which was not found\n"
+            "\x1b[0m18:25:21  Encountered an error:\nError parsing inline query")
+    assert error_detail(text) == ("Error while parsing node: inline_query\ndepends on a node named 'nope' which was not found\n"
+                                  "Error parsing inline query")
+
+
 def test_build_batch_sql_limits_and_tags_each_statement() -> None:
     sql = build_batch_sql(["select 1 as a;", "select 2 as a"], start=5, limit=10)
     assert "limit 11" in sql and "loop.index0 + 5" in sql

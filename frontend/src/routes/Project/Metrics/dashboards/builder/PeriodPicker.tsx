@@ -1,6 +1,7 @@
 // A period button with a popover: presets on the left, a two-month calendar on the right
-// (react-day-picker, range mode). Picking a preset applies it; a calendar range applies
-// once both ends are picked. Used for the dashboard's current and comparison periods, and
+// (react-day-picker, range mode). Picking a preset applies it; on the calendar the first click
+// picks one end and the second the other (in either order, previewed while hovering), and the
+// range applies on the second click (rangeClicks.ts). Used for the dashboard's current and comparison periods, and
 // for a widget's override (with an "Use the dashboard's …" option on top). The popover is
 // rendered on document.body (a rail's scroll area would clip it) and kept inside the window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -10,6 +11,7 @@ import 'react-day-picker/style.css';
 import { CalendarDays, ChevronDown } from 'lucide-react';
 import type { DateRange } from '../../../../../lib/dashboardsApi';
 import { isRange, rangeLabel } from '../dashboardModel';
+import { clickDay, previewRange } from './rangeClicks';
 
 export interface PresetOption {
   key: string;
@@ -39,7 +41,10 @@ const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSta
 
 export function PeriodPicker<T extends string>({ label, resolved, value, presets, onChange, muted, ariaLabel, inherit, months = 2 }: Props<T>) {
   const [open, setOpen] = useState(false);
+  // the shown range (the current one when opened); `pending` is the first click's day
   const [draft, setDraft] = useState<DayRange | undefined>(undefined);
+  const [pending, setPending] = useState<Date | null>(null);
+  const [hovered, setHovered] = useState<Date | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
@@ -58,6 +63,8 @@ export function PeriodPicker<T extends string>({ label, resolved, value, presets
   useEffect(() => {
     if (!open) return;
     setDraft(resolved ? { from: toDate(resolved.start), to: toDate(resolved.end) } : undefined);
+    setPending(null);
+    setHovered(null);
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!ref.current?.contains(t) && !popover.current?.contains(t)) setOpen(false);
@@ -68,13 +75,19 @@ export function PeriodPicker<T extends string>({ label, resolved, value, presets
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pickRange = (range: DayRange | undefined) => {
-    setDraft(range);
-    if (range?.from && range.to && range.from.getTime() !== range.to.getTime()) {
-      onChange({ start: toIso(range.from), end: toIso(range.to) });
+  const pickDay = (day: Date) => {
+    const next = clickDay(pending, day);
+    setPending(next.pending);
+    if (next.range) {
+      setDraft(next.range);
+      onChange({ start: toIso(next.range.from), end: toIso(next.range.to) });
       setOpen(false);
     }
   };
+  const shown = previewRange(pending, hovered) ?? draft;
+  // the calendar opens on the selected range's last month(s), known at render (the draft is set after it)
+  const end = resolved ? toDate(resolved.end) : new Date();
+  const openMonth = new Date(end.getFullYear(), end.getMonth() - (months - 1), 1);
 
   return (
     <div ref={ref} className="relative">
@@ -112,12 +125,13 @@ export function PeriodPicker<T extends string>({ label, resolved, value, presets
               );
             })}
             <li className="px-3 pt-2 pb-1 mt-1 text-[10px] text-gray-500 border-t border-gray-800">
-              Or pick a start and end date →
+              {pending ? 'Now click the other end →' : 'Or click a start and an end date →'}
             </li>
           </ul>
           <div className="p-2 wickd-day-picker">
-            <DayPicker mode="range" numberOfMonths={months} selected={draft} onSelect={pickRange}
-              defaultMonth={draft?.from ? new Date(draft.from.getFullYear(), draft.from.getMonth() - (months - 1), 1) : undefined}
+            <DayPicker mode="range" numberOfMonths={months} selected={shown} onSelect={() => { /* clicks: pickDay */ }}
+              onDayClick={pickDay} onDayMouseEnter={(day) => { if (pending) setHovered(day); }}
+              defaultMonth={openMonth}
               weekStartsOn={1} showOutsideDays={false} />
           </div>
         </div>,

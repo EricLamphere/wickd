@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { DashboardWidget, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import {
-  clearExplore, EXPLORE_HEIGHT, exploreFromDashboard, explorePeriod, isExploreView, mainQuery, readExploreWidget, savedQueryBody,
+  clearExplore, EXPLORE_HEIGHT, exploreBase, exploreFromDashboard, explorePeriod, isExploreView, mainQuery, readExploreWidget, savedQueryBody,
   widgetFromLegacy, withExplorePeriod, writeExploreWidget,
 } from './exploreWidget';
 
@@ -15,12 +15,12 @@ const catalog = {
 } as unknown as SemanticCatalogDto;
 
 describe('exploreWidget', () => {
-  it('round-trips the widget through the URL, dropping older keys and the metric page', () => {
+  it('round-trips the widget through the URL, dropping older keys but keeping the metric page under it', () => {
     const start = new URLSearchParams('tab=explore&metric=revenue&metrics=revenue');
     const widget: DashboardWidget = { id: 'x', type: 'bar', width: 50, height: 300, metrics: ['revenue'], options: { dimension: 'customer__region' } };
     const params = writeExploreWidget(start, widget);
     expect(params.get('tab')).toBe('explore');
-    expect(params.has('metric')).toBe(false);
+    expect(params.get('metric')).toBe('revenue');
     expect(params.has('metrics')).toBe(false);
     expect(isExploreView(params)).toBe(true);
     expect(readExploreWidget(params)).toEqual({ ...widget, id: 'explore', width: 100, height: EXPLORE_HEIGHT });
@@ -66,5 +66,15 @@ describe('exploreWidget', () => {
     expect(mainQuery(undefined)).toBeNull();
     expect(savedQueryBody({ metrics: ['revenue'], group_by: ['metric_time__day'], where: [], start: 'x', limit: 5 }))
       .toEqual({ metrics: ['revenue'], group_by: ['metric_time__day'] });
+  });
+
+  it('puts the query view over the page it came from, else its only metric', () => {
+    const w = (metrics: string[]): DashboardWidget => ({ id: 'explore', type: 'timeseries', width: 100, height: 380, metrics });
+    const known = ['revenue', 'orders'];
+    expect(exploreBase(new URLSearchParams('metric=orders'), w(['revenue']), known)).toBe('orders');
+    expect(exploreBase(new URLSearchParams(), w(['revenue']), known)).toBe('revenue');
+    expect(exploreBase(new URLSearchParams(), w(['revenue', 'orders']), known)).toBeNull();
+    expect(exploreBase(new URLSearchParams(), w(['gone']), known)).toBeNull();
+    expect(exploreBase(new URLSearchParams(), null, known)).toBeNull();
   });
 });

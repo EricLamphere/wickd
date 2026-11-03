@@ -4,7 +4,7 @@ stats the filesystem), so the API layer just maps ExportPathError to a 400."""
 from pathlib import Path
 from typing import Literal
 
-ExportFormat = Literal["html", "svg", "png"]
+ExportFormat = Literal["html", "svg", "png", "csv"]
 
 MAX_FILENAME_LENGTH = 255
 _FORBIDDEN_FILENAME_CHARS = ("/", "\\", "\0")

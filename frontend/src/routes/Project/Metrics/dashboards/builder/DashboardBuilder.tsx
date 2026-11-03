@@ -233,7 +233,6 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
         });
         setNotice(`Added ${drafts.length} widget${drafts.length === 1 ? '' : 's'} to the dashboard`);
       },
-      onOpenInExplorer: () => onOpenExplorer(exploreFromDashboard(widget, result?.queries.current?.query ?? ranQuery, doc.period?.compare)),
       onOpenMetric: widget.metrics?.length === 1 ? () => onOpenMetric(widget.metrics![0]) : null,
       onDuplicate: () => apply((d) => duplicateWidget(d, widget.id)),
       onRemove: () => { apply((d) => removeWidget(d, widget.id)); if (selected === widget.id) setSelected(null); },

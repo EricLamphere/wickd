@@ -110,6 +110,9 @@ export default function WorkspacePage() {
   // Editor state
   const [activeTab, setActiveTab] = useState<EditorTab>('code');
   const [editorContent, setEditorContent] = useState('');
+  // The editor takes its text once, at mount (defaultValue): only mount it once the open file's
+  // content is here, or a file opened on arrival (Metrics → Open in Workspace) shows up empty.
+  const [loadedPath, setLoadedPath] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const editorRef = useRef<Parameters<NonNullable<Parameters<typeof Editor>[0]['onMount']>>[0] | null>(null);
@@ -184,18 +187,29 @@ export default function WorkspacePage() {
   // Load file content when openPath changes; reset compiled state
   useEffect(() => {
     if (!openPath) return;
+    let current = true;
+    setLoadedPath(null);
     setCompiledSql(null);
     setCompiledError(null);
     const cached = sessionStorage.getItem(CONTENT_KEY(id, openPath));
     if (cached !== null) {
       setEditorContent(cached);
       setIsDirty(false);
+      setLoadedPath(openPath);
       return;
     }
     api.files.getContent(id, openPath).then((f) => {
+      if (!current) return;
       setEditorContent(f.content);
       setIsDirty(false);
-    }).catch(() => {});
+      setLoadedPath(openPath);
+    }).catch(() => {
+      if (!current) return;
+      // a file that's gone: forget it rather than keep an empty editor around
+      setOpenPath(null);
+      try { sessionStorage.removeItem(OPEN_KEY(id)); } catch { /* storage unavailable */ }
+    });
+    return () => { current = false; };
   }, [id, openPath]);
 
   // Mouse resize handlers
@@ -999,6 +1013,8 @@ export default function WorkspacePage() {
             <div className="flex items-center justify-center h-full text-gray-600 text-sm">
               Select or create a file to start writing SQL
             </div>
+          ) : activeTab === 'code' && loadedPath !== openPath ? (
+            <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading {fileName}…</div>
           ) : activeTab === 'code' ? (
             <Editor
               key={openPath}

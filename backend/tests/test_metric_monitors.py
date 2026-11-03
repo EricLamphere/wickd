@@ -26,6 +26,7 @@ from app.events.bus import bus
 from app.licensing import entitlements
 from app.main import app
 from app.semantic import anomaly, monitors, service, status
+from app.semantic import monitor_schedule as ms
 from app.semantic.batch import BatchResult
 
 FIXTURES = Path(__file__).parent / "fixtures" / "semantic"
@@ -51,6 +52,7 @@ async def db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setattr(db_engine, "SessionLocal", sessions)
     monitors.running.clear()
     monitors._pending.clear()
+    monitors._attempts.clear()
     async with sessions() as session:
         yield session
     await _settle()
@@ -399,7 +401,7 @@ async def test_after_run_without_entitlement_does_nothing(db, tmp_path, worker, 
 
 async def test_interval_tick(db, tmp_path, worker, shim, entitled, monkeypatch) -> None:
     project = await _project(db, tmp_path)
-    await _monitor(db, project)
+    m = await _monitor(db, project)
     started: list = []
 
     async def fake_request(project_id, ids, trigger):
@@ -408,14 +410,38 @@ async def test_interval_tick(db, tmp_path, worker, shim, entitled, monkeypatch) 
     monkeypatch.setattr(monitors, "request_refresh", fake_request)
     now = datetime.now(UTC)
     assert await monitors.tick(now) == []  # off by default
-    db.add(ProjectEnvVar(project_id=project.id, key=monitors.INTERVAL_KEY, value="6"))
+    db.add(ProjectEnvVar(project_id=project.id, key=ms.INTERVAL_KEY, value="6"))
     await db.commit()
     assert await monitors.tick(now) == [project.id]
     assert started == [(project.id, None, "interval")]
-    db.add(MetricMonitorRun(project_id=project.id, status="done", started_at=now - timedelta(hours=2)))
+    assert await monitors.tick(now + timedelta(minutes=1)) == []  # the attempt counts: no retry every tick
+    monitors._attempts.clear()
+    m.last_checked_at = now - timedelta(hours=2)
     await db.commit()
     assert await monitors.tick(now) == []
     assert await monitors.tick(now + timedelta(hours=5)) == [project.id]
+
+
+async def test_schedule_tick_with_overrides(db, tmp_path, worker, shim, entitled, monkeypatch) -> None:
+    project = await _project(db, tmp_path)
+    now = datetime.now(UTC)
+    recent = now  # just checked: nothing fired since
+    follows = await _monitor(db, project, last_checked_at=recent)
+    own = await _monitor(db, project, metric="order_count", schedule="0 * * * *",
+                         last_checked_at=now - timedelta(hours=2))
+    await _monitor(db, project, metric="other", schedule="off", last_checked_at=now - timedelta(days=9))
+    await _monitor(db, project, metric="disabled", enabled=False)
+    db.add(ProjectEnvVar(project_id=project.id, key=ms.SCHEDULE_KEY, value="0 9 * * *"))
+    await db.commit()
+    started: list = []
+
+    async def fake_request(project_id, ids, trigger):
+        started.append((project_id, ids, trigger))
+
+    monkeypatch.setattr(monitors, "request_refresh", fake_request)
+    assert await monitors.tick(now) == [project.id]
+    assert started == [(project.id, [own.id], "schedule")]  # the follower was just checked
+    assert follows.id not in monitors._attempts
 
 
 # ── routes ───────────────────────────────────────────────────────────────────
@@ -488,11 +514,36 @@ async def test_list_patch_delete_and_settings(db, tmp_path, client, worker, shim
     assert patched["sensitivity"] == "low" and not patched["enabled"] and patched["target"] == "prod"
     assert (await client.patch(f"{base}/{m.id}", json={"target": None})).json()["target"] is None
 
-    assert (await client.put(f"{base}/settings", json={"interval_hours": 6})).json() == {"interval_hours": 6}
-    assert (await client.get(base)).json()["interval_hours"] == 6
+    six = {"interval_hours": 6, "schedule": None}
+    assert (await client.put(f"{base}/settings", json={"interval_hours": 6})).json() == six
+    listed = (await client.get(base)).json()
+    assert listed["interval_hours"] == 6 and listed["schedule"] is None
+    assert listed["monitors"][0]["next_check_at"] is None  # disabled
     assert (await client.put(f"{base}/settings", json={"interval_hours": 0})).status_code == 422
+    both = await client.put(f"{base}/settings", json={"interval_hours": 6, "schedule": "0 9 * * *"})
+    assert both.status_code == 400
+    bad = await client.put(f"{base}/settings", json={"schedule": "* * * * *"})
+    assert bad.status_code == 400 and bad.json()["detail"]["error"] == "invalid_schedule"
+    cron_set = await client.put(f"{base}/settings", json={"schedule": " 0  9 * * mon-fri "})
+    assert cron_set.json() == {"interval_hours": None, "schedule": "0 9 * * mon-fri"}
+    listed = (await client.get(base)).json()
+    assert listed["interval_hours"] is None and listed["schedule"] == "0 9 * * mon-fri"
+    async with db_engine.SessionLocal() as s:
+        keys = (await s.execute(select(ProjectEnvVar.key).where(ProjectEnvVar.project_id == project.id))).scalars()
+        assert set(keys) == {ms.SCHEDULE_KEY}
     await client.put(f"{base}/settings", json={"interval_hours": None})
-    assert (await client.get(base)).json()["interval_hours"] is None
+    assert (await client.get(base)).json()["schedule"] is None
+
+    await client.patch(f"{base}/{m.id}", json={"enabled": True})
+    own = (await client.patch(f"{base}/{m.id}", json={"schedule": "@daily"})).json()
+    assert own["schedule"] == "@daily" and own["next_check_at"] is not None
+    assert (await client.patch(f"{base}/{m.id}", json={"schedule": "nope"})).status_code == 400
+    assert (await client.patch(f"{base}/{m.id}", json={"schedule": "off"})).json()["next_check_at"] is None
+    assert (await client.patch(f"{base}/{m.id}", json={"schedule": None})).json()["schedule"] is None
+
+    preview = (await client.get(f"{base}/schedule-preview", params={"expr": "0 9 * * *"})).json()
+    assert preview["expr"] == "0 9 * * *" and len(preview["next"]) == 3
+    assert (await client.get(f"{base}/schedule-preview", params={"expr": "0 9"})).status_code == 400
 
     assert (await client.delete(f"{base}/{m.id}")).status_code == 204
     assert (await client.delete(f"{base}/{m.id}")).status_code == 404

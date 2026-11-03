@@ -42,6 +42,7 @@ from app.api import propagation as propagation_api
 from app.api import refactor as refactor_api
 from app.api import runs as runs_api
 from app.api import semantic as semantic_api
+from app.api import semantic_debug as semantic_debug_api
 from app.api import settings as settings_api
 from app.api import setup as setup_api
 from app.api import sql as sql_api
@@ -124,6 +125,7 @@ app.include_router(column_lineage_api.router)
 app.include_router(propagation_api.router)
 app.include_router(test_gaps_api.router)
 app.include_router(semantic_api.router)
+app.include_router(semantic_debug_api.router)
 app.include_router(metric_monitors_api.router)
 app.include_router(dashboards_api.router)
 app.include_router(refactor_api.router)

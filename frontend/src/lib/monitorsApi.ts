@@ -1,5 +1,6 @@
 // Typed helpers for metric monitors (wickd Pro): metrics watched for anomalies, refreshed
-// after builds that touch them, on Check now, or on an interval while wickd is open.
+// after builds that touch them, on Check now, or on a schedule while wickd is open
+// (the project's interval or cron expression, or a monitor's own cron override).
 // Every route is Pro-gated (403 pro_feature_required → isProFeatureRequiredError()).
 import { del, get, patch, post, put } from './api';
 
@@ -78,12 +79,16 @@ export interface MonitorDto {
   created_at: string | null;
   last_checked_at: string | null;
   latest: MonitorResultDto | null;
+  /** auto-check override: null follows the project's schedule, 'off', or a cron expression */
+  schedule: string | null;
+  /** when the scheduler next checks it (null: no schedule, or disabled) */
+  next_check_at: string | null;
 }
 
 export interface MonitorRunDto {
   id: number;
   status: 'running' | 'done' | 'error';
-  trigger: 'build' | 'manual' | 'interval';
+  trigger: 'build' | 'manual' | 'interval' | 'schedule';
   target: string | null;
   monitors: number[];
   results: MonitorResultDto[];
@@ -95,7 +100,9 @@ export interface MonitorRunDto {
 export interface MonitorListDto {
   monitors: MonitorDto[];
   running: boolean;
+  /** the project's auto-check: an interval, a cron schedule (local time), or neither (off) */
   interval_hours: number | null;
+  schedule: string | null;
   max_monitors: number;
   active_target: string | null;
   last_run: MonitorRunDto | null;
@@ -132,6 +139,19 @@ export interface MonitorPatchBody {
   lookback?: number;
   enabled?: boolean;
   target?: string | null;
+  schedule?: string | null;
+}
+
+export interface MonitorScheduleSettings {
+  interval_hours: number | null;
+  schedule: string | null;
+}
+
+export interface SchedulePreviewDto {
+  /** the expression as it would be stored */
+  expr: string;
+  /** the next three times it fires */
+  next: string[];
 }
 
 const base = (projectId: number) => `/projects/${projectId}/metric-monitors`;
@@ -145,8 +165,10 @@ export const monitorsApi = {
     post<{ run_id: number | null; queued: boolean }>(`${base(projectId)}/refresh`, { ids: ids ?? null }),
   latest: (projectId: number) => get<MonitorRunDto | null>(`${base(projectId)}/latest`),
   reorder: (projectId: number, ids: number[]) => put<void>(`${base(projectId)}/order`, { ids }),
-  setInterval: (projectId: number, hours: number | null) =>
-    put<{ interval_hours: number | null }>(`${base(projectId)}/settings`, { interval_hours: hours }),
+  setSchedule: (projectId: number, body: MonitorScheduleSettings) =>
+    put<MonitorScheduleSettings>(`${base(projectId)}/settings`, body),
+  previewSchedule: (projectId: number, expr: string) =>
+    get<SchedulePreviewDto>(`${base(projectId)}/schedule-preview?expr=${encodeURIComponent(expr)}`),
   series: (projectId: number, id: number, slice: string) =>
     get<MonitorSeriesDto>(`${base(projectId)}/${id}/series?slice=${encodeURIComponent(slice)}`),
   suppress: (projectId: number, id: number, body: { slice: string; period: string; suppressed: boolean }) =>

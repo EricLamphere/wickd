@@ -1,8 +1,9 @@
 // Metrics page (/projects/:id/metrics): Explore tab — with nothing asked for, the metric index
 // (explore/MetricIndex); `?metric=<name>`, a metric's page (explore/MetricPage, plan 13);
-// `?view=query&w=<widget>`, the query view (explore/ExploreView): one widget of any dashboard
-// type, configured in the dashboards' settings pane. Older links' query params become that
-// widget on arrival (lib/exploreWidget.ts). Back/forward steps index → page → query.
+// `?view=query&w=<widget>`, the query view (explore/ExploreView) in a modal over that page
+// (explore/ExploreModal; closing it returns to the page): one widget of any dashboard type,
+// configured in the dashboards' settings pane. Older links' query params become that widget on
+// arrival (lib/exploreWidget.ts). Back/forward steps index → page → query.
 // Dashboards tab (?tab=dashboards): metric queries pinned as tiles, YAML files in the project (dashboards/).
 // Monitors tab (?tab=monitors, Pro): metrics watched for anomalies (monitors/).
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -10,7 +11,6 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../lib/api';
 import type { DashboardWidget } from '../../../lib/dashboardsApi';
-import { alertDialog } from '../../../lib/dialogs';
 import { semanticErrorBody, type CatalogSavedQuery, type SemanticCatalogDto } from '../../../lib/semanticApi';
 import { useSemanticStatus } from '../components/semantic/useSemantic';
 import NavRail from '../components/NavRail';
@@ -18,16 +18,17 @@ import { useOpenInFiles } from '../lib/openInFiles';
 import { useUrlTab } from '../../../lib/useUrlTab';
 import type { MonitorDraft } from './monitors/CreateMonitorDialog';
 import { MonitorsTab } from './monitors/MonitorsTab';
-import { addMetric, removeMetric, widgetFromQuery } from './dashboards/dashboardModel';
+import { widgetFromQuery, widgetTitle } from './dashboards/dashboardModel';
 import { DashboardsTab } from './dashboards/DashboardsTab';
 import { ProLabel } from '../../../components/ProLabel';
 import { DraftFromModel } from './DraftFromModel';
 import { MetricsSidebar } from './MetricsSidebar';
 import { MetricsUnavailable } from './MetricsUnavailable';
 import {
-  clearExplore, emptyExploreWidget, isExploreView, readExploreWidget, widgetFromLegacy, writeExploreWidget,
+  clearExplore, exploreBase, isExploreView, readExploreWidget, widgetFromLegacy, writeExploreWidget,
 } from './lib/exploreWidget';
 import { readCompare, writeCompare, type CompareState } from './lib/compareView';
+import { ExploreModal } from './explore/ExploreModal';
 import { ExploreView } from './explore/ExploreView';
 import { MetricIndex } from './explore/MetricIndex';
 import { MetricPage } from './explore/MetricPage';
@@ -92,7 +93,9 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
   // A dashboard widget in the explorer (Open in explorer), as it showed there
   const openExplorer = useCallback((widget: DashboardWidget) => {
     setParams((prev) => {
-      const next = writeExploreWidget(prev, widget);
+      const base = new URLSearchParams(prev);
+      base.delete('metric');
+      const next = writeExploreWidget(base, widget);
       next.set('tab', 'explore');
       return next;
     });
@@ -147,15 +150,17 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
   const labels = useMemo(() => labelsFor(catalog), [catalog]);
   const { data: graph } = useQuery({ queryKey: ['graph', projectId], queryFn: () => api.models.graph(projectId) });
   const { open } = useOpenInFiles(projectId);
-  // the index (nothing asked for) → a metric's page (?metric=) → the query view (?view=query&w=, or an older link's query)
-  const pageMetric = params.get('metric');
-  const mode = pageMetric ? 'page' : isExploreView(params) ? 'explore' : 'index';
+  const metricNames = useMemo(() => catalog.metrics.map((m) => m.name), [catalog]);
+  // the index (nothing asked for) or a metric's page (?metric=); the query view (?view=query&w=,
+  // or an older link's query) opens as a modal over the page it came from (or its only metric's)
+  const exploring = isExploreView(params);
   const widget = useMemo(() => readExploreWidget(params), [params]);
+  const pageMetric = exploring ? exploreBase(params, widget, metricNames) : params.get('metric');
 
   // An older explorer link (Docs' Explore, ⌘K, Wicky, saved queries): becomes the widget, in place
   useEffect(() => {
-    if (mode === 'explore' && !widget) setParams((prev) => writeExploreWidget(prev, widgetFromLegacy(prev, catalog)), { replace: true });
-  }, [mode, widget, catalog, setParams]);
+    if (exploring && !widget) setParams((prev) => writeExploreWidget(prev, widgetFromLegacy(prev, catalog)), { replace: true });
+  }, [exploring, widget, catalog, setParams]);
 
   const openMetric = useCallback((name: string) => {
     setParams((prev) => {
@@ -171,12 +176,17 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
       return next;
     });
   }, [setParams]);
-  // a new query (from the index, a metric page, Impact): compare mode only when asked for
+  // closing the query view: back to the page under it
+  const closeExplore = useCallback(() => {
+    if (pageMetric) openMetric(pageMetric); else showIndex();
+  }, [pageMetric, openMetric, showIndex]);
+  // a new query (from a metric page, a saved query, Impact): compare mode only when asked for
   const explore = useCallback((next: DashboardWidget, cmp: CompareState | null = null) => {
     setParams((prev) => writeCompare(writeExploreWidget(prev, next), cmp));
   }, [setParams]);
   const compare = useMemo(() => readCompare(params), [params]);
-  const setCompare = useCallback((next: CompareState | null) => setParams((prev) => writeCompare(prev, next)), [setParams]);
+  // compare options edits replace the history entry, like widget settings
+  const setCompare = useCallback((next: CompareState) => setParams((prev) => writeCompare(prev, next), { replace: true }), [setParams]);
   // settings edits replace the history entry (one per change would bury Back under keystrokes)
   const editWidget = useCallback((next: DashboardWidget) => setParams((prev) => writeExploreWidget(prev, next), { replace: true }), [setParams]);
   const exploreSaved = (q: CatalogSavedQuery) => explore({ ...widgetFromQuery({ saved_query: q.name }, catalog, []), id: 'explore' });
@@ -187,34 +197,25 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
     return uids;
   }, [graph]);
 
-  // in the query view a metric click adds it to (or takes it off) the widget; elsewhere it opens its page
-  const clickMetric = async (m: string) => {
-    if (mode !== 'explore' || !widget) { openMetric(m); return; }
-    if (widget.metrics?.includes(m)) { editWidget(removeMetric(widget, m)); return; }
-    const added = addMetric(widget, m, catalog);
-    if (added.widget) editWidget(added.widget); else await alertDialog(added.error, { title: "Can't add it here" });
-  };
-
   return (
     <div className="flex h-full min-h-0">
       <MetricsSidebar
         catalog={catalog}
-        selected={mode === 'page' && pageMetric ? [pageMetric] : mode === 'explore' ? widget?.metrics ?? [] : []}
+        selected={pageMetric}
         savedQuery={null}
         onShowIndex={showIndex}
-        indexActive={mode === 'index'}
-        onToggleMetric={(m) => { void clickMetric(m); }}
+        indexActive={!pageMetric}
+        onSelectMetric={openMetric}
         onRunSaved={exploreSaved}
         onEditSaved={exploreSaved}
         onOpenYaml={(m) => { const uid = metricUid.get(m); if (uid) open(uid); }}
       />
-      {mode === 'index' && (
+      {!pageMetric && (
         <main className="flex-1 min-w-0 min-h-0 overflow-auto">
-          <MetricIndex projectId={projectId} catalog={catalog} period={period} onPeriod={setPeriod} onOpen={openMetric}
-            onExplore={() => explore({ ...emptyExploreWidget(), period })} />
+          <MetricIndex projectId={projectId} catalog={catalog} period={period} onPeriod={setPeriod} onOpen={openMetric} />
         </main>
       )}
-      {mode === 'page' && pageMetric && (
+      {pageMetric && (
         <main className="flex-1 min-w-0 min-h-0 overflow-auto">
           {catalog.metrics.find((m) => m.name === pageMetric) ? (
             <MetricPage key={pageMetric} projectId={projectId} catalog={catalog} metric={catalog.metrics.find((m) => m.name === pageMetric)!}
@@ -229,12 +230,11 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
           )}
         </main>
       )}
-      {mode === 'explore' && widget && (
-        <main className="flex-1 min-w-0 min-h-0">
+      {exploring && widget && (
+        <ExploreModal title={widgetTitle(widget, labels)} resetKey={JSON.stringify(widget)} onClose={closeExplore}>
           <ExploreView projectId={projectId} catalog={catalog} labels={labels} widget={widget} onChange={editWidget}
-            onIndex={showIndex} onOpenMetric={openMetric} onOpenDashboard={onOpenDashboard} onMonitor={onMonitor}
-            compare={compare} onCompare={setCompare} />
-        </main>
+            onOpenDashboard={onOpenDashboard} compare={compare} onCompare={setCompare} />
+        </ExploreModal>
       )}
     </div>
   );

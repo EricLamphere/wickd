@@ -20,7 +20,7 @@ from app.api.init import load_project_env
 from app.config import settings
 from app.dbt.runner import RunRequest, runner
 from app.logging_setup import get_logger
-from app.semantic.execute import LOCK_WAIT_S, MAX_ROW_LIMIT, wait_for_lock
+from app.semantic.execute import LOCK_WAIT_S, MAX_ROW_LIMIT, error_detail, wait_for_lock
 
 log = get_logger(__name__)
 
@@ -87,13 +87,6 @@ def parse_batch_output(text: str) -> dict[int, tuple[list[str], list[list]]]:
         if isinstance(columns, list) and isinstance(rows, list) and all(isinstance(r, list) for r in rows):
             found[int(index)] = ([str(c) for c in columns], rows)
     return found
-
-
-def error_detail(text: str) -> str:
-    """dbt's error message (after "Encountered an error:"), else the output's tail."""
-    _, sep, after = text.rpartition("Encountered an error:")
-    detail = (after if sep else text).strip()
-    return detail[-1500:] or "dbt show failed"
 
 
 def _with_jinja(sqls: list[str]) -> set[int]:

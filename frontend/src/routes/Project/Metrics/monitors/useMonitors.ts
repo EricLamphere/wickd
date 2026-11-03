@@ -4,7 +4,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, isProFeatureRequiredError } from '../../../../lib/api';
-import { monitorsApi, type MonitorCreateBody, type MonitorListDto, type MonitorPatchBody } from '../../../../lib/monitorsApi';
+import {
+  monitorsApi, type MonitorCreateBody, type MonitorListDto, type MonitorPatchBody, type MonitorScheduleSettings,
+} from '../../../../lib/monitorsApi';
 import { useProjectEvents } from '../../../../lib/sse';
 import { useProEntitled } from '../../RunHistory/usePerformance';
 import { statusesByMetric, type MetricMonitorState } from './monitorView';
@@ -69,7 +71,7 @@ export function useMonitorSeries(projectId: number, monitorId: number | null, sl
   });
 }
 
-/** Create / update / delete / refresh / interval / mark as expected; the list refetches after each. */
+/** Create / update / delete / refresh / schedule / mark as expected; the list refetches after each. */
 export function useMonitorActions(projectId: number) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
@@ -110,7 +112,7 @@ export function useMonitorActions(projectId: number) {
       });
       return run(() => monitorsApi.reorder(projectId, ids));
     },
-    setInterval: (hours: number | null) => run(() => monitorsApi.setInterval(projectId, hours)),
+    setSchedule: (body: MonitorScheduleSettings) => run(() => monitorsApi.setSchedule(projectId, body)),
     suppress: (id: number, slice: string, period: string, suppressed: boolean) =>
       run(() => monitorsApi.suppress(projectId, id, { slice, period, suppressed })),
   };

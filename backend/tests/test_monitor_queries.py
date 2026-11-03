@@ -7,7 +7,7 @@ import pytest
 
 from app.health.summary import summarize_metric_monitors
 from app.semantic import monitor_queries as mq
-from app.semantic.monitors import parse_interval
+from app.semantic.monitor_schedule import parse_interval
 from app.semantic.query_spec import check_where
 
 

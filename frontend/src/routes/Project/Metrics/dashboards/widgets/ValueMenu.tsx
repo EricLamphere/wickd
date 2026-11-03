@@ -4,7 +4,7 @@
 // at the pointer, kept inside the window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ExternalLink, Filter, LineChart, Search } from 'lucide-react';
+import { Filter, LineChart, Microscope, Search } from 'lucide-react';
 import { pickLabel, type Pick } from '../drill';
 
 export interface ValueActions {
@@ -35,7 +35,7 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
     { label: 'Show timeseries', icon: <LineChart className="w-3.5 h-3.5" />, run: actions.onDrill },
     { label: 'Apply as dashboard filter', icon: <Filter className="w-3.5 h-3.5" />, run: actions.onApplyFilter },
     { label: 'Drill into…', icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
-    { label: 'Open in explorer, filtered', icon: <ExternalLink className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
+    { label: 'Open in Investigate, filtered', icon: <Microscope className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
   ];
   return createPortal(
     <div ref={ref} role="menu" aria-label={`Actions for ${label}`} style={pos} onContextMenu={(e) => e.preventDefault()}

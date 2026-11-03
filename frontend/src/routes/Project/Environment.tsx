@@ -7,6 +7,7 @@ import NavRail from './components/NavRail';
 import { GlobalEnvVarsReadOnly } from './components/GlobalEnvVarsReadOnly';
 import { EnvPrecedenceNote } from '../../components/GlobalEnvVarsSection';
 import { alertError, confirmDialog } from '../../lib/dialogs';
+import { monitorsApi } from '../../lib/monitorsApi';
 
 // ---- Collapsible tile wrapper ----
 
@@ -261,6 +262,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const dashboardsPath = envVars.find((v) => v.key === 'DASHBOARDS_PATH')?.value ?? '';
   const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
   const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
+  const monitorSchedule = envVars.find((v) => v.key === 'MONITOR_SCHEDULE')?.value ?? '';
   const diffBaseTarget = envVars.find((v) => v.key === 'DIFF_BASE_TARGET')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
@@ -326,13 +328,26 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['tag-flow', projectId] });
   };
 
-  // Metric monitors' automatic check while wickd is open (Pro): whole hours ≥ 1, empty = off
+  // Metric monitors' automatic check while wickd is open (Pro): whole hours ≥ 1, empty = off.
+  // An interval and a cron schedule are exclusive: saving one clears the other.
   const handleSaveMonitorInterval = async (val: string) => {
     const hours = Math.floor(Number(val.trim()));
     if (val.trim() && Number.isFinite(hours) && hours >= 1) {
       await api.init.setEnvVar(projectId, 'MONITOR_INTERVAL_HOURS', String(hours));
+      if (monitorSchedule) await api.init.deleteEnvVar(projectId, 'MONITOR_SCHEDULE');
     } else {
       await api.init.deleteEnvVar(projectId, 'MONITOR_INTERVAL_HOURS');
+    }
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+    qc.invalidateQueries({ queryKey: ['metric-monitors', projectId] });
+  };
+
+  // A cron expression (local time), validated by the monitors API (Pro); empty = off
+  const handleSaveMonitorSchedule = async (val: string) => {
+    if (val.trim()) {
+      await monitorsApi.setSchedule(projectId, { interval_hours: null, schedule: val.trim() });
+    } else if (monitorSchedule) {
+      await api.init.deleteEnvVar(projectId, 'MONITOR_SCHEDULE');
     }
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     qc.invalidateQueries({ queryKey: ['metric-monitors', projectId] });
@@ -421,6 +436,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               onResizeLabel={handleResizeLabel}
             />
             <ProjectSettingRow
+              label="MONITOR_SCHEDULE"
+              value={monitorSchedule}
+              placeholder="0 9 * * 1-5 (metric monitors' auto-check as cron, local time; replaces the interval; empty = off)"
+              kind="example"
+              onSave={handleSaveMonitorSchedule}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
               label="DIFF_BASE_TARGET"
               value={diffBaseTarget}
               placeholder="prod (the dbt target metric compare reads 'before' numbers from; empty = the active one)"
@@ -437,7 +461,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'DIFF_BASE_TARGET', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

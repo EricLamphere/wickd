@@ -4,23 +4,26 @@
 // bottom with its timeseries; right-click a value for its menu (show timeseries, dashboard
 // filter, drill into…, explorer). While a
 // metric is dragged over it, it says whether it can take it.
-import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
-  Copy, CopyPlus, ExternalLink, FileBarChart, GripVertical, Info, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
+  CopyPlus, FileBarChart, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
 import { statusStyle, type MetricMonitorState } from '../../monitors/monitorView';
 import {
-  HEIGHT_LOCK, MAX_HEIGHT, opt, pxToWidth, resized, toCsv, widthCss, type Resized, type ResizeLimits, type Size,
+  HEIGHT_LOCK, MAX_HEIGHT, opt, pxToWidth, resized, widthCss, type Resized, type ResizeLimits, type Size,
 } from '../dashboardModel';
 import type { Pick } from '../drill';
 import { DrillPanel } from './DrillPanel';
 import { InspectDialog } from './InspectDialog';
 import { ValueMenu } from './ValueMenu';
 import { startDrag } from '../builder/drag';
-import { SqlDialog } from './SqlDialog';
+import { Menu } from './WidgetMenu';
+import { useChartExports } from '../../chartMenu/useChartExports';
+import { useSaveAsSavedQuery } from '../../chartMenu/useSaveAsSavedQuery';
+import { compareLabel, currentLabel, rangeLabel } from '../periods';
 import { formatOf, WidgetBody, type BodyProps } from './WidgetBody';
 
 const HEADER_PX = 28;
@@ -59,7 +62,6 @@ export interface DropHint {
 
 export interface FrameActions {
   onSelect: () => void;
-  onOpenInExplorer: () => void;
   /** the widget's metric's page (single-metric widgets only) */
   onOpenMetric: (() => void) | null;
   onDuplicate: () => void;
@@ -89,27 +91,6 @@ interface Props extends Omit<BodyProps, 'height' | 'onPick' | 'onPickMenu' | 'dr
   dragHandle?: React.HTMLAttributes<HTMLButtonElement>;
   nodeRef?: (el: HTMLElement | null) => void;
   style?: React.CSSProperties;
-}
-
-function Menu({ items, onClose }: { items: { label: string; icon: React.ReactNode; onClick: () => void; disabled?: boolean; danger?: boolean }[]; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('mousedown', onDown);
-    window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); };
-  }, [onClose]);
-  return (
-    <div ref={ref} role="menu" className="absolute right-0 top-6 z-30 min-w-[11rem] py-1 bg-surface-elevated border border-gray-700 rounded shadow-xl">
-      {items.map((item) => (
-        <button key={item.label} role="menuitem" disabled={item.disabled} onClick={(e) => { e.stopPropagation(); onClose(); item.onClick(); }}
-          className={`flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-gray-800 disabled:opacity-40 ${item.danger ? 'text-red-300' : 'text-gray-300'}`}>
-          {item.icon}{item.label}
-        </button>
-      ))}
-    </div>
-  );
 }
 
 type Axes = { x: boolean; y: boolean };
@@ -225,7 +206,6 @@ function ResizeHandles({ start }: { start: (axes: Axes) => (e: React.PointerEven
 export function WidgetFrame(props: Props) {
   const { widget, result, title, selected, present, monitorStatus, dropHint, containerWidth, dragHandle, nodeRef, style } = props;
   const [menu, setMenu] = useState(false);
-  const [sql, setSql] = useState(false);
   const { preview, guides, start } = useResize(widget, containerWidth, props.onResize);
   const [drill, setDrill] = useState<Pick | null>(null);
   const [menuAt, setMenuAt] = useState<{ pick: Pick; x: number; y: number } | null>(null);
@@ -248,11 +228,19 @@ export function WidgetFrame(props: Props) {
   const chartHeight = drilled && result ? Math.floor((bodyHeight - 8) / 2) : bodyHeight;
   const pill = monitorStatus?.status && monitorStatus.status !== 'ok' ? statusStyle(monitorStatus.status) : null;
   const text = widget.type === 'text';
-  const hasData = result?.status === 'ok' && Object.keys(result.queries).length > 0;
-  const firstData = result ? Object.values(result.queries).find((q) => q.status === 'ok') : undefined;
+  // the menu's data items (shared with the metric page and Investigate) and what Download PNG draws
+  const exports = useChartExports(props.projectId);
+  const saveQuery = useSaveAsSavedQuery(props.projectId);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const current = widget.period?.current ?? props.doc.period?.current;
+  const compare = widget.period?.compare ?? props.doc.period?.compare;
+  const periodText = [
+    `${currentLabel(current)}${result?.current ? ` (${rangeLabel(result.current)})` : ''}`,
+    result?.previous ? `vs ${compareLabel(compare).toLowerCase()} (${rangeLabel(result.previous)})` : null,
+  ].filter(Boolean).join(' ');
 
   return (
-    <section ref={nodeRef} data-widget-id={widget.id} onClick={(e) => { e.stopPropagation(); if (!present) props.onSelect(); }}
+    <section ref={(el) => { sectionRef.current = el; nodeRef?.(el); }} data-widget-id={widget.id} onClick={(e) => { e.stopPropagation(); if (!present) props.onSelect(); }}
       className={`group relative flex flex-col min-w-0 px-3 py-2 rounded border transition-colors ${text ? 'bg-transparent' : 'bg-surface-panel'} ${
         dropHint ? (dropHint.ok ? 'border-brand-500 ring-2 ring-brand-500/30' : 'border-red-500/70') : preview ? 'border-brand-500' :
         selected ? 'border-brand-600 ring-1 ring-brand-600/40' : text ? 'border-transparent hover:border-gray-800' : 'border-gray-800'}`}
@@ -283,14 +271,15 @@ export function WidgetFrame(props: Props) {
             {menu && (
               <Menu onClose={() => setMenu(false)} items={[
                 ...(text ? [] : [
-                  { label: 'Open in explorer', icon: <ExternalLink className="w-3.5 h-3.5" />, onClick: props.onOpenInExplorer, disabled: !firstData },
                   ...(props.onOpenMetric ? [{ label: 'Open metric page', icon: <FileBarChart className="w-3.5 h-3.5" />, onClick: props.onOpenMetric }] : []),
-                  { label: 'View SQL', icon: <Info className="w-3.5 h-3.5" />, onClick: () => setSql(true), disabled: !result || !Object.keys(result.queries).length },
-                  { label: 'Copy CSV', icon: <Copy className="w-3.5 h-3.5" />, disabled: !hasData,
-                    onClick: () => { if (firstData) navigator.clipboard?.writeText(toCsv(firstData.columns, firstData.rows)); } },
-                  { label: 'Refresh', icon: <RefreshCw className="w-3.5 h-3.5" />, onClick: props.onRun, disabled: props.refreshing || !widget.metrics?.length },
+                  saveQuery.item(result),
+                  ...exports.items({
+                    result, element: () => sectionRef.current, title: `${props.doc.title} — ${title}`, name: [props.slug, title],
+                    subtitle: [periodText, result?.ran_at ? `data queried ${new Date(result.ran_at).toLocaleString()}` : null].filter(Boolean).join(' · '),
+                  }),
+                  { label: 'Refresh', icon: <RefreshCw className="w-3.5 h-3.5" />, onClick: props.onRun, disabled: props.refreshing || !widget.metrics?.length, divider: true },
                 ]),
-                { label: 'Duplicate', icon: <CopyPlus className="w-3.5 h-3.5" />, onClick: props.onDuplicate },
+                { label: 'Duplicate', icon: <CopyPlus className="w-3.5 h-3.5" />, onClick: props.onDuplicate, divider: text },
                 { label: 'Remove', icon: <Trash2 className="w-3.5 h-3.5" />, onClick: props.onRemove, danger: true },
               ]} />
             )}
@@ -331,7 +320,8 @@ export function WidgetFrame(props: Props) {
           {(preview.locked.x || preview.locked.y) && <span className="ml-1 text-brand-300">· locked</span>}
         </span>
       )}
-      {sql && result && <SqlDialog queries={result.queries} onClose={() => setSql(false)} />}
+      {exports.modal}
+      {saveQuery.modal}
       {menuAt && <ValueMenu pick={menuAt.pick} x={menuAt.x} y={menuAt.y} actions={valueActions} onClose={() => setMenuAt(null)} />}
       {inspect && result && (
         <InspectDialog projectId={props.projectId} slug={props.slug} doc={props.doc} widget={widget} result={result} pick={inspect}

@@ -2,11 +2,12 @@
 // vs expected, "since" and the slices with their own status. Draggable to reorder
 // (MonitorGrid passes the dnd-kit props).
 import type { CSSProperties, HTMLAttributes } from 'react';
-import { AlertTriangle, GripVertical, PauseCircle } from 'lucide-react';
+import { AlertTriangle, Clock, GripVertical, PauseCircle } from 'lucide-react';
 import type { MonitorDto } from '../../../../lib/monitorsApi';
 import { relativeTime } from '../../lib/relativeTime';
 import { MonitorSparkline } from './MonitorSparkline';
 import { formatNumber, monitorTitle, statusStyle, vsExpected } from './monitorView';
+import { formatCheckTime } from './scheduleView';
 
 interface Props {
   monitor: MonitorDto;
@@ -83,6 +84,11 @@ export function MonitorCard({ monitor, activeTarget, running, onOpen, cardRef, d
         {otherTarget && <AlertTriangle className="w-3 h-3 text-amber-400/90" />}
         {monitor.last_checked_at ? `Checked ${relativeTime(monitor.last_checked_at)}` : 'Not checked yet'}
         {otherTarget ? ` on ${latest?.target || 'the default target'}` : ''}
+        {monitor.next_check_at && (
+          <span className="ml-auto flex items-center gap-1 shrink-0" title={monitor.schedule ? `Own schedule: ${monitor.schedule}` : 'Project schedule'}>
+            {monitor.schedule && <Clock className="w-3 h-3" />}next {formatCheckTime(monitor.next_check_at)}
+          </span>
+        )}
       </span>
     </button>
   );

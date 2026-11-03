@@ -2,7 +2,7 @@
 // a sparkline of its stored result for the chosen period (never runs on open; "Run all" runs
 // every card in one dbt show), where it's used and whether it has issues. Click → its page.
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Compass, Loader2, Play, Search } from 'lucide-react';
+import { AlertTriangle, Loader2, Play, Search } from 'lucide-react';
 import { Sparkline } from '../../../../components/charts/Sparkline';
 import type { CatalogMetric, QueryBatchItemDto, SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { relativeTime } from '../../lib/relativeTime';
@@ -19,8 +19,6 @@ interface Props {
   period: MetricPeriod;
   onPeriod: (next: MetricPeriod) => void;
   onOpen: (metric: string) => void;
-  /** the query view, empty (to build a query from scratch) */
-  onExplore: () => void;
 }
 
 function points(item: QueryBatchItemDto | undefined, metric: string): { t: number; v: number }[] {
@@ -70,7 +68,7 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
   );
 }
 
-export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onExplore }: Props) {
+export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen }: Props) {
   const [search, setSearch] = useState('');
   const shown = useMemo(() => searchMetrics(catalog.metrics, search), [catalog.metrics, search]);
   const names = useMemo(() => catalog.metrics.map((m) => m.name), [catalog.metrics]);
@@ -91,10 +89,6 @@ export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onEx
         </label>
         <div className="flex-1" />
         <PeriodControl period={period} onChange={onPeriod} compare={false} />
-        <button onClick={onExplore} title="Build a query: any metrics, broken down and filtered, as any widget"
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">
-          <Compass className="w-3.5 h-3.5" />Explore
-        </button>
         <button onClick={() => spark.run()} disabled={spark.running || !names.length}
           title="Run every metric's chart for this period on the warehouse, in one batch"
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">

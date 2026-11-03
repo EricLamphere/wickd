@@ -15,10 +15,13 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.ai_dtos import AiProposalDto, proposal_dto
+from app.api.ai_proposals import _publish
 from app.db.engine import get_session
-from app.db.models import Project, SemanticCheckSnapshot
+from app.db.models import AiProposal, AiProposalFile, Project, SemanticCheckSnapshot
 from app.dbt.runner import RunRequest, runner
 from app.dbt.schema_yaml import SchemaYamlError
+from app.dbt.schema_yaml import _write as _write_yaml
 from app.git.repo import find_repo_root
 from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
@@ -260,9 +263,8 @@ class SaveQueryDto(ExplainDto):
     description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] | None = None
 
 
-@router.post("/{project_id}/semantic/saved-queries")
-async def post_saved_query(project_id: int, dto: SaveQueryDto, session: AsyncSession = Depends(get_session)) -> dict:
-    """Write the query as a `saved_queries:` entry; {path} of the YAML file it went into."""
+async def _planned_saved_query(session: AsyncSession, project_id: int, dto: SaveQueryDto) -> tuple[Project, saved_queries.SavedQueryWrite]:
+    """The query checked and its `saved_queries:` entry planned (nothing written)."""
     project = await _project(session, project_id)
     status = await _require_available(session, project)
     path = Path(project.path)
@@ -272,12 +274,47 @@ async def post_saved_query(project_id: int, dto: SaveQueryDto, session: AsyncSes
         if dto.name in {q["name"] for q in catalog.get("saved_queries", [])}:
             raise QueryInvalid(f"there's already a saved query named `{dto.name}`")
         check_query({k: v for k, v in query.items() if k != "saved_query"}, catalog, status.adapter_type)
-        written = saved_queries.save(path, saved_queries.spec_for(query, catalog))
+        return project, saved_queries.plan_save(path, saved_queries.spec_for(query, catalog))
     except (service.SemanticError, RuntimeUnavailable, QueryInvalid) as exc:
         raise _semantic_http(exc) from exc
     except SchemaYamlError as exc:
         raise _http_error(422, "yaml_edit_failed", str(exc)) from exc
-    return {"path": written}
+
+
+@router.post("/{project_id}/semantic/saved-queries")
+async def post_saved_query(project_id: int, dto: SaveQueryDto, session: AsyncSession = Depends(get_session)) -> dict:
+    """Write the query as a `saved_queries:` entry; {path} of the YAML file it went into."""
+    project, planned = await _planned_saved_query(session, project_id, dto)
+    try:
+        _write_yaml(Path(project.path) / planned.path, planned.text)
+    except SchemaYamlError as exc:
+        raise _http_error(422, "yaml_edit_failed", str(exc)) from exc
+    return {"path": planned.path}
+
+
+SAVED_QUERY_KIND = "saved_query"
+
+
+@router.post("/{project_id}/semantic/saved-queries/propose", response_model=AiProposalDto)
+async def propose_saved_query(project_id: int, dto: SaveQueryDto, session: AsyncSession = Depends(get_session)) -> AiProposalDto:
+    """The `saved_queries:` entry as a proposal to review (kind `saved_query`, Base): nothing is
+    written until it's accepted in the review window."""
+    project, planned = await _planned_saved_query(session, project_id, dto)
+    target = Path(project.path) / planned.path
+    original = target.read_text(encoding="utf-8")
+    summary = {"name": dto.name, "path": planned.path, "metrics": list(dto.metrics)}
+    proposal = AiProposal(
+        project_id=project_id, kind=SAVED_QUERY_KIND, unique_id=None, title=f"Save `{dto.name}` as a saved query",
+        result_json=json.dumps({"summary": summary}), status="ready",
+    )
+    session.add(proposal)
+    await session.flush()
+    session.add(AiProposalFile(proposal_id=proposal.id, path=planned.path, op="modify", original_text=original, proposed_text=planned.text))
+    await session.commit()
+    await session.refresh(proposal, attribute_names=["files"])
+    await _publish(proposal)
+    log.info("saved_query_proposed", project_id=project_id, name=dto.name, path=planned.path)
+    return proposal_dto(proposal)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

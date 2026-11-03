@@ -183,6 +183,11 @@ async def explain(project_path: Path, query: dict[str, Any]) -> dict:
     return await _call(await manifest_info(project_path), "explain", query)
 
 
+async def explain_plan(project_path: Path, query: dict[str, Any]) -> dict:
+    """explain() plus MetricFlow's dataflow plan and the resolved inputs (metric debugging, plan 15)."""
+    return await _call(await manifest_info(project_path), "explain_plan", query)
+
+
 async def explain_on(project_path: Path, manifest: Path, query: dict[str, Any]) -> dict:
     """explain() against another semantic manifest (compare mode: a base revision or target)."""
     return await _call(replace(await manifest_info(project_path), semantic_manifest=manifest), "explain", query)

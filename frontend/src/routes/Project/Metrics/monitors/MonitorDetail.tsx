@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { ArrowLeft, Check, RotateCcw, Trash2 } from 'lucide-react';
 import { DataTable } from '../../../../components/DataTable';
 import { confirmDialog } from '../../../../lib/dialogs';
-import type { MonitorDto, MonitorPatchBody, MonitorPointDto, MonitorSensitivity } from '../../../../lib/monitorsApi';
+import type { MonitorDto, MonitorListDto, MonitorPatchBody, MonitorPointDto, MonitorSensitivity } from '../../../../lib/monitorsApi';
 import { MonitorChart } from './MonitorChart';
+import { MonitorScheduleSetting } from './ScheduleControls';
 import { clampBand, formatNumber, KIND_LABEL, kindTone, monitorTitle, statusStyle } from './monitorView';
 import { errorText, useMonitorSeries } from './useMonitors';
 
@@ -19,8 +20,10 @@ interface Props {
   monitor: MonitorDto;
   targets: string[];
   running: boolean;
+  /** the project's schedule, which the monitor follows unless it has its own */
+  project: Pick<MonitorListDto, 'interval_hours' | 'schedule'>;
   onBack: () => void;
-  onUpdate: (body: MonitorPatchBody) => void;
+  onUpdate: (body: MonitorPatchBody) => Promise<unknown>;
   onDelete: () => void;
   onRefresh: () => void;
   onSuppress: (slice: string, period: string, suppressed: boolean) => void;
@@ -33,7 +36,7 @@ function pointRow(p: MonitorPointDto): unknown[] {
   return [p.period, round(p.value), round(p.expected), round(p.low), round(p.high), round(p.score), flag];
 }
 
-export function MonitorDetail({ projectId, monitor, targets, running, onBack, onUpdate, onDelete, onRefresh, onSuppress }: Props) {
+export function MonitorDetail({ projectId, monitor, targets, running, project, onBack, onUpdate, onDelete, onRefresh, onSuppress }: Props) {
   const [slice, setSlice] = useState(monitor.latest?.worst_slice ?? (monitor.dimension ? String(monitor.slices[0] ?? '') : ''));
   const series = useMonitorSeries(projectId, monitor.id, slice);
   const data = series.data;
@@ -119,7 +122,7 @@ export function MonitorDetail({ projectId, monitor, targets, running, onBack, on
           )}
         </section>
 
-        <MonitorSettings monitor={monitor} targets={targets} onUpdate={onUpdate} onDelete={remove} />
+        <MonitorSettings projectId={projectId} monitor={monitor} targets={targets} project={project} onUpdate={onUpdate} onDelete={remove} />
       </div>
 
       <section className="flex flex-col gap-2 min-h-0">
@@ -132,8 +135,9 @@ export function MonitorDetail({ projectId, monitor, targets, running, onBack, on
   );
 }
 
-function MonitorSettings({ monitor, targets, onUpdate, onDelete }: {
-  monitor: MonitorDto; targets: string[]; onUpdate: (body: MonitorPatchBody) => void; onDelete: () => void;
+function MonitorSettings({ projectId, monitor, targets, project, onUpdate, onDelete }: {
+  projectId: number; monitor: MonitorDto; targets: string[]; project: Pick<MonitorListDto, 'interval_hours' | 'schedule'>;
+  onUpdate: (body: MonitorPatchBody) => Promise<unknown>; onDelete: () => void;
 }) {
   const [lookback, setLookback] = useState(String(monitor.lookback));
   return (
@@ -160,6 +164,7 @@ function MonitorSettings({ monitor, targets, onUpdate, onDelete }: {
           </select>
         </label>
       )}
+      <MonitorScheduleSetting projectId={projectId} monitor={monitor} project={project} onUpdate={onUpdate} />
       <label className="flex items-center justify-between gap-3">
         <span className="text-gray-400">Enabled</span>
         <input type="checkbox" checked={monitor.enabled} onChange={(e) => onUpdate({ enabled: e.target.checked })} />

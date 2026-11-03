@@ -562,6 +562,34 @@ async def test_save_as_saved_query_validates(client, db, tmp_path, dbt_env, work
     assert (Path(project.path) / "models" / "semantic.yml").read_text() == before
 
 
+async def test_save_as_saved_query_proposes_it_for_review(client, db, tmp_path, dbt_env, worker_calls) -> None:
+    project = await _project(db, tmp_path)
+    yml = Path(project.path) / "models" / "semantic.yml"
+    before = yml.read_text()
+    resp = await client.post(f"/api/projects/{project.id}/semantic/saved-queries/propose", json={
+        "name": "revenue_weekly", "metrics": ["revenue"], "group_by": ["metric_time__week"],
+    })
+    assert resp.status_code == 200, resp.text
+    proposal = resp.json()
+    assert proposal["kind"] == "saved_query" and proposal["status"] == "ready"
+    assert [f["path"] for f in proposal["files"]] == ["models/semantic.yml"]
+    assert "  - name: revenue_weekly\n" in proposal["files"][0]["proposed_text"]
+    assert yml.read_text() == before  # nothing written until it's accepted
+    accepted = await client.post(f"/api/projects/{project.id}/ai/proposals/{proposal['id']}/accept")
+    assert accepted.status_code == 200, accepted.text
+    assert "  - name: revenue_weekly\n" in yml.read_text()
+
+
+@pytest.mark.parametrize("body, code", [
+    ({"name": "Bad Name", "metrics": ["revenue"]}, 422),
+    ({"name": "q", "metrics": ["revenue"], "where": ["1 = 1; drop table t"]}, 400),
+])
+async def test_propose_saved_query_validates(client, db, tmp_path, dbt_env, worker_calls, body, code) -> None:
+    project = await _project(db, tmp_path)
+    resp = await client.post(f"/api/projects/{project.id}/semantic/saved-queries/propose", json=body)
+    assert resp.status_code == code
+
+
 def test_choose_file_prefers_the_saved_queries_file() -> None:
     from app.semantic.saved_queries import choose_file
 

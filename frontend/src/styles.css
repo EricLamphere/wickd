@@ -309,6 +309,15 @@ html[data-theme="light"] .node-selected .node-name {
   border-left: 2px solid rgb(var(--brand-500));
 }
 
+/* Metric debug: the selected plan step's part of MetricFlow's SQL, and the comment line naming it */
+.plan-sql-step {
+  background: rgb(var(--brand-500) / 0.10);
+  border-left: 2px solid rgb(var(--brand-500) / 0.6);
+}
+.plan-sql-focus {
+  background: rgb(var(--brand-500) / 0.26);
+}
+
 /* Run timeline: waits before critical-path nodes (RunHistory/RunTimeline.tsx) */
 .timeline-gap-starvation {
   background: repeating-linear-gradient(90deg, rgb(var(--amber-400)) 0 4px, transparent 4px 7px);

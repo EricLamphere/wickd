@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphDto, ModelNode } from '../../../../lib/api';
 import type { DashboardSummaryDto } from '../../../../lib/dashboardsApi';
-import type { CatalogMetric, SemanticCatalogDto, SemanticIssue } from '../../../../lib/semanticApi';
+import type { CatalogMetric, QueryBatchItemDto, SemanticCatalogDto, SemanticIssue } from '../../../../lib/semanticApi';
 import {
-  autoGrain, chartQueries, chartResult, dimensionGroups, groupMetrics, metricIssues, metricLineage, metricPageSearch, metricUsage, searchMetrics, usageCount,
+  autoGrain, calculationParts, chartQueries, dimensionGroups, pageQueries, pageResult, readableFilter, WIDGET_ROLES, groupMetrics, metricIssues, metricLineage, metricPageSearch, metricUsage, searchMetrics, usageCount,
 } from './metricPage';
 
 const node = (uid: string, resource_type: string): ModelNode => ({
@@ -52,7 +52,8 @@ describe('metricPage', () => {
   });
 
   it('wraps the batch answers as a widget result', () => {
-    const q = chartQueries('revenue', { current: 'last_30_days', compare: 'previous_period' }, new Date(2026, 9, 29));
+    const q = pageQueries('revenue', { current: 'last_30_days', compare: 'previous_period' }, null, new Date(2026, 9, 29));
+    const chartResult = (_q: typeof q, items: QueryBatchItemDto[]) => pageResult(_q, items, WIDGET_ROLES.timeseries);
     const ok = (ran_at: string) => ({ status: 'ok' as const, error: null, result: {
       sql: 's', sql_hash: 'h', columns: ['metric_time__day', 'revenue'], rows: [['2026-10-01', 1]], truncated: false,
       ran_at, elapsed_ms: 1, target: null, profile_name: null, source: 'cache' as const } });
@@ -132,5 +133,61 @@ describe('metricPage', () => {
 
   it('links to a metric page', () => {
     expect(metricPageSearch('revenue')).toBe('tab=explore&metric=revenue');
+  });
+});
+
+describe('metric page queries', () => {
+  const today = new Date('2026-11-02T12:00:00');
+  const period = { current: 'last_30_days', compare: 'previous_period' } as const;
+
+  it('asks for over time, the total and the top values, each with the comparison', () => {
+    const q = pageQueries('revenue', period, 'order__status', today);
+    expect(q.roles.map(([r]) => r)).toEqual(['current', 'current_previous', 'total', 'total_previous', 'by_dimension', 'by_dimension_previous']);
+    const by = Object.fromEntries(q.roles);
+    expect(by.total.group_by).toBeUndefined();
+    expect(by.total.start).toBe(q.current?.start);
+    expect(by.by_dimension).toMatchObject({ group_by: ['order__status'], order_by: ['-revenue'], limit: 10 });
+    expect(by.by_dimension_previous.limit).toBeUndefined();
+    expect(by.by_dimension_previous.start).toBe(q.previous?.start);
+  });
+
+  it('skips the breakdown without a dimension and comparisons without a previous period', () => {
+    const q = pageQueries('revenue', { current: 'last_30_days', compare: 'none' }, null, today);
+    expect(q.roles.map(([r]) => r)).toEqual(['current', 'total']);
+  });
+
+  it('maps the batch onto a widget result by role', () => {
+    const q = pageQueries('revenue', period, 'order__status', today);
+    const ok = (ran_at: string): QueryBatchItemDto => ({
+      status: 'ok', error: null,
+      result: { columns: ['revenue'], rows: [[1]], sql: 'select 1', truncated: false, ran_at, elapsed_ms: 1 },
+    } as unknown as QueryBatchItemDto);
+    const items = q.roles.map((_, i) => ok(`2026-11-0${i + 1}T00:00:00Z`));
+    const bar = pageResult(q, items, WIDGET_ROLES.bar);
+    expect(Object.keys(bar.queries)).toEqual(['current', 'current_previous']);
+    expect(bar.queries.current.query.group_by).toEqual(['order__status']);
+    expect(bar.status).toBe('ok');
+    const summary = pageResult(q, [ok('2026-11-01T00:00:00Z')], WIDGET_ROLES.summary);
+    expect(summary.status).toBe('not_run');
+    expect(summary.queries.trend.status).toBe('ok');
+  });
+});
+
+describe('readableFilter', () => {
+  it('drops the Jinja around dimension names', () => {
+    expect(readableFilter("{{ Dimension('order__status') }} = 'completed'")).toBe("order__status = 'completed'");
+    expect(readableFilter("{{ TimeDimension('order__ordered_at', 'month') }} >= '2026-01-01'")).toBe("order__ordered_at (month) >= '2026-01-01'");
+    expect(readableFilter("{{ Dimension('customer__region') }}  is not\n null")).toBe('customer__region is not null');
+  });
+});
+
+describe('calculationParts', () => {
+  it('says how each metric type is calculated', () => {
+    expect(calculationParts({ type: 'simple', agg: 'sum', expr: 'amount' })).toEqual([{ text: 'Sum of ' }, { code: 'amount' }]);
+    expect(calculationParts({ type: 'ratio', numerator: 'revenue', denominator: 'orders' }))
+      .toEqual([{ code: 'revenue' }, { text: ' divided by ' }, { code: 'orders' }]);
+    expect(calculationParts({ type: 'derived', expr: 'a - b' })).toEqual([{ code: 'a - b' }]);
+    expect(calculationParts({ type: 'cumulative', measure: 'revenue', window: '7 days' }))
+      .toEqual([{ text: 'Running total of ' }, { code: 'revenue' }, { text: ' over a 7 days window' }]);
   });
 });

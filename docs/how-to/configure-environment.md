@@ -116,6 +116,8 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 **MONITOR_INTERVAL_HOURS** — how often metric monitors are checked automatically while wickd is open (wickd Pro), in whole hours (1 or more). Unset means off; builds and **Check now** still check them. See [Monitor metrics for anomalies](metric-monitors.md).
 
+**MONITOR_SCHEDULE** — the same automatic check as a cron expression in your computer's local time, e.g. `0 9 * * 1-5` for weekdays at 9:00 (wickd Pro). It replaces `MONITOR_INTERVAL_HOURS` (saving one clears the other) and can fire at most every 15 minutes. Unset means off.
+
 **DIFF_BASE_TARGET** — the dbt target metric compare's "before" side reads (wickd Pro), e.g. `prod`. Unset, both sides read your active target, so only semantic YAML changes show. See [Compare metrics](compare-metrics.md).
 
 **PROPAGATE_TAGS** — the column tags the Docs **Tags** tab follows through lineage (wickd Pro), comma-separated. Defaults to `pii,sensitive`. See [Inherit docs and trace tagged columns](inherit-docs-and-trace-tags.md).

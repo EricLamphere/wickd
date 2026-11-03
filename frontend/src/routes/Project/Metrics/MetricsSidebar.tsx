@@ -1,6 +1,6 @@
 // Left column of the Metrics page: metrics grouped by semantic model, then saved queries.
 import { useMemo, useState } from 'react';
-import { Bookmark, Check, LayoutGrid, Pencil, Search } from 'lucide-react';
+import { Bookmark, LayoutGrid, Pencil, Search } from 'lucide-react';
 import type { CatalogMetric, CatalogSavedQuery, SemanticCatalogDto } from '../../../lib/semanticApi';
 import { OPEN_IN_FILES_TITLE, isOpenInFilesClick } from '../lib/openInFiles';
 
@@ -15,9 +15,10 @@ export const TYPE_CLS: Record<string, string> = {
 
 interface Props {
   catalog: SemanticCatalogDto;
-  selected: string[];
+  /** the metric whose page is open */
+  selected: string | null;
   savedQuery: string | null;
-  onToggleMetric: (name: string) => void;
+  onSelectMetric: (name: string) => void;
   onRunSaved: (q: CatalogSavedQuery) => void;
   onEditSaved: (q: CatalogSavedQuery) => void;
   /** Cmd+click: open the metric's YAML (null when it isn't in the manifest graph) */
@@ -40,7 +41,7 @@ function groupByModel(metrics: CatalogMetric[]): [string, CatalogMetric[]][] {
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b));
 }
 
-export function MetricsSidebar({ catalog, selected, savedQuery, onToggleMetric, onRunSaved, onEditSaved, onOpenYaml, onShowIndex, indexActive }: Props) {
+export function MetricsSidebar({ catalog, selected, savedQuery, onSelectMetric, onRunSaved, onEditSaved, onOpenYaml, onShowIndex, indexActive }: Props) {
   const [search, setSearch] = useState('');
   const needle = search.trim().toLowerCase();
   const metrics = useMemo(
@@ -65,19 +66,16 @@ export function MetricsSidebar({ catalog, selected, savedQuery, onToggleMetric, 
           <section key={model} className="mb-2">
             <h3 className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">{model}</h3>
             {items.map((m) => {
-              const on = selected.includes(m.name);
+              const on = selected === m.name;
               return (
                 <button
                   key={m.name}
-                  onClick={(e) => (isOpenInFilesClick(e) && onOpenYaml ? onOpenYaml(m.name) : onToggleMetric(m.name))}
+                  onClick={(e) => (isOpenInFilesClick(e) && onOpenYaml ? onOpenYaml(m.name) : onSelectMetric(m.name))}
+                  aria-current={on ? 'page' : undefined}
                   title={[m.description, onOpenYaml ? OPEN_IN_FILES_TITLE : ''].filter(Boolean).join('\n')}
-                  className={`flex items-center gap-2 w-full px-3 py-1 text-left text-xs transition-colors ${
-                    on ? 'bg-brand-950/40 text-brand-200' : 'text-gray-300 hover:bg-gray-800/60'}`}
+                  className={`flex items-center gap-2 w-full px-3 py-1 text-left text-xs border-l-2 transition-colors ${
+                    on ? 'border-brand-500 bg-brand-950/40 text-brand-200' : 'border-transparent text-gray-300 hover:bg-gray-800/60'}`}
                 >
-                  <span className={`w-3.5 h-3.5 shrink-0 flex items-center justify-center rounded-sm border ${
-                    on ? 'bg-brand-600 border-brand-600 text-white' : 'border-gray-600'}`}>
-                    {on && <Check className="w-3 h-3" />}
-                  </span>
                   <span className="flex-1 truncate">{m.label || m.name}</span>
                   <span className={`px-1 text-[9px] leading-4 rounded border ${TYPE_CLS[m.type] ?? TYPE_CLS.simple}`}>{m.type}</span>
                 </button>

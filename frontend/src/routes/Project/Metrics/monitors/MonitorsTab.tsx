@@ -1,6 +1,7 @@
-// Metrics page → Monitors (Pro): cards per monitor, Check now, the optional interval,
-// and one monitor's detail (?monitor=<id>). Checked after builds that touch a monitored
-// metric, on Check now, or on the interval — only while wickd is open.
+// Metrics page → Monitors (Pro): cards per monitor, Check now, the optional auto-check
+// schedule (every N h or cron; monitors can override it), and one monitor's detail
+// (?monitor=<id>). Checked after builds that touch a monitored metric, on Check now, or
+// on the schedule — only while wickd is open.
 import { useState } from 'react';
 import { Activity, Plus, RotateCcw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -13,10 +14,10 @@ import { UpgradeModal } from '../../components/UpgradeModal';
 import { CreateMonitorDialog, type MonitorDraft } from './CreateMonitorDialog';
 import { MonitorGrid } from './MonitorGrid';
 import { MonitorDetail } from './MonitorDetail';
+import { ProjectScheduleControl } from './ScheduleControls';
 import { errorText, useMonitorActions, useMonitors } from './useMonitors';
 
 export const MONITOR_PARAM = 'monitor';
-const INTERVALS = [null, 1, 3, 6, 12, 24] as const;
 const STEP_LABEL: Record<string, string> = {
   starting: 'Starting…', slices: 'Finding top slices…', querying: 'Querying the warehouse…', detecting: 'Scoring…',
 };
@@ -80,7 +81,7 @@ export function MonitorsTab({ projectId, catalog, draft, onDraftHandled }: Props
     return (
       <>
         <MonitorDetail
-          projectId={projectId} monitor={selected} targets={targetNames} running={monitors.running}
+          projectId={projectId} monitor={selected} targets={targetNames} running={monitors.running} project={data}
           onBack={() => select(null)}
           onUpdate={(body) => actions.update(selected.id, body)}
           onDelete={async () => { await actions.remove(selected.id); select(null); }}
@@ -97,16 +98,11 @@ export function MonitorsTab({ projectId, catalog, draft, onDraftHandled }: Props
     <div className="flex flex-col gap-4 p-5 pb-12 max-w-[72rem] mx-auto w-full">
       <div className="flex flex-wrap items-center gap-3">
         <p className="flex-1 min-w-[16rem] text-[11px] text-gray-500 leading-relaxed">
-          Checked after a build that touches a monitored metric, when you press Check now, or on the interval below,
-          and only while wickd is open. This isn't overnight alerting.
+          Checked after a build that touches a monitored metric, when you press Check now, or on the schedule
+          (a monitor can have its own), and only while wickd is open: a time missed while it was closed is checked
+          once when it opens. This isn't overnight alerting.
         </p>
-        <label className="flex items-center gap-2 text-[11px] text-gray-500">
-          Auto-check
-          <select value={data.interval_hours ?? ''} onChange={(e) => actions.setInterval(e.target.value ? Number(e.target.value) : null)}
-            className="px-2 py-1 bg-surface-app border border-gray-700 rounded text-xs text-gray-200">
-            {INTERVALS.map((h) => <option key={h ?? 'off'} value={h ?? ''}>{h === null ? 'Off' : `Every ${h} h`}</option>)}
-          </select>
-        </label>
+        <ProjectScheduleControl projectId={projectId} data={data} onSave={actions.setSchedule} />
         <button onClick={() => actions.refresh()} disabled={monitors.running || data.monitors.length === 0}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40">
           <RotateCcw className={`w-3.5 h-3.5 ${monitors.running ? 'animate-spin' : ''}`} />

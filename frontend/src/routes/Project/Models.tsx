@@ -320,6 +320,9 @@ export default function ModelsPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
+  // Latest nodes for click handlers, without re-creating them on every node change
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   // Dragged nodes keep their spot through re-syncs (selection, filters, runs) until reload
   const [hasDragged, setHasDragged] = useState(() => draggedPositionsFor(id).size > 0);
 
@@ -502,7 +505,8 @@ export default function ModelsPage() {
         return {
           ...n,
           // New to React Flow (e.g. back after a transient empty graph): restore the selection
-          selected: prevSelected.get(n.id) ?? n.id === selectedModel?.unique_id,
+          // (?model= is known on the first render, unlike selectedModel, which is set in an effect)
+          selected: prevSelected.get(n.id) ?? n.id === (modelParam ?? selectedModel?.unique_id),
           data: {
             ...n.data,
             dimmed: effectiveConnected !== null && !effectiveConnected.has(uid),
@@ -522,15 +526,9 @@ export default function ModelsPage() {
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, durationOverlay.durations, monitorStatuses, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!selectedModel) return;
-    setNodes((prev) => prev.map((n) => ({
-      ...n,
-      selected: n.id === selectedModel.unique_id ? true : n.selected,
-    })));
-  }, [selectedModel?.unique_id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Back/forward changed ?model= — move React Flow's selection highlight to match
+  // Back/forward changed ?model= — move React Flow's selection highlight to match.
+  // Otherwise React Flow owns `selected` (clicks, modifier-clicks); nothing else may force it,
+  // or a modifier-click deselect is undone.
   useEffect(() => {
     setNodes((prev) => prev.map((n) => {
       const selected = n.id === modelParam;
@@ -541,17 +539,23 @@ export default function ModelsPage() {
   const onNodeClick = useCallback(
     (event: React.MouseEvent, node: Node) => {
       const model = node.data?.model as ModelNode | undefined;
-      if (model) {
-        setSelectedModel(model);
-        // A modifier-click is multi-select — leave history (and the exclusive highlight) alone
-        const isMultiSelect = event.metaKey || event.ctrlKey || event.shiftKey;
-        if (!isMultiSelect && model.unique_id !== modelParam) setModelParam(model.unique_id);
-        try { sessionStorage.setItem(selectedModelKey, model.unique_id); } catch {}
-        setActiveColumnSels(new Set());
-        try { sessionStorage.setItem(columnSelsKey, '[]'); } catch {}
+      if (!model) return;
+      setActiveColumnSels(new Set());
+      try { sessionStorage.setItem(columnSelsKey, '[]'); } catch {}
+      // A modifier-click is multi-select: React Flow toggles the node and onSelectionChange
+      // follows. Leave history and selectedModel alone, except when it just deselected the
+      // last node (onSelectionChange ignores empty selections).
+      if (event.metaKey || event.ctrlKey || event.shiftKey) {
+        // `node` is from before the click, so it was selected if this click deselects it
+        const othersSelected = nodesRef.current.some((n) => n.selected && n.id !== node.id);
+        if (node.selected && !othersSelected) clearSelection();
+        return;
       }
+      setSelectedModel(model);
+      if (model.unique_id !== modelParam) setModelParam(model.unique_id);
+      try { sessionStorage.setItem(selectedModelKey, model.unique_id); } catch {}
     },
-    [selectedModelKey, columnSelsKey, modelParam, setModelParam],
+    [selectedModelKey, columnSelsKey, modelParam, setModelParam], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // onSelectionChange: only handles non-empty selections (multi-select, single-select).
@@ -569,15 +573,19 @@ export default function ModelsPage() {
     }
   }, [selectedModelKey]);
 
-  const onPaneClick = useCallback(() => {
+  function clearSelection() {
     setSelectedModel(null);
     setModelParam(null, true);
     setSelectedModels([]);
     try { sessionStorage.removeItem(selectedModelKey); } catch {}
     setActiveColumnSels(new Set());
     try { sessionStorage.setItem(columnSelsKey, '[]'); } catch {}
+  }
+
+  const onPaneClick = useCallback(() => {
+    clearSelection();
     setCloseDropdownsSignal((n) => n + 1);
-  }, [selectedModelKey, columnSelsKey, setModelParam]);
+  }, [selectedModelKey, columnSelsKey, setModelParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefreshDag = async () => {
     await api.models.compile(id);

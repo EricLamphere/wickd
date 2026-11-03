@@ -1,15 +1,19 @@
 // The Explore tab's landing (plan 13): every metric as a card grouped by semantic model — type,
 // a sparkline of its stored result for the chosen period (never runs on open; "Run all" runs
 // every card in one dbt show), where it's used and whether it has issues. Click → its page.
+// Above the cards, the query composer as an entry box: Enter opens the query view with the line.
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, Play, Search } from 'lucide-react';
 import { Sparkline } from '../../../../components/charts/Sparkline';
+import type { DashboardWidget } from '../../../../lib/dashboardsApi';
 import type { CatalogMetric, QueryBatchItemDto, SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { relativeTime } from '../../lib/relativeTime';
 import { statusStyle } from '../monitors/monitorView';
 import { formatTime, formatValue, parseTime, toNumber } from '../lib/metricSeries';
 import { chartQueries, groupMetrics, metricIssues, metricUsage, searchMetrics, usageCount, type MetricPeriod } from '../lib/metricPage';
 import { TYPE_CLS } from '../MetricsSidebar';
+import { emptyExploreWidget } from '../lib/exploreWidget';
+import { Composer } from './Composer';
 import { PeriodControl } from './PeriodControl';
 import { useMetricContext, useMetricSparklines } from './useMetricPages';
 
@@ -19,7 +23,12 @@ interface Props {
   period: MetricPeriod;
   onPeriod: (next: MetricPeriod) => void;
   onOpen: (metric: string) => void;
+  /** the entry box's query, in the query view */
+  onExplore: (widget: DashboardWidget) => void;
+  labels: Map<string, string>;
 }
+
+const ENTRY_WIDGET = emptyExploreWidget();
 
 function points(item: QueryBatchItemDto | undefined, metric: string): { t: number; v: number }[] {
   const r = item?.status === 'ok' ? item.result : null;
@@ -68,7 +77,7 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
   );
 }
 
-export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen }: Props) {
+export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onExplore, labels }: Props) {
   const [search, setSearch] = useState('');
   const shown = useMemo(() => searchMetrics(catalog.metrics, search), [catalog.metrics, search]);
   const names = useMemo(() => catalog.metrics.map((m) => m.name), [catalog.metrics]);
@@ -96,6 +105,8 @@ export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen }: Pr
           {notRun ? `Run all (${notRun} not run)` : 'Run all'}
         </button>
       </div>
+      <Composer projectId={projectId} catalog={catalog} labels={labels} widget={ENTRY_WIDGET} onCommit={onExplore}
+        showPeriod={false} clearOnCommit className="w-full max-w-3xl" placeholder="Ask your metrics: revenue by customer__region last 90 days vs last year — Enter opens it" />
       {spark.runError && <p className="text-xs text-red-300">{String((spark.runError as Error).message ?? spark.runError)}</p>}
       {shown.length === 0 && <p className="text-xs text-gray-500">No metric matches “{search}”.</p>}
       {groupMetrics(shown).map(([group, metrics]) => (

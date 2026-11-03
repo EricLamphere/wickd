@@ -24,13 +24,41 @@ Back and forward step between the index, pages and queries.
 
 ## Build a query
 
-The query view (**Investigate** on a metric's page, a dashboard value's right-click **Investigate**, a saved query, Docs' **Explore**, ⌘K) opens in a window over the metric's page, titled with the metric; close it (✕, Esc or a click outside) to get back to the page. It's one widget — any of the dashboard widget types — with its settings on the right, exactly as on a dashboard:
+The query view (**Investigate** on a metric's page, a dashboard value's right-click **Investigate** or a widget's ⋯ **Debug in Investigate**, a saved query, Docs' **Explore**, ⌘K, or the box above the metric index) opens in a window over the metric's page, titled with the metric; close it (✕, Esc or a click outside) to get back to the page. It's one widget — any of the dashboard widget types — that you edit two ways, which always agree: type it in the line across the top, or click through its settings on the right, exactly as on a dashboard.
+
+### Type it
+
+The line across the top shows the query as chips, and you type into it:
+
+```
+revenue orders by customer__region · last 90 days vs last year · where customer__tier = gold · top 10
+```
+
+| Type | Means |
+|------|-------|
+| a metric's name or label (`revenue`, `order count`) | add the metric |
+| `by <dimension>` (`by customer__region`, `by region` when only one dimension ends in `region`), several with `,` or `and` | break it down: a time series' split, a bar chart's bars then stacks, Top N's ranking, a table's rows |
+| `over time`, `by day` / `week` / `month` / `quarter` / `year`, `daily`, `monthly`, … | over time (at that grain) |
+| a period: `last 7 / 30 / 90 days`, `last 12 months`, `mtd` / `qtd` / `ytd`, `this month`, `last month`, `last quarter`, `all time`, `today`, `yesterday`, `last 2 weeks`, `this week`, `last week`, `last year`, `2025`, `2026-03`, `Q1`, `Q4 2025`, `March`, `since March`, `since 2026-01-15`, `2026-01-01 to 2026-03-31` | the current period |
+| `vs previous`, `vs last year`, `vs nothing` / `no comparison`, `vs <a period>` | what it's compared with |
+| `where <dimension> <op> <value>`: `=`, `!=`, `>`, `>=`, `<`, `<=`, `in (a, b)`, `not in`, `like`, `is null`, `is not null`; more with `and`. Quote values with spaces: `'New York'` | a filter |
+| `top N` | how many lines, bars, ranked rows or table rows |
+
+Suggestions follow what you type: metrics first, after `by` the dimensions every picked metric shares and the grains, after `where` the dimension, then the operator, then its values from your warehouse. ↑↓ pick one, Enter or Tab takes it. Nothing runs while you type: **Enter** on a finished line applies it (⌘↵ applies and runs, like **Refresh**), and so does clicking away. **Esc** puts the line back as it was. Click a chip to edit it as text; Backspace on an empty line removes the last chip, ←/→ walk the chips (Enter edits the selected one, Backspace removes it). The period and comparison chips are the usual date pickers. Anything the composer doesn't understand, or that the widget can't show (a second `by` on a Top N, a dimension one of the metrics doesn't have), is underlined red with the reason and nothing is applied until you fix it.
+
+The line picks the widget's type from what you type — over time → time series, `by` a dimension → bar chart (plus `top N` on one metric → Top N), neither → metric summary — until you pick a type in the settings; after that it never changes it.
+
+**Ask in words** (Pro): start the line with `?` (`? which regions grew revenue most last quarter`) and press Enter. Wicky writes the query with your metrics and fills in the chips; check them, then Enter runs it. If your metrics can't answer the question, it says so (ask in Wicky to get plain SQL instead). The questions also show in Wicky's history.
+
+The box above the metric index takes the same line: Enter opens the query view with it.
+
+### Or click it
 
 1. **Metrics**: it starts with the page's metric; **Add a metric…** in Configure to put others beside it.
 2. **Type**: time series, bar chart, Top N, table or metric summary.
 3. **Break it down** with the type's settings: a time series' **Split by** (one line per value, top N), a bar chart's **Bars by** and **Stack by**, a table's **Rows by** dimensions and **Rows by period**, Top N's **Rank**. Only dimensions every picked metric has are offered.
 4. **Filters**: **+ Filter** opens a builder (dimension, operator, value), or write a raw MetricFlow `where`.
-5. **Period** in the bar above the chart: the same pickers as dashboards — a preset or calendar range, compared with the previous period, the same period last year, a custom range or nothing.
+5. **Period**: the date chips in the line above the chart are the same pickers as dashboards — a preset or calendar range, compared with the previous period, the same period last year, a custom range or nothing.
 
 Its chart, previous period included, shows as you change it. Whenever there's no stored result for the settings, it runs on your warehouse with the active target and profile (`dbt show`); **Refresh** (⌘↵) runs it again anyway. Under it, the first tab, **Debug**, shows MetricFlow's plan step by step and checks it on the warehouse — see [Debug metrics](debug-metrics.md). **Table** has the rows and **SQL** the query MetricFlow generated (per query when it runs several: current and previous period, total and trend…); **Copy** the SQL or **Open in Workspace** to save it as a new file under your workspace's `metrics/` folder. **Compare** (Pro) runs the query two ways and shows what moved — see [Compare metrics](compare-metrics.md).
 

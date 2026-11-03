@@ -93,7 +93,10 @@ class MetricFlowRuntime:
         return self._alive()
 
     def _alive(self) -> bool:
-        return self._proc is not None and self._proc.returncode is None
+        # The reader task ends on stdout EOF, which can come before the child is reaped
+        # (returncode still None), so a finished reader also means the worker is gone.
+        reader_done = self._reader_task is not None and self._reader_task.done()
+        return self._proc is not None and self._proc.returncode is None and not reader_done
 
     async def request(self, op: str, payload: dict[str, Any] | None = None, *, timeout: float = REQUEST_TIMEOUT_S) -> dict:
         """Send one request and return its `result`; raises WorkerRequestError on an error reply."""

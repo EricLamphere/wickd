@@ -1,7 +1,8 @@
 // The metric explorer's query view, shown in ExploreModal (titled by its metric): one widget —
-// any dashboard widget type — configured in the dashboards' settings pane on the right (metrics,
-// filters, its type's options: split by, bars by, rows by…), its actions, period and Refresh in
-// one bar above it, and its rows, SQL, Debug and Compare (Pro) tabs underneath. It runs when
+// any dashboard widget type — edited two ways that stay in sync: the query composer across the
+// top (Composer.tsx: chips you type, incl. the period and comparison) and the dashboards'
+// settings pane on the right (metrics, filters, its type's options: split by, bars by, rows by…).
+// Refresh sits next to the composer; its rows, SQL, Debug and Compare (Pro) tabs underneath. It runs when
 // nothing is stored for its settings; Refresh runs it anyway. The widget lives in the URL (lib/exploreWidget.ts).
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +21,7 @@ import { useExplorePreview } from '../dashboards/widgets/useWidgetPreview';
 import { WidgetBody } from '../dashboards/widgets/WidgetBody';
 import { WidgetMenuButton } from '../dashboards/widgets/WidgetMenu';
 import { EXPLORE_HEIGHT, explorePeriod, mainQuery, withExplorePeriod } from '../lib/exploreWidget';
+import { Composer } from './Composer';
 import { writeWorkspaceSql } from '../lib/openInWorkspace';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useProEntitled } from '../../RunHistory/usePerformance';
@@ -27,7 +29,6 @@ import type { CompareState } from '../lib/compareView';
 import { ComparePanel } from './ComparePanel';
 import { ExploreResults, RESULT_TABS, resultsTabKey, type ResultTab } from './ExploreResults';
 import { compareLabel, currentLabel, rangeLabel } from '../dashboards/periods';
-import { PeriodControl } from './PeriodControl';
 import { useChartExports } from '../chartMenu/useChartExports';
 import { useSaveAsSavedQuery } from '../chartMenu/useSaveAsSavedQuery';
 
@@ -107,16 +108,17 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onOp
   return (
     <div className="flex h-full min-h-0">
       <div className="flex flex-col flex-1 min-w-0 min-h-0 gap-3 p-4 overflow-auto">
-        <div className="flex flex-wrap items-center gap-2">
-          {notice && <span className="text-[11px] text-amber-300">{notice}</span>}
-          <div className="flex-1" />
-          {result?.ran_at && !busy && <span className="text-[11px] text-gray-500">Last run {relativeTime(result.ran_at)}</span>}
-          <PeriodControl period={explorePeriod(widget)} onChange={(p) => onChange(withExplorePeriod(widget, p))} />
-          <button onClick={() => refresh()} disabled={!metrics.length || busy} title="Run it on the warehouse again (⌘Enter)"
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}Refresh
-          </button>
+        <div className="flex flex-wrap items-start gap-2">
+          <Composer projectId={projectId} catalog={catalog} labels={labels} widget={widget} onCommit={onChange} onRun={refresh} />
+          <div className="flex items-center gap-2 min-h-[34px]">
+            {result?.ran_at && !busy && <span className="text-[11px] text-gray-500">Last run {relativeTime(result.ran_at)}</span>}
+            <button onClick={() => refresh()} disabled={!metrics.length || busy} title="Run it on the warehouse again (⌘Enter)"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}Refresh
+            </button>
+          </div>
         </div>
+        {notice && <span className="text-[11px] text-amber-300">{notice}</span>}
         <div ref={chartRef} className="shrink-0">
           <section data-widget-id="explore" className="relative flex flex-col px-3 py-2 rounded border border-gray-800 bg-surface-panel" style={{ height: EXPLORE_HEIGHT + 40 }}>
             <div className="absolute top-1.5 right-1.5 z-10">

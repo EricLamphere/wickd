@@ -6,7 +6,7 @@
 // metric is dragged over it, it says whether it can take it.
 import { Component, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
-  CopyPlus, FileBarChart, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
+  Bug, CopyPlus, FileBarChart, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
@@ -64,6 +64,8 @@ export interface FrameActions {
   onSelect: () => void;
   /** the widget's metric's page (single-metric widgets only) */
   onOpenMetric: (() => void) | null;
+  /** the widget in the query view (Investigate) on its Debug tab (widgets with a metric only) */
+  onDebug: (() => void) | null;
   onDuplicate: () => void;
   onRemove: () => void;
   onResize: (size: Size) => void;
@@ -272,6 +274,7 @@ export function WidgetFrame(props: Props) {
               <Menu onClose={() => setMenu(false)} items={[
                 ...(text ? [] : [
                   ...(props.onOpenMetric ? [{ label: 'Open metric page', icon: <FileBarChart className="w-3.5 h-3.5" />, onClick: props.onOpenMetric }] : []),
+                  ...(props.onDebug ? [{ label: 'Debug in Investigate', icon: <Bug className="w-3.5 h-3.5" />, onClick: props.onDebug }] : []),
                   saveQuery.item(result),
                   ...exports.items({
                     result, element: () => sectionRef.current, title: `${props.doc.title} — ${title}`, name: [props.slug, title],

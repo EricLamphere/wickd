@@ -11,6 +11,8 @@ import { relativeTime } from '../../../lib/relativeTime';
 import { statusesByMetric } from '../../monitors/monitorView';
 import { useMonitors } from '../../monitors/useMonitors';
 import { useOpenInFiles } from '../../../lib/openInFiles';
+import { writeStored } from '../../../../../lib/stickyTab';
+import { resultsTabKey } from '../../explore/ExploreResults';
 import { exploreFromDashboard } from '../../lib/exploreWidget';
 import {
   addMetric, canvasWidthOf, duplicateWidget, widthToPx, querySignature, insertWidget, metricsInUse, newWidget, removeWidget,
@@ -234,6 +236,11 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
         setNotice(`Added ${drafts.length} widget${drafts.length === 1 ? '' : 's'} to the dashboard`);
       },
       onOpenMetric: widget.metrics?.length === 1 ? () => onOpenMetric(widget.metrics![0]) : null,
+      onDebug: widget.metrics?.length ? () => {
+        // the query view opens on Debug (its results tab is sticky, read when it mounts)
+        writeStored(resultsTabKey(projectId), 'debug');
+        onOpenExplorer(exploreFromDashboard(widget, result?.queries.current?.query ?? ranQuery, doc.period?.compare));
+      } : null,
       onDuplicate: () => apply((d) => duplicateWidget(d, widget.id)),
       onRemove: () => { apply((d) => removeWidget(d, widget.id)); if (selected === widget.id) setSelected(null); },
       onResize: (size: { width: number; height: number }) => apply((d) => replaceWidget(d, { ...widget, ...size })),

@@ -32,6 +32,8 @@ interface Props<T extends string> {
   inherit?: { label: string; active: boolean; onSelect: () => void };
   /** months shown side by side (1 in narrow places) */
   months?: 1 | 2;
+  /** one line, chip-sized, the dates in the tooltip (the query composer) */
+  compact?: boolean;
 }
 
 const EDGE = 8;
@@ -39,7 +41,7 @@ const EDGE = 8;
 const toDate = (iso: string) => new Date(`${iso}T00:00:00`);
 const toIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-export function PeriodPicker<T extends string>({ label, resolved, value, presets, onChange, muted, ariaLabel, inherit, months = 2 }: Props<T>) {
+export function PeriodPicker<T extends string>({ label, resolved, value, presets, onChange, muted, ariaLabel, inherit, months = 2, compact = false }: Props<T>) {
   const [open, setOpen] = useState(false);
   // the shown range (the current one when opened); `pending` is the first click's day
   const [draft, setDraft] = useState<DayRange | undefined>(undefined);
@@ -92,12 +94,17 @@ export function PeriodPicker<T extends string>({ label, resolved, value, presets
   return (
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-label={ariaLabel} aria-expanded={open}
-        className={`flex items-center gap-2 px-2.5 py-1 text-left rounded border hover:border-gray-500 ${open ? 'border-brand-600' : 'border-gray-700'} ${muted ? 'bg-transparent' : 'bg-surface-app'}`}>
+        title={compact && resolved ? rangeLabel(resolved) : undefined}
+        className={`flex items-center text-left rounded border hover:border-gray-500 ${compact ? 'gap-1 px-1.5 py-0.5' : 'gap-2 px-2.5 py-1'} ${open ? 'border-brand-600' : 'border-gray-700'} ${muted ? 'bg-transparent' : 'bg-surface-app'}`}>
         <CalendarDays className={`w-3.5 h-3.5 shrink-0 ${muted ? 'text-gray-500' : 'text-brand-300'}`} />
-        <span className="flex flex-col leading-tight">
-          <span className={`text-xs ${muted ? 'text-gray-400' : 'text-gray-100'}`}>{label}</span>
-          {resolved && <span className="text-[10px] text-gray-500">{rangeLabel(resolved)}</span>}
-        </span>
+        {compact ? (
+          <span className={`text-[11px] whitespace-nowrap ${muted ? 'text-gray-400' : 'text-gray-100'}`}>{label}</span>
+        ) : (
+          <span className="flex flex-col leading-tight">
+            <span className={`text-xs ${muted ? 'text-gray-400' : 'text-gray-100'}`}>{label}</span>
+            {resolved && <span className="text-[10px] text-gray-500">{rangeLabel(resolved)}</span>}
+          </span>
+        )}
         <ChevronDown className="w-3 h-3 text-gray-500" />
       </button>
       {open && createPortal(

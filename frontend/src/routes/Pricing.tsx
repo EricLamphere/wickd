@@ -41,7 +41,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'DAG exports — interactive HTML, SVG & PNG', base: true, pro: true },
   { label: 'Model impact analysis — selection, uncommitted & branch changes', base: true, pro: true },
   { label: 'Semantic layer (MetricFlow) — metrics in the DAG, Docs & Impact, validations', base: true, pro: true },
-  { label: 'Metric explorer — metric pages, query, chart & save metrics', base: true, pro: true },
+  { label: 'Metric explorer — metric pages, one-line query composer, chart & save metrics', base: true, pro: true },
   { label: 'Metric dashboards — drag-and-drop builder, period comparisons, HTML/PNG export', base: true, pro: true },
   { label: 'Metric debugging — plan steps, warehouse checks (fan-out, nulls, coverage) & reconcile with SQL', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
@@ -53,7 +53,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Metric monitors — anomalies, level shifts & restatements, checked after builds, shown on dashboards', base: false, pro: true },
   { label: 'Metric compare — your changes, branch, another target or metric vs before, with what moved', base: false, pro: true },
   { label: 'Metric explanations — “Explain this number”, most likely cause first', base: false, pro: true },
-  { label: 'Semantic layer drafts — Wicky writes your semantic models & metrics; metric-aware Query data', base: false, pro: true },
+  { label: 'Semantic layer drafts — Wicky writes your semantic models & metrics; metric-aware Query data & ask in words', base: false, pro: true },
   { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs & tests', base: false, pro: true },
   { label: 'Priority support', base: false, pro: true },
 ];

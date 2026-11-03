@@ -212,7 +212,8 @@ function Explorer({ projectId, catalog, onMonitor, onOpenDashboard, onOpenMonito
       />
       {!pageMetric && (
         <main className="flex-1 min-w-0 min-h-0 overflow-auto">
-          <MetricIndex projectId={projectId} catalog={catalog} period={period} onPeriod={setPeriod} onOpen={openMetric} />
+          <MetricIndex projectId={projectId} catalog={catalog} period={period} onPeriod={setPeriod} onOpen={openMetric}
+            onExplore={explore} labels={labels} />
         </main>
       )}
       {pageMetric && (

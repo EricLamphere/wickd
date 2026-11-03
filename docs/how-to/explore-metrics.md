@@ -24,7 +24,7 @@ Back and forward step between the index, pages and queries.
 
 ## Build a query
 
-The query view (**Investigate** on a metric's page, a dashboard value's right-click **Open in Investigate, filtered**, a saved query, Docs' **Explore**, ⌘K) opens in a window over the metric's page, titled with the metric; close it (✕, Esc or a click outside) to get back to the page. It's one widget — any of the dashboard widget types — with its settings on the right, exactly as on a dashboard:
+The query view (**Investigate** on a metric's page, a dashboard value's right-click **Investigate**, a saved query, Docs' **Explore**, ⌘K) opens in a window over the metric's page, titled with the metric; close it (✕, Esc or a click outside) to get back to the page. It's one widget — any of the dashboard widget types — with its settings on the right, exactly as on a dashboard:
 
 1. **Metrics**: it starts with the page's metric; **Add a metric…** in Configure to put others beside it.
 2. **Type**: time series, bar chart, Top N, table or metric summary.
@@ -32,7 +32,7 @@ The query view (**Investigate** on a metric's page, a dashboard value's right-cl
 4. **Filters**: **+ Filter** opens a builder (dimension, operator, value), or write a raw MetricFlow `where`.
 5. **Period** in the bar above the chart: the same pickers as dashboards — a preset or calendar range, compared with the previous period, the same period last year, a custom range or nothing.
 
-Its chart, previous period included, shows as you change it. Whenever there's no stored result for the settings, it runs on your warehouse with the active target and profile (`dbt show`); **Refresh** (⌘↵) runs it again anyway. Under it, **Table** has the rows and **SQL** the query MetricFlow generated (per query when it runs several: current and previous period, total and trend…); **Copy** the SQL or **Open in Workspace** to save it as a new file under your workspace's `metrics/` folder. **Debug** shows MetricFlow's plan step by step and checks it on the warehouse — see [Debug metrics](debug-metrics.md). **Compare** (Pro) runs the query two ways and shows what moved — see [Compare metrics](compare-metrics.md).
+Its chart, previous period included, shows as you change it. Whenever there's no stored result for the settings, it runs on your warehouse with the active target and profile (`dbt show`); **Refresh** (⌘↵) runs it again anyway. Under it, the first tab, **Debug**, shows MetricFlow's plan step by step and checks it on the warehouse — see [Debug metrics](debug-metrics.md). **Table** has the rows and **SQL** the query MetricFlow generated (per query when it runs several: current and previous period, total and trend…); **Copy** the SQL or **Open in Workspace** to save it as a new file under your workspace's `metrics/` folder. **Compare** (Pro) runs the query two ways and shows what moved — see [Compare metrics](compare-metrics.md).
 
 The widget lives in the URL, so back/forward steps through your queries and you can share or bookmark a link.
 

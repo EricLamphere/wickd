@@ -39,7 +39,8 @@ export function PlanSqlView({ sql, span, stepName, onOpenInWorkspace }: {
   useEffect(highlight, [span?.start, span?.end, span?.focus, JSON.stringify(span?.ranges), JSON.stringify(span?.code)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="flex flex-col gap-1 min-w-0">
+    // stretches to the grid row, so the SQL is as tall as the quality checks beside it (at least h-80)
+    <div className="flex flex-col gap-1 min-w-0 h-full">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-medium text-gray-300">MetricFlow’s SQL</span>
         {stepName && (
@@ -53,7 +54,7 @@ export function PlanSqlView({ sql, span, stepName, onOpenInWorkspace }: {
           <ExternalLink className="w-3 h-3" />Open in Workspace
         </button>
       </div>
-      <div className="rounded border border-gray-800 overflow-hidden h-80">
+      <div className="flex-1 min-h-80 rounded border border-gray-800 overflow-hidden">
         <Editor language="sql" value={sql} theme={theme === 'light' ? 'vs-light' : 'vs-dark'}
           onMount={(ed) => { editor.current = ed; highlight(); }}
           options={{ readOnly: true, domReadOnly: true, fontSize: 11, minimap: { enabled: false }, scrollBeyondLastLine: false,

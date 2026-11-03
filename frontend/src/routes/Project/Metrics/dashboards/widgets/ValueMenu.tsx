@@ -34,8 +34,8 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
   const items = [
     { label: 'Show timeseries', icon: <LineChart className="w-3.5 h-3.5" />, run: actions.onDrill },
     { label: 'Apply as dashboard filter', icon: <Filter className="w-3.5 h-3.5" />, run: actions.onApplyFilter },
-    { label: 'Drill into…', icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
-    { label: 'Open in Investigate, filtered', icon: <Microscope className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
+    { label: `Drill into ${label}`, icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
+    { label: 'Investigate', icon: <Microscope className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
   ];
   return createPortal(
     <div ref={ref} role="menu" aria-label={`Actions for ${label}`} style={pos} onContextMenu={(e) => e.preventDefault()}
@@ -46,7 +46,7 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
       {items.map((item) => (
         <button key={item.label} role="menuitem" onClick={(e) => { e.stopPropagation(); onClose(); item.run(pick); }}
           className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs text-gray-300 hover:bg-gray-800">
-          {item.icon}<span className="truncate">{item.label}</span>
+          {item.icon}<span className="truncate" title={item.label}>{item.label}</span>
         </button>
       ))}
     </div>,

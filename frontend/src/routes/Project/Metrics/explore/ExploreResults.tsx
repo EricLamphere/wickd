@@ -12,7 +12,7 @@ import { mainQuery } from '../lib/exploreWidget';
 import { ProLabel } from '../../../../components/ProLabel';
 import { DebugPanel } from './debug/DebugPanel';
 
-export const RESULT_TABS = ['table', 'sql', 'debug', 'compare'] as const;
+export const RESULT_TABS = ['debug', 'table', 'sql', 'compare'] as const;
 export type ResultTab = (typeof RESULT_TABS)[number];
 const TAB_LABELS: Record<ResultTab, React.ReactNode> = { table: 'Table', sql: 'SQL', debug: 'Debug', compare: <ProLabel>Compare</ProLabel> };
 /** Tabs that size to their content rather than a fixed-height grid. */

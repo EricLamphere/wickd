@@ -15,6 +15,7 @@ Every warehouse result is written here. Reading it back is the caller's choice
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -48,8 +49,23 @@ class CachedResult:
     profile_name: str | None
 
 
+_SUBQUERY_ALIAS = re.compile(r"\bsubq_(\d+)\b")
+
+
+def _canonical_aliases(sql: str) -> str:
+    """MetricFlow numbers subquery aliases (`subq_12`) from a per-process counter, so the
+    same query explains to `subq_10` in a fresh worker and `subq_6` in a warm one.
+    Renumber them in order of first appearance so the hash only changes with the query."""
+    numbers: dict[str, int] = {}
+
+    def renumber(match: re.Match[str]) -> str:
+        return f"subq_{numbers.setdefault(match.group(1), len(numbers))}"
+
+    return _SUBQUERY_ALIAS.sub(renumber, sql)
+
+
 def sql_hash(sql: str) -> str:
-    return hashlib.sha256(sql.strip().encode()).hexdigest()
+    return hashlib.sha256(_canonical_aliases(sql.strip()).encode()).hexdigest()
 
 
 def env_fingerprint(env_vars: Mapping[str, str]) -> str:

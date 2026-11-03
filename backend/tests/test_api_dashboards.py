@@ -418,3 +418,31 @@ async def test_export_dashboard(db, client, tmp_path) -> None:
         "directory": str(out), "filename": "revenue", "format": "html", "content": "<!doctype html>"})
     assert res.status_code == 201
     assert (out / "revenue.html").read_text() == "<!doctype html>"
+
+
+# ── Export as a dbt Charts board (plan 17) ───────────────────────────────────
+
+
+async def test_propose_dct_export_writes_nothing_until_accepted(db, client, tmp_path, worker) -> None:
+    project = await _project(db, tmp_path)
+    await _create(client, project)
+    base = f"/api/projects/{project.id}"
+    res = await client.post(f"{base}/dashboards/revenue-overview/export/dct")
+    assert res.status_code == 200, res.text
+    proposal = res.json()
+    assert proposal["kind"] == "charts_board" and proposal["status"] == "ready"
+    [file] = proposal["files"]
+    assert file["path"] == "charts/revenue-overview.yml" and file["op"] == "create"
+    board = yaml.safe_load(file["proposed_text"])
+    assert board["title"] == "Revenue overview"
+    assert set(board["charts"]) == {"rev", "orders"}  # the widget on a deleted metric is left out
+    assert board["charts"]["rev"]["type"] == "line" and board["charts"]["orders"]["type"] == "kpi"
+    assert any("gone: left out" in n for n in proposal["result"]["summary"]["notes"])
+    assert not (Path(project.path) / "charts").exists()
+
+    accepted = await client.post(f"{base}/ai/proposals/{proposal['id']}/accept", json={})
+    assert accepted.status_code == 200, accepted.text
+    assert yaml.safe_load((Path(project.path) / "charts" / "revenue-overview.yml").read_text())["title"] == "Revenue overview"
+
+    again = (await client.post(f"{base}/dashboards/revenue-overview/export/dct")).json()
+    assert again["status"] == "empty" and again["files"] == []

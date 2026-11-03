@@ -13,6 +13,7 @@ from app.api import ai_model as ai_model_api
 from app.api import ai_proposal_apply as ai_proposal_apply_api
 from app.api import ai_proposals as ai_proposals_api
 from app.api import ai_query as ai_query_api
+from app.api import charts as charts_api
 from app.api import column_lineage as column_lineage_api
 from app.api import contracts as contracts_api
 from app.api import dashboards as dashboards_api
@@ -51,6 +52,7 @@ from app.api import sql as sql_api
 from app.api import terminal as terminal_api
 from app.api import test_gaps as test_gaps_api
 from app.api import workspace as workspace_api
+from app.charts.runtime import charts_servers
 from app.config import settings
 from app.db.engine import SessionLocal
 from app.db.migrations import init_db
@@ -100,6 +102,7 @@ async def lifespan(app: FastAPI):
         await watcher_manager.stop()
         await llama_server.stop()
         await metricflow_runtime.stop()
+        await charts_servers.stop_all()
         log.info("shutdown")
 
 
@@ -130,6 +133,7 @@ app.include_router(semantic_api.router)
 app.include_router(semantic_debug_api.router)
 app.include_router(metric_monitors_api.router)
 app.include_router(dashboards_api.router)
+app.include_router(charts_api.router)
 app.include_router(refactor_api.router)
 app.include_router(exports_api.router)
 app.include_router(exports_api.global_router)

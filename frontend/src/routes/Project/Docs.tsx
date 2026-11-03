@@ -3,13 +3,13 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw, BookOpen, Search, ChevronRight, ChevronDown,
-  Database, FileCode2, Layers, FlaskConical, Sprout, Wrench,
+  Database,
   Copy, Check, Folder, FolderOpen, LayoutGrid, Package, ChevronsDownUp, Share2, Tag as TagIcon, Wand2,
-  Boxes, Sigma, Bookmark,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
+import { resourceColor, resourceIcon } from './lib/resourceTypeStyle';
 import { useStickyTab, useUrlTab } from '../../lib/useUrlTab';
 import { buildMacroCall, macroCallName, wrapJinja } from './lib/macroCall';
 import { readSessionValue, restorableDocsView } from './lib/docsLastView';
@@ -221,36 +221,6 @@ const TYPE_LABELS: Record<string, string> = {
   source: 'Sources', analysis: 'Analyses', test: 'Tests', macro: 'Macros',
   semantic_model: 'Semantic models', metric: 'Metrics', saved_query: 'Saved queries',
 };
-
-function resourceIcon(type: string, cls = 'w-3.5 h-3.5 shrink-0') {
-  switch (type) {
-    case 'model':    return <FileCode2 className={cls} />;
-    case 'seed':     return <Sprout className={cls} />;
-    case 'source':   return <Database className={cls} />;
-    case 'snapshot': return <Layers className={cls} />;
-    case 'test':     return <FlaskConical className={cls} />;
-    case 'macro':    return <Wrench className={cls} />;
-    case 'semantic_model': return <Boxes className={cls} />;
-    case 'metric':   return <Sigma className={cls} />;
-    case 'saved_query': return <Bookmark className={cls} />;
-    default:         return <FileCode2 className={cls} />;
-  }
-}
-
-function resourceColor(type: string) {
-  switch (type) {
-    case 'model':    return 'text-brand-400';
-    case 'seed':     return 'text-emerald-400';
-    case 'source':   return 'text-blue-400';
-    case 'snapshot': return 'text-amber-400';
-    case 'test':     return 'text-red-400';
-    case 'macro':    return 'text-purple-400';
-    case 'semantic_model': return 'text-teal-400';
-    case 'metric':   return 'text-sky-400';
-    case 'saved_query': return 'text-indigo-400';
-    default:         return 'text-gray-400';
-  }
-}
 
 // ---- persistent expanded state ----
 

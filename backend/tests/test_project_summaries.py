@@ -52,6 +52,26 @@ def test_manifest_node_counts(tmp_path: Path) -> None:
     assert manifest_node_counts(tmp_path) == NodeCounts(models=2, sources=1, seeds=1, tests=3)
 
 
+def test_manifest_node_counts_semantic_and_macros(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "manifest.json").write_text(json.dumps({
+        "nodes": {"model.p.a": {"resource_type": "model"}},
+        "sources": {},
+        "semantic_models": {"semantic_model.p.orders": {}, "semantic_model.p.users": {}},
+        "metrics": {"metric.p.revenue": {}, "metric.p.count": {}, "metric.p.avg": {}},
+        "saved_queries": {"saved_query.p.q": {}},
+        "macros": {
+            "macro.p.m1": {},
+            "macro.p.m2": {"docs": {"show": True}},
+            "macro.p.hidden": {"docs": {"show": False}},
+        },
+    }))
+    counts = manifest_node_counts(tmp_path)
+    assert counts is not None
+    assert (counts.semantic_models, counts.metrics, counts.saved_queries, counts.macros) == (2, 3, 1, 2)
+
+
 def test_manifest_node_counts_missing_or_bad(tmp_path: Path) -> None:
     assert manifest_node_counts(tmp_path) is None
     (tmp_path / "target").mkdir()
@@ -110,6 +130,9 @@ async def test_summaries_endpoint(
     assert resp.status_code == 200
     by_id = {s["project_id"]: s for s in resp.json()}
 
-    assert by_id[ids["built"]]["counts"] == {"models": 2, "sources": 0, "seeds": 1, "tests": 3}
+    assert by_id[ids["built"]]["counts"] == {
+        "models": 2, "sources": 0, "seeds": 1, "tests": 3,
+        "semantic_models": 0, "metrics": 0, "saved_queries": 0, "macros": 0,
+    }
     assert by_id[ids["built"]]["latest_run"]["status"] == "success"
     assert by_id[ids["fresh"]] == {"project_id": ids["fresh"], "counts": None, "latest_run": None}

@@ -18,6 +18,7 @@ import {
 import { QuickRunBar, type RunKind } from './components/QuickRunBar';
 import { DbtCommandRow } from './components/DbtCommandRow';
 import { CommandBadge } from './components/CommandBadge';
+import { resourceColor, resourceIcon } from './lib/resourceTypeStyle';
 import { alertDialog } from '../../lib/dialogs';
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -87,6 +88,14 @@ export default function ProjectHome() {
     enabled: !!id,
   });
 
+  // Macros aren't graph nodes; the shared project summaries count them from manifest.json.
+  const { data: macroCount = null } = useQuery({
+    queryKey: ['project-summaries'],
+    queryFn: api.projects.summaries,
+    select: (all) => all.find((s) => s.project_id === id)?.counts?.macros ?? null,
+    enabled: !!id,
+  });
+
   const { data: recentRunsPage } = useQuery({
     queryKey: ['run-history', id, 'recent'],
     queryFn: () => api.runHistory.list(id, { limit: 5 }),
@@ -96,6 +105,9 @@ export default function ProjectHome() {
   useProjectEvents(id, useCallback((event) => {
     if (event.type === 'statuses_changed' || event.type === 'graph_changed') {
       qc.invalidateQueries({ queryKey: ['graph', id] });
+    }
+    if (event.type === 'graph_changed') {
+      qc.invalidateQueries({ queryKey: ['project-summaries'] });
     }
     if (event.type === 'run_started' || event.type === 'run_history_changed') {
       qc.invalidateQueries({ queryKey: ['run-history', id, 'recent'] });
@@ -374,7 +386,7 @@ export default function ProjectHome() {
           </div>
 
           {/* Stats summary */}
-          {graph && <StatsSummary graph={graph} />}
+          {graph && <StatsSummary graph={graph} macros={macroCount} />}
 
           {/* Quick-run bar */}
           <QuickRunBar
@@ -419,35 +431,45 @@ export default function ProjectHome() {
 // ---- Stats summary ----
 
 
-const STAT_TILE_COLOR: Record<string, string> = {
-  Models:  'text-brand-400',
-  Sources: 'text-blue-400',
-  Seeds:   'text-emerald-400',
-  Tests:   'text-red-400',
-};
+/** Tiles in the Docs browser's group order, with its icons and colors. */
+const STAT_TILES: { type: string; label: string }[] = [
+  { type: 'model', label: 'Models' },
+  { type: 'seed', label: 'Seeds' },
+  { type: 'source', label: 'Sources' },
+  { type: 'test', label: 'Tests' },
+  { type: 'semantic_model', label: 'Semantic models' },
+  { type: 'metric', label: 'Metrics' },
+  { type: 'saved_query', label: 'Saved queries' },
+  { type: 'macro', label: 'Macros' },
+];
 
-function StatsSummary({ graph }: { graph: GraphDto }) {
-  const counts = {
-    Models:  graph.nodes.filter((n) => n.resource_type === 'model').length,
-    Sources: graph.nodes.filter((n) => n.resource_type === 'source').length,
-    Seeds:   graph.nodes.filter((n) => n.resource_type === 'seed').length,
-    Tests:   graph.nodes.filter((n) => n.resource_type === 'test').length,
-  };
+function StatsSummary({ graph, macros }: { graph: GraphDto; macros: number | null }) {
+  const counts = new Map<string, number>();
+  for (const n of graph.nodes) counts.set(n.resource_type, (counts.get(n.resource_type) ?? 0) + 1);
 
   return (
     <div className="grid grid-cols-4 gap-3 mb-4">
-      {(['Models', 'Sources', 'Seeds', 'Tests'] as const).map((label) => (
-        <StatTile key={label} label={label} value={counts[label]} />
+      {STAT_TILES.map(({ type, label }) => (
+        <StatTile
+          key={type}
+          type={type}
+          label={label}
+          value={type === 'macro' ? macros : counts.get(type) ?? 0}
+        />
       ))}
     </div>
   );
 }
 
-function StatTile({ label, value }: { label: string; value: number }) {
+function StatTile({ type, label, value }: { type: string; label: string; value: number | null }) {
+  const color = resourceColor(type);
   return (
     <div className="bg-surface-panel border border-gray-800 rounded-xl px-5 py-4">
-      <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">{label}</div>
-      <div className={`text-xl font-bold ${STAT_TILE_COLOR[label] ?? 'text-gray-100'}`}>{value}</div>
+      <div className="flex items-center gap-1.5 mb-1 text-[10px] text-gray-600 uppercase tracking-wider">
+        <span className={color}>{resourceIcon(type, 'w-3 h-3 shrink-0')}</span>
+        {label}
+      </div>
+      <div className={`text-xl font-bold ${color}`}>{value ?? '–'}</div>
     </div>
   );
 }

@@ -120,3 +120,13 @@ def test_dashboards_dir_in_plan_and_slugs(tmp_path: Path) -> None:
                p1 / "models" / "a.yml"]
     assert dashboard_slugs(folder, changed) == ["rev"]
     assert dashboard_slugs(None, changed) == []
+
+
+def test_chart_board_changes(tmp_path: Path) -> None:
+    from app.watcher.service import chart_board_changes
+
+    assert chart_board_changes(tmp_path, [tmp_path / "charts" / "sales.yml"])
+    assert chart_board_changes(tmp_path, [tmp_path / "charts" / "team" / "notes.md"])
+    assert chart_board_changes(tmp_path, [tmp_path / "dbt_charts.yml"])
+    assert not chart_board_changes(tmp_path, [tmp_path / "charts" / "data.csv"])
+    assert not chart_board_changes(tmp_path, [tmp_path / "models" / "a.yml"])

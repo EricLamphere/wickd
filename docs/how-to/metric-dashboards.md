@@ -116,6 +116,8 @@ When the link is dead, **Register again** writes a new exposure.
 
 Both say which target, which period and comparison, and when the data was queried. They export what's shown, so refresh first if widgets have no data.
 
+The same dialog's third format, **dbt Charts**, exports the dashboard as a board (`charts/<slug>.yml`, reviewed before it's written). See [View dbt Charts boards](dbt-charts.md#export-a-metric-dashboard-as-a-board).
+
 ## The file
 
 Dashboards live in `wickd/dashboards/<name>.yml`. Change the folder with the **DASHBOARDS_PATH** project setting (Environment → Settings → Project); it must be inside the project. Files you edit by hand (or that change through git) reload in the app automatically; if one changes while you have unsaved edits, wickd says so instead of overwriting it.

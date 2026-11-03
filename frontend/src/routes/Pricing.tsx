@@ -43,6 +43,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Semantic layer (MetricFlow) — metrics in the DAG, Docs & Impact, validations', base: true, pro: true },
   { label: 'Metric explorer — metric pages, one-line query composer, chart & save metrics', base: true, pro: true },
   { label: 'Metric dashboards — drag-and-drop builder, period comparisons, HTML/PNG export', base: true, pro: true },
+  { label: 'dbt Charts boards — build, view live & validate charts/ boards; export dashboards as boards', base: true, pro: true },
   { label: 'Metric debugging — plan steps, warehouse checks (fan-out, nulls, coverage) & reconcile with SQL', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },

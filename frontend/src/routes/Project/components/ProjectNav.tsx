@@ -3,8 +3,9 @@ import { navAlert } from './health/healthStatus';
 import { useHealthSummary } from './health/useHealth';
 import { useSemanticStatus } from './semantic/useSemantic';
 import { useProEntitled } from '../RunHistory/usePerformance';
+import { useChartBoards } from '../Charts/useCharts';
 
-export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs' | 'metrics';
+export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs' | 'metrics' | 'charts';
 
 interface Props {
   projectId: number;
@@ -46,6 +47,12 @@ const DOCS_ICON = (
 const METRICS_ICON = (
   <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7.5 15l3.75-4.5 3 3L19.5 7.5" />
+  </svg>
+);
+
+const CHARTS_ICON = (
+  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75h16.5v16.5H3.75zM3.75 9h16.5M9 9v11.25M12 17.25v-3M15 17.25v-5.25M18 17.25V15" />
   </svg>
 );
 
@@ -106,6 +113,7 @@ const PROJECT_ITEMS: { key: CurrentPage; label: string; icon: React.ReactNode; p
   { key: 'dag',       label: 'DAG',            icon: DAG_ICON,       path: 'models' },
   { key: 'docs',      label: 'Docs',           icon: DOCS_ICON,      path: 'docs' },
   { key: 'metrics',   label: 'Metrics',        icon: METRICS_ICON,   path: 'metrics' },
+  { key: 'charts',    label: 'Charts',         icon: CHARTS_ICON,    path: 'charts' },
   { key: 'workspace', label: 'SQL Workspace',  icon: WORKSPACE_ICON, path: 'workspace' },
   { key: 'runs',      label: 'Run History',    icon: RUNS_ICON,      path: 'runs' },
   { key: 'health',    label: 'Health',         icon: HEALTH_ICON,    path: 'health' },
@@ -190,7 +198,10 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
   const { data: semantic } = useSemanticStatus(projectId);
   const { entitled } = useProEntitled();
   const hasMetrics = (semantic?.counts.metrics ?? 0) > 0 || entitled || current === 'metrics';
-  const projectItems = hasMetrics ? PROJECT_ITEMS : PROJECT_ITEMS.filter((i) => i.key !== 'metrics');
+  // Charts (dbt Charts boards) only for projects with a charts/ board
+  const { data: charts } = useChartBoards(projectId);
+  const hasCharts = (charts?.boards.length ?? 0) > 0 || current === 'charts';
+  const projectItems = PROJECT_ITEMS.filter((i) => (i.key !== 'metrics' || hasMetrics) && (i.key !== 'charts' || hasCharts));
 
   return (
     <nav className="flex flex-col pt-2 overflow-hidden h-full">

@@ -6,15 +6,12 @@ records the engine pin and interpreter it was built with in MARKER_NAME and is r
 when either changes, like the dbt venv's `.wickd-python`.
 """
 
-import json
 import shutil
-import subprocess
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from app import sidecar as shared
 from app.config import settings
-from app.dbt import venv as dbt_venv
 from app.logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -31,11 +28,11 @@ INSTALL_TIMEOUT_S = 15 * 60
 # The first import after an install compiles bytecode (10–20 s); do it during setup.
 WARMUP_IMPORT = "import metricflow.engine.metricflow_engine, metricflow_semantics.model.dbt_manifest_parser"
 
-Progress = Callable[[str, str], None]  # (phase, message)
+Progress = shared.Progress
 
 
-class SidecarUnavailable(Exception):
-    """The sidecar venv can't be built (no suitable Python, pip failed, offline …)."""
+# The sidecar venv can't be built (no suitable Python, pip failed, offline …)
+SidecarUnavailable = shared.SidecarUnavailable
 
 
 @dataclass(frozen=True)
@@ -54,30 +51,12 @@ def venv_python() -> Path:
 
 
 def _read_marker() -> dict | None:
-    try:
-        data = json.loads((venv_dir() / MARKER_NAME).read_text())
-    except (OSError, json.JSONDecodeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def _python_ok(path: str) -> bool:
-    version = dbt_venv._python_version(path)
-    return version is not None and PYTHON_MIN <= version <= PYTHON_MAX
+    return shared.read_marker(venv_dir(), MARKER_NAME)
 
 
 def choose_python() -> str:
     """The configured `python_path` if the engine supports it, else the newest that does."""
-    configured = dbt_venv.configured_python()
-    if configured and _python_ok(configured):
-        return configured
-    for interpreter in dbt_venv.list_pythons():
-        if _python_ok(interpreter.path):
-            return interpreter.path
-    raise SidecarUnavailable(
-        f"MetricFlow {ENGINE_VERSION} needs Python {PYTHON_MIN[0]}.{PYTHON_MIN[1]}–"
-        f"{PYTHON_MAX[0]}.{PYTHON_MAX[1]}, and none was found."
-    )
+    return shared.choose_python(PYTHON_MIN, PYTHON_MAX, f"MetricFlow {ENGINE_VERSION}")
 
 
 def status() -> SidecarStatus:
@@ -91,14 +70,7 @@ def status() -> SidecarStatus:
 
 
 def _run(args: list[str], what: str) -> None:
-    try:
-        result = subprocess.run(args, capture_output=True, text=True, timeout=INSTALL_TIMEOUT_S, check=False)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise SidecarUnavailable(f"{what} failed: {exc}") from exc
-    if result.returncode != 0:
-        tail = "\n".join((result.stderr or result.stdout).strip().splitlines()[-8:])
-        log.warning("metricflow_sidecar_step_failed", step=what, output=tail)
-        raise SidecarUnavailable(f"{what} failed:\n{tail}")
+    shared.run_step(args, what, timeout=INSTALL_TIMEOUT_S)
 
 
 def ensure_sidecar(progress: Progress | None = None) -> Path:
@@ -124,7 +96,7 @@ def ensure_sidecar(progress: Progress | None = None) -> Path:
     except SidecarUnavailable:
         shutil.rmtree(target, ignore_errors=True)
         raise
-    (target / MARKER_NAME).write_text(json.dumps({"engine": ENGINE_VERSION, "python": python}))
+    shared.write_marker(target, MARKER_NAME, {"engine": ENGINE_VERSION, "python": python})
     log.info("metricflow_sidecar_ready", venv_dir=str(target))
     notify("ready", f"MetricFlow {ENGINE_VERSION} is ready")
     return venv_python()

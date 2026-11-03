@@ -18,6 +18,7 @@ from pathlib import Path
 from sqlalchemy import select
 from watchfiles import Change, watch
 
+from app.charts import discovery as charts_discovery
 from app.db.engine import SessionLocal
 from app.db.models import ModelStatus, Project, ProjectEnvVar
 from app.events.bus import Event, bus
@@ -118,6 +119,14 @@ def dashboard_slugs(dashboards_dir: Path | None, changed: list[Path]) -> list[st
         f.stem for f in changed
         if f.suffix == dashboard_store.SUFFIX and f.parent.resolve() == dashboards_dir and not f.name.startswith(".")
     })
+
+
+def chart_board_changes(project_path: Path, changed: list[Path]) -> bool:
+    """Any board-relevant file (YAML / Markdown, incl. meta.yml and partials) under `charts/` changed."""
+    root = project_path / charts_discovery.CHARTS_DIR
+    return any(
+        _is_under(f, root) and f.suffix.lower() in charts_discovery.BOARD_SUFFIXES for f in changed
+    ) or any(f.name == "dbt_charts.yml" and f.parent == project_path for f in changed)
 
 
 def route_changes(plan: WatchPlan, changes: Changes) -> dict[int, Changes]:
@@ -264,6 +273,9 @@ class WatcherManager:
 
         for slug in dashboard_slugs(dashboards_dir, changed_files):
             await bus.publish(Event(topic=topic, type="dashboards_changed", data={"slug": slug}))
+
+        if chart_board_changes(project_path, changed_files):
+            await bus.publish(Event(topic=topic, type="charts_changed", data={}))
 
         # Git index/branch changes
         if git_dir is not None:

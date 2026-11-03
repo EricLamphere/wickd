@@ -19,6 +19,8 @@ interface Props {
   results: WidgetResultDto[];
   gridRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
+  /** Export as a dbt Charts board (charts/<slug>.yml, reviewed before it's written) */
+  onExportDct?: () => void;
 }
 
 const INPUT = 'w-full bg-surface-elevated border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 font-mono placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500';
@@ -35,8 +37,10 @@ function storedDir(): string {
   try { return localStorage.getItem(DIR_KEY) ?? ''; } catch { return ''; }
 }
 
-export function ExportDashboardModal({ projectId, doc, slug, target, results, gridRef, onClose }: Props) {
+export function ExportDashboardModal({ projectId, doc, slug, target, results, gridRef, onClose, onExportDct }: Props) {
   const [format, setFormat] = useState<DashboardExportFormat>('html');
+  // the third card: a dbt Charts board written into the project (reviewed), not a file here
+  const [dct, setDct] = useState(false);
   const [filename, setFilename] = useState(() => `${slug}-${stamp(new Date())}.html`);
   const [directory, setDirectory] = useState(storedDir);
   const [picking, setPicking] = useState(false);
@@ -69,7 +73,9 @@ export function ExportDashboardModal({ projectId, doc, slug, target, results, gr
     ],
   }), [doc, target, queried, current, previous]);
 
-  const pick = (next: DashboardExportFormat) => {
+  const pick = (next: DashboardExportFormat | 'dct') => {
+    setDct(next === 'dct');
+    if (next === 'dct') return;
     setFormat(next);
     setFilename((f) => `${f.replace(/\.(html|png)$/i, '') || slug}.${next}`);
   };
@@ -121,14 +127,29 @@ export function ExportDashboardModal({ projectId, doc, slug, target, results, gr
             <>
               <div className="flex flex-col gap-4 p-5">
                 <div className="flex gap-2" role="radiogroup" aria-label="Format">
-                  {(['html', 'png'] as const).map((f) => (
-                    <button key={f} role="radio" aria-checked={format === f} onClick={() => pick(f)}
-                      className={`flex-1 flex flex-col gap-0.5 px-3 py-2 text-left rounded border ${format === f ? 'border-brand-600 bg-brand-950/40' : 'border-gray-700 hover:border-gray-600'}`}>
-                      <span className="text-xs font-medium text-gray-100">{f.toUpperCase()}</span>
-                      <span className="text-[11px] text-gray-500">{f === 'html' ? 'One file, opens in any browser, hover for values' : 'An image of the dashboard'}</span>
-                    </button>
-                  ))}
+                  {([
+                    { id: 'html' as const, label: 'HTML', hint: 'One file, opens in any browser, hover for values' },
+                    { id: 'png' as const, label: 'PNG', hint: 'An image of the dashboard' },
+                    ...(onExportDct ? [{ id: 'dct' as const, label: 'dbt Charts', hint: 'A board YAML in your project’s charts/ folder' }] : []),
+                  ] satisfies { id: DashboardExportFormat | 'dct'; label: string; hint: string }[]).map((o) => {
+                    const active = o.id === 'dct' ? dct : !dct && format === o.id;
+                    return (
+                      <button key={o.id} role="radio" aria-checked={active} onClick={() => pick(o.id)}
+                        className={`flex-1 flex flex-col gap-0.5 px-3 py-2 text-left rounded border ${active ? 'border-brand-600 bg-brand-950/40' : 'border-gray-700 hover:border-gray-600'}`}>
+                        <span className="text-xs font-medium text-gray-100">{o.label}</span>
+                        <span className="text-[11px] text-gray-500">{o.hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                {dct ? (
+                  <p className="text-[11px] text-gray-500">
+                    Writes <span className="font-mono text-gray-400">charts/{slug}.yml</span> with each widget&rsquo;s SQL as a query, so
+                    it opens under Charts and in <span className="font-mono">dct</span>. You review the file before it&rsquo;s written; anything
+                    that doesn&rsquo;t carry over (like previous-period comparisons) is listed there.
+                  </p>
+                ) : (
+                <>
                 <p className="text-[11px] text-gray-500">{meta.subtitle}</p>
                 {missing > 0 && (
                   <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
@@ -142,15 +163,24 @@ export function ExportDashboardModal({ projectId, doc, slug, target, results, gr
                 </div>
                 <input value={filename} aria-label="File name" className={INPUT}
                   onChange={(e) => { setFilename(e.target.value); if (phase.kind === 'conflict') setPhase({ kind: 'idle' }); }} />
+                </>
+                )}
                 {error && <p className="px-3 py-2 text-xs text-red-400 bg-red-950/40 border border-red-900 rounded">{error}</p>}
               </div>
               <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-800">
-                {phase.kind === 'conflict' && <span className="mr-auto text-xs text-amber-300">{phase.message} Replace it?</span>}
+                {!dct && phase.kind === 'conflict' && <span className="mr-auto text-xs text-amber-300">{phase.message} Replace it?</span>}
                 <button onClick={onClose} className="px-4 py-1.5 text-xs rounded bg-gray-800 text-gray-300 hover:bg-gray-700">Cancel</button>
+                {dct ? (
+                  <button onClick={onExportDct}
+                    className="px-4 py-1.5 text-xs rounded bg-brand-600 text-white font-medium hover:bg-brand-500">
+                    Review…
+                  </button>
+                ) : (
                 <button onClick={() => submit(phase.kind === 'conflict')} disabled={working || !directory.trim() || !filename.trim()}
                   className="px-4 py-1.5 text-xs rounded bg-brand-600 text-white font-medium hover:bg-brand-500 disabled:opacity-50">
                   {working ? 'Exporting…' : phase.kind === 'conflict' ? 'Replace' : 'Export'}
                 </button>
+                )}
               </div>
             </>
           )}

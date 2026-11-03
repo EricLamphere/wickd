@@ -21,10 +21,11 @@ const PROJECT_EVENT_TYPES = [
   'dashboards_changed',
   'contract_check_started', 'contract_check_progress', 'contract_check_finished',
   'data_diff_started', 'data_diff_progress', 'data_diff_finished',
+  'charts_changed', 'charts_build_started', 'charts_build_finished',
 ];
 
 /** Events on the `global` topic (not tied to a project). */
-const GLOBAL_EVENT_TYPES = ['ai_model_download', 'metricflow_env'];
+const GLOBAL_EVENT_TYPES = ['ai_model_download', 'metricflow_env', 'charts_env'];
 
 const RECONNECT_DELAY_MS = 3000;
 

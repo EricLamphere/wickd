@@ -23,6 +23,7 @@ Step-by-step guides for using wickd.
 | [Diff data between dev and prod (Pro)](diff-data.md) | Build changed models in dev and compare their rows with prod: added, removed and changed rows, per-column changes, schema, samples |
 | [Compare metrics (Pro)](compare-metrics.md) | See what uncommitted changes, a branch, another target or another metric do to a metric's numbers, with the rows that moved and the SQL diff |
 | [Build metric dashboards](metric-dashboards.md) | Pin metric queries as tiles on a grid, apply one date range and filters to all of them, refresh in one batch, register the dashboard as a dbt exposure, export to HTML or PNG |
+| [View dbt Charts boards](dbt-charts.md) | Browse a project's dbt Charts boards (`charts/*.yml`), build them, view them live with `dct serve`, validate them, and export a metric dashboard as a board |
 | [Monitor metrics for anomalies (Pro)](metric-monitors.md) | Watch metrics for spikes, drops, level shifts, missing periods and restatements; checked after builds, on Check now, or on an interval while wickd is open |
 | [Find and fill test gaps (Pro)](find-test-gaps.md) | See the untested columns that matter most (join keys and each model's grain), with evidence, and add tests for many models in one reviewed change |
 | [Refactor models and columns (Pro)](refactor.md) | Rename a model or a column across the project, or extract a CTE into its own model; review every edit, then apply, check with dbt parse, and undo |

@@ -53,6 +53,10 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const files = proposal.files;
   const refactor = proposal.kind === 'refactor';
   const manual = proposal.result.manual ?? [];
+  // dbt Charts export: what the board leaves out (comparisons, broken widgets …)
+  const exportNotes = proposal.kind === 'charts_board'
+    ? ((proposal.result.summary as { notes?: string[] } | undefined)?.notes ?? [])
+    : [];
   const kept = selectedKeys(proposal);
   const active = files.find((f) => f.id === activeId) ?? files[0];
   activeIdRef.current = active?.id ?? null;
@@ -212,6 +216,14 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
           </button>
         </div>
 
+        {exportNotes.length > 0 && (
+          <div className="px-4 py-2 border-b border-gray-800 text-[11px] text-amber-300 shrink-0">
+            <p className="font-medium">Not exported</p>
+            <ul className="list-disc pl-4 text-amber-300/80">
+              {exportNotes.map((n) => <li key={n}>{n}</li>)}
+            </ul>
+          </div>
+        )}
         <div className="flex flex-1 min-h-0">
           {showsFileList(proposal) && (
             <ProposalFileList

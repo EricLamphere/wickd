@@ -27,6 +27,7 @@ import { useDashboardEditor } from './useDashboardEditor';
 import { WidgetsRail, type RailTab } from './WidgetsRail';
 import { WidgetFrame } from '../widgets/WidgetFrame';
 import { aiApi, type AiProposalDto } from '../../../../../lib/aiApi';
+import { chartsApi, chartsErrorMessage } from '../../../../../lib/chartsApi';
 import { ProposalReviewModal } from '../../../components/Wicky/ProposalReviewModal';
 import { pickFilters, withUniqueIds, type Pick } from '../drill';
 
@@ -187,11 +188,28 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
       await alertDialog(errorText(err) ?? 'Deleting failed', { title: "Couldn't delete the exposure" });
     }
   };
+  const exportDct = async () => {
+    setExporting(false);
+    try {
+      const proposal = await chartsApi.proposeExport(projectId, slug);
+      if (proposal.status === 'ready') setReview(proposal); else setNotice(proposal.error_message ?? 'The board is already up to date');
+    } catch (err) {
+      await alertDialog(chartsErrorMessage(err), { title: "Couldn't export as a dbt Charts board" });
+    }
+  };
   const closeReview = async () => {
     const shown = review;
     setReview(null);
     if (!shown) return;
     const latest = await aiApi.proposal(projectId, shown.id).catch(() => shown);
+    if (latest.kind === 'charts_board') {
+      const board = latest.result.summary as { path?: string; notes?: string[] } | undefined;
+      if (latest.status === 'applied') {
+        const left = board?.notes?.length ? ` (${board.notes.length} note${board.notes.length === 1 ? '' : 's'} in the review)` : '';
+        setNotice(`Wrote ${board?.path ?? 'the board'}; open it under Charts${left}`);
+      }
+      return;
+    }
     const summary = latest.result.summary as { name?: string; path?: string; update?: boolean; delete?: boolean; file_deleted?: boolean } | undefined;
     if (latest.status === 'applied' && summary?.delete) {
       setNotice(`Deleted the exposure ${summary.name ?? ''}${summary.file_deleted ? ` and ${summary.path ?? 'its file'}` : ` from ${summary.path ?? 'your YAML'}`}, and unlinked the dashboard`);
@@ -305,7 +323,7 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
       {review && <ProposalReviewModal projectId={projectId} proposal={review} onClose={closeReview} />}
       {exporting && (
         <ExportDashboardModal projectId={projectId} doc={doc} slug={slug} target={results.data?.target ?? target}
-          results={results.data?.widgets ?? []} gridRef={gridRef} onClose={() => setExporting(false)} />
+          results={results.data?.widgets ?? []} gridRef={gridRef} onClose={() => setExporting(false)} onExportDct={exportDct} />
       )}
     </DndContext>
   );

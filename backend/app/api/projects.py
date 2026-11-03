@@ -110,6 +110,10 @@ class NodeCountsOut(BaseModel):
     sources: int
     seeds: int
     tests: int
+    semantic_models: int = 0
+    metrics: int = 0
+    saved_queries: int = 0
+    macros: int = 0
 
 
 class LatestRunOut(BaseModel):

@@ -59,6 +59,11 @@ class DbtRunner:
             self._locks[project_id] = lock
         return lock
 
+    def project_lock(self, project_id: int) -> asyncio.Lock:
+        """The project's lock, for tools that read the warehouse outside dbt but must not overlap
+        a dbt command (dbt Charts builds: DuckDB allows one writer and blocks readers meanwhile)."""
+        return self._lock_for(project_id)
+
     def is_busy(self) -> bool:
         """True while any project has a dbt command in flight."""
         return any(lock.locked() for lock in self._locks.values())

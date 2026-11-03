@@ -101,6 +101,10 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `data_diff_progress` | project | `data_diff/job.py` — includes `snapshot_ids`, `phase` (building/resolving/probing/comparing), and while comparing `round`, `pending` |
 | `data_diff_finished` | project | `data_diff/job.py` — includes `snapshot_ids`, `ok`, `counts` (done/error/different) or `cancelled: true` |
 | `dashboards_changed` | project | `api/dashboards.py` (create/save/delete/exposure) and `watcher/service.py` (a `.yml` in the project's DASHBOARDS_PATH changed on disk) — includes `slug` |
+| `charts_changed` | project | `watcher/service.py` — a board file under `charts/` (YAML / Markdown) or `dbt_charts.yml` changed on disk |
+| `charts_build_started` | project | `api/charts.py` — a static dbt Charts board build started; includes `board` |
+| `charts_build_finished` | project | `api/charts.py` — includes `board`, `ok`, `error` |
+| `charts_env` | global | `charts/env.py` — dbt Charts sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useChartsEnv` in `routes/Project/Charts/useCharts.ts`) |
 | `metricflow_env` | global | `semantic/runtime.py` — MetricFlow sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useGlobalEvents` in `components/semantic/useSemantic.ts`) |
 | `ai_model_download` | global | `ai/download.py` — includes `model_id`, `state`, `bytes_done`, `bytes_total`, `error` (frontend: `useGlobalEvents`) |
 

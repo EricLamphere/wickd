@@ -104,7 +104,9 @@ function CountChip({ label, count }: { label: string; count: number }) {
 // ── Project summaries ─────────────────────────────────────────────────────────
 
 const SUMMARIES_KEY = ['project-summaries'] as const;
-const EMPTY_COUNTS = { models: 0, sources: 0, seeds: 0, tests: 0 };
+const EMPTY_COUNTS = {
+  models: 0, sources: 0, seeds: 0, tests: 0, semantic_models: 0, metrics: 0, saved_queries: 0, macros: 0,
+};
 
 /** One request for every card's node counts + latest run (per-card fetches queue behind the browser's connection cap). */
 function useProjectSummaries<T>(select: (all: ProjectSummary[]) => T) {

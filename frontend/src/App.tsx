@@ -13,6 +13,7 @@ import FileExplorerPage from './routes/Project/FileExplorer';
 import EnvironmentPage from './routes/Project/Environment';
 import DocsPage from './routes/Project/Docs';
 import MetricsPage from './routes/Project/Metrics';
+import ChartsPage from './routes/Project/Charts';
 import GitPage from './routes/Project/Git';
 import WorkspacePage from './routes/Project/Workspace';
 import HealthPage from './routes/Project/Health';
@@ -37,6 +38,7 @@ export default function App() {
                   <Route path="environment" element={<EnvironmentPage />} />
                   <Route path="docs" element={<DocsPage />} />
                   <Route path="metrics" element={<MetricsPage />} />
+                  <Route path="charts" element={<ChartsPage />} />
                   <Route path="git" element={<GitPage />} />
                   <Route path="workspace" element={<WorkspacePage />} />
                   <Route path="health" element={<HealthPage />} />

@@ -23,12 +23,35 @@ class NodeCounts:
     sources: int
     seeds: int
     tests: int
+    semantic_models: int = 0
+    metrics: int = 0
+    saved_queries: int = 0
+    macros: int = 0
 
 
 _CacheKey = tuple[int, int]  # (mtime_ns, size)
 
 _cache: dict[str, tuple[_CacheKey, NodeCounts]] = {}
 _cache_lock = Lock()
+
+
+def _dict_len(value: object) -> int:
+    return len(value) if isinstance(value, dict) else 0
+
+
+def _shown_macro_count(macros: object) -> int:
+    """Macros the Docs page lists: every package's, minus `docs: {show: false}`."""
+    if not isinstance(macros, dict):
+        return 0
+    count = 0
+    for raw in macros.values():
+        if not isinstance(raw, dict):
+            continue
+        docs_cfg = raw.get("docs") or (raw.get("config") or {}).get("docs") or {}
+        if isinstance(docs_cfg, dict) and docs_cfg.get("show") is False:
+            continue
+        count += 1
+    return count
 
 
 def _count_from_manifest(data: dict) -> NodeCounts:
@@ -39,12 +62,15 @@ def _count_from_manifest(data: dict) -> NodeCounts:
             rt = raw.get("resource_type")
             if isinstance(rt, str):
                 by_type[rt] = by_type.get(rt, 0) + 1
-    sources = data.get("sources") or {}
     return NodeCounts(
         models=by_type.get("model", 0),
-        sources=len(sources) if isinstance(sources, dict) else 0,
+        sources=_dict_len(data.get("sources")),
         seeds=by_type.get("seed", 0),
         tests=by_type.get("test", 0),
+        semantic_models=_dict_len(data.get("semantic_models")),
+        metrics=_dict_len(data.get("metrics")),
+        saved_queries=_dict_len(data.get("saved_queries")),
+        macros=_shown_macro_count(data.get("macros")),
     )
 
 

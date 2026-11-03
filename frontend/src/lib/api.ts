@@ -89,7 +89,10 @@ export interface RunResponseDto {
 
 export interface ProjectSummary {
   project_id: number;
-  counts: { models: number; sources: number; seeds: number; tests: number } | null;
+  counts: {
+    models: number; sources: number; seeds: number; tests: number;
+    semantic_models: number; metrics: number; saved_queries: number; macros: number;
+  } | null;
   latest_run: { status: string; finished_at: string | null } | null;
 }
 

@@ -87,6 +87,8 @@ When handling SSE events, invalidate the relevant query:
 | `contract_check_started`, `contract_check_finished` | `['contract-check', projectId]` (Impact tab Contracts, Git page Impact section; `routes/Project/lib/useContractCheck.ts`) |
 | `data_diff_started`, `data_diff_finished` (never `files_changed`: a diff is a deliberate check) | `['data-diff', projectId]` (Impact tab Data column + drawer, `routes/Project/lib/useDataDiff.ts`) |
 | `metric_monitor_started`, `metric_monitor_finished` | `['metric-monitors', projectId]` (Metrics → Monitors, DAG badges, Impact; `Metrics/monitors/useMonitors.ts`), `['health-summary', projectId]` |
+| `charts_changed`, `charts_build_started`, `charts_build_finished` | `['charts', projectId]` (Charts page + nav item, `routes/Project/Charts/useCharts.ts`); `charts_changed` also `['charts-validate', projectId]` |
+| `charts_env` (global stream) | `['charts']` once the dbt Charts sidecar is ready or failed |
 
 When adding a new event type that signals stale data, add an entry here.
 

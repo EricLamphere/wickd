@@ -121,7 +121,7 @@ Releases are Developer ID signed and notarized by Apple.
 1. Put your Apple credentials in `.env.signing` (gitignored; copy `.env.signing.example`). You need a **Developer ID Application** certificate in your keychain and an app-specific password.
 2. Run `/release` in Claude Code, which bumps the version everywhere and runs the release, or bump the version yourself and run `task release`.
 
-`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, and creates GitHub release `v<version>`. It uploads the `.dmg` twice: with its versioned name, and as `wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
+`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, commits the six version files as `chore: release <version>`, pushes `main`, and creates GitHub release `v<version>` with its tag on that commit. It refuses to start unless you're on `main` and it matches `origin/main`, so the push publishes only the release commit. It uploads the `.dmg` twice: with its versioned name, and as `wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
 
 ## Submitting changes
 

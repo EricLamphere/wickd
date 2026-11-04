@@ -533,10 +533,16 @@ tasks:
       DMG: src-tauri/target/release/bundle/dmg/wickd_{{.VERSION}}_aarch64.dmg
       STABLE_DMG: src-tauri/target/release/bundle/dmg/wickd_aarch64.dmg
       APP: src-tauri/target/release/bundle/macos/wickd.app
+      VERSION_FILES: src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock frontend/package.json frontend/package-lock.json backend/pyproject.toml
     preconditions:
       # Everything here is checked before the (slow) build so mistakes fail fast.
       - sh: "! gh release view v{{.VERSION}} >/dev/null 2>&1"
         msg: "Release v{{.VERSION}} already exists — bump the version first."
+      - sh: '[ "$(git branch --show-current)" = "main" ]'
+        msg: "Releases are cut from main, because the release commit is pushed there."
+      # Pushing main must publish only the release commit, never other unpushed work.
+      - sh: 'git fetch -q origin main && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]'
+        msg: "Local main must match origin/main — push or pull first, so the release pushes only its own commit."
       - sh: test -f .env.signing
         msg: ".env.signing not found — copy .env.signing.example to .env.signing and fill in your Apple credentials."
       - sh: '[ -n "$APPLE_SIGNING_IDENTITY" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]'
@@ -559,4 +565,10 @@ tasks:
       - spctl --assess --type execute --verbose "{{.APP}}"
       - spctl --assess --type open --context context:primary-signature --verbose "{{.DMG}}"
       - cp "{{.DMG}}" "{{.STABLE_DMG}}"
-      - gh release create "v{{.VERSION}}" "{{.DMG}}" "{{.STABLE_DMG}}" --title "wickd v{{.VERSION}}" --generate-notes
+      # Commit only the version files, after the build passed, so a failed build pushes nothing.
+      # A bump that's already committed is fine; there's just nothing to commit here.
+      - |
+        git diff --quiet HEAD -- {{.VERSION_FILES}} || git commit -m "chore: release {{.VERSION}}" -- {{.VERSION_FILES}}
+      - git push origin main
+      # The tag is created on the release commit, so it never needs moving afterwards.
+      - gh release create "v{{.VERSION}}" "{{.DMG}}" "{{.STABLE_DMG}}" --title "wickd v{{.VERSION}}" --generate-notes --target "$(git rev-parse HEAD)"

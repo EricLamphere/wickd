@@ -354,7 +354,7 @@ task lint            # ruff check app tests
 task ai:runtime      # fetch the pinned llama.cpp build (llama-server) into src-tauri/binaries/llama; dev uses it, packaging bundles + signs it
 task db:reset        # delete data/wickd.sqlite
 task package:app     # build + install the free desktop app (no wickd-pro, no .env needed)
-task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, then creates the GitHub release; also uploads wickd_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)
+task release         # runs package:production signed with the Developer ID in .env.signing (gitignored; see .env.signing.example), notarizes, commits the version files, pushes main, then creates the GitHub release tagged on that commit; also uploads wickd_aarch64.dmg (stable name the lamphere-labs site's Download buttons link to)
 ```
 
 Single test file: `cd backend && .venv/bin/pytest tests/test_x.py -xvs`

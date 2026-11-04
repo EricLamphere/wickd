@@ -2,7 +2,7 @@
 
 The **Metrics** page answers "does my metric return what I think?" while you write it. Pick metrics, group-bys, a time grain, filters and a date range; wickd shows the SQL MetricFlow generates as you go, runs it on your warehouse when you ask, and charts the result.
 
-The page appears in the left nav for projects that define metrics. It needs MetricFlow (see [Use the semantic layer](semantic-layer.md)); if MetricFlow is off or your dbt-core can't run it, the page offers the same "Enable MetricFlow" / "Choose a dbt-core version…" options as Health → Semantic Layer.
+The page is always in the left nav. Until the project defines metrics, it says no metrics are set up yet. It needs MetricFlow (see [Use the semantic layer](semantic-layer.md)); if MetricFlow is off or your dbt-core can't run it, the page offers the same "Enable MetricFlow" / "Choose a dbt-core version…" options as Health → Semantic Layer.
 
 ## Browse your metrics
 

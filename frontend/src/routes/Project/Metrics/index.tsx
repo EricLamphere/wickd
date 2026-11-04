@@ -68,7 +68,7 @@ function MetricsContent({ id }: { id: number }) {
   if (status.counts.metrics === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 h-full p-8 text-center">
-        <h2 className="text-sm font-medium text-gray-200">No metrics yet</h2>
+        <h2 className="text-sm font-medium text-gray-200">No metrics set up in this project yet</h2>
         <p className="max-w-md text-xs text-gray-500">Define semantic models and metrics in YAML and they show up here after dbt parses.</p>
         <DraftFromModel projectId={id} />
       </div>

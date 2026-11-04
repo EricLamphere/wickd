@@ -2,7 +2,7 @@
 // charts/, rendered by the pinned `dct` (dbt-charts) from its sidecar venv. Board list on the
 // left (?board=<id>, a history entry per selection; the last one is remembered per project for
 // the session), the board on the right as a static build or live via `dct serve`.
-// The nav item only shows when the project has boards (ProjectNav).
+// The nav item always shows; a project without boards gets an empty state here.
 import { useCallback, useEffect } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -40,7 +40,7 @@ export default function ChartsPage() {
 function EmptyState({ hasDir }: { hasDir: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 h-full p-8 text-center">
-      <h2 className="text-sm font-medium text-gray-200">No dbt Charts boards</h2>
+      <h2 className="text-sm font-medium text-gray-200">No charts set up in this project yet</h2>
       <p className="max-w-md text-xs text-gray-500">
         {hasDir ? 'The charts/ folder has no boards yet.' : 'dbt Charts boards are YAML files in a charts/ folder next to dbt_project.yml.'}
         {' '}Add one (e.g. <span className="font-mono">charts/sales.yml</span>) and it shows up here, or export a metrics dashboard from its Export menu.

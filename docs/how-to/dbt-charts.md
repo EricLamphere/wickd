@@ -6,7 +6,7 @@
 
 - Put boards in `<project>/charts/`, e.g. `charts/sales.yml`. Subfolders work (`charts/ops/inventory.yml`). Files starting with `_` and `meta.yml` are partials or folder defaults, not boards.
 - Build the models a board reads (`dbt run` / `dbt build`), so `target/manifest.json` and the tables exist.
-- The **Charts** item appears in the project nav once the project has at least one board.
+- The **Charts** item is always in the project nav. Until the project has a board, the page says no charts are set up yet.
 
 On first use wickd installs the pinned dbt Charts version (shown at the bottom of the board list) into its own environment. This takes a few seconds to a minute, and the board list shows the progress. Your dbt installation is untouched. DuckDB works out of the box. For Snowflake, BigQuery, Postgres, Redshift, Databricks and the other warehouses dbt Charts supports, wickd adds the matching extra the first time a project needs it.
 

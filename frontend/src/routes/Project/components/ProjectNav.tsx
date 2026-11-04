@@ -1,9 +1,6 @@
 import { Link, NavLink } from 'react-router-dom';
 import { navAlert } from './health/healthStatus';
 import { useHealthSummary } from './health/useHealth';
-import { useSemanticStatus } from './semantic/useSemantic';
-import { useProEntitled } from '../RunHistory/usePerformance';
-import { useChartBoards } from '../Charts/useCharts';
 
 export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs' | 'metrics' | 'charts';
 
@@ -194,14 +191,6 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
   const { data: health } = useHealthSummary(projectId);
   const healthAlert = navAlert(health);
   const alerts: NavAlerts = healthAlert ? { health: healthAlert } : {};
-  // Metrics for projects with a semantic layer, or (Pro) to draft one from a model
-  const { data: semantic } = useSemanticStatus(projectId);
-  const { entitled } = useProEntitled();
-  const hasMetrics = (semantic?.counts.metrics ?? 0) > 0 || entitled || current === 'metrics';
-  // Charts (dbt Charts boards) only for projects with a charts/ board
-  const { data: charts } = useChartBoards(projectId);
-  const hasCharts = (charts?.boards.length ?? 0) > 0 || current === 'charts';
-  const projectItems = PROJECT_ITEMS.filter((i) => (i.key !== 'metrics' || hasMetrics) && (i.key !== 'charts' || hasCharts));
 
   return (
     <nav className="flex flex-col pt-2 overflow-hidden h-full">
@@ -224,7 +213,7 @@ export default function ProjectNav({ projectId, current, collapsed = false, onTo
       <div className="mx-4 my-2 border-t border-gray-800" />
       <div className="flex flex-col flex-1 overflow-y-auto">
         <NavSection label="Configure" items={CONFIGURE_ITEMS} projectId={projectId} current={current} collapsed={collapsed} />
-        <NavSection label="Project" items={projectItems} projectId={projectId} current={current} collapsed={collapsed} alerts={alerts} />
+        <NavSection label="Project" items={PROJECT_ITEMS} projectId={projectId} current={current} collapsed={collapsed} alerts={alerts} />
       </div>
       {onToggleCollapse && (
         <button

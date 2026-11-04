@@ -64,7 +64,7 @@ Only update what changed. Do not rewrite whole sections for minor additions — 
 
 Screenshot/gallery changes (new image in `img/`, a rename, a deletion) are
 **not** covered by this repo's own doc checks — they also require updating
-the separate `lamphere-labs` repo's `tools/wickd/index.html` gallery and
+the separate `lamphere-labs` repo's `tools/wickd/gallery/index.html` gallery and
 its resized `assets/img/` copies. See
 [related-repos.md](./related-repos.md) for the filename mapping between the
 two repos (they don't always match) and the full three-repo picture.

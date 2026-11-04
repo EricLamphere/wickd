@@ -35,7 +35,6 @@ from shot_manifest import (
     ManifestError,
     Shot,
     coverage_problems,
-    gallery_problems,
     is_hero,
     load_shots,
     readme_features,
@@ -57,6 +56,7 @@ DEV_DATA = REPO / "data"
 SITE = REPO.parent / "lamphere-labs"
 SITE_ASSETS = SITE / "assets" / "img"
 SITE_PAGE = SITE / "tools" / "wickd" / "index.html"
+SITE_GALLERY_PAGE = SITE / "tools" / "wickd" / "gallery" / "index.html"
 PRO_CHECKOUT = REPO.parent / "wickd-pro"
 SHELL_BIN = REPO / "src-tauri" / "target" / "debug" / "wickd"
 
@@ -688,7 +688,7 @@ def cmd_check(_: argparse.Namespace) -> None:
     except ManifestError as error:
         fail(str(error))
     upcoming = tuple(manifest.get("upcoming", ()))
-    problems = coverage_problems(shots, features + upcoming, manifest.get("not_shown", {})) + gallery_problems(shots)
+    problems = coverage_problems(shots, features + upcoming, manifest.get("not_shown", {}))
     for problem in problems:
         print(f"- {problem}")
     if problems:
@@ -716,7 +716,7 @@ def publish_images(shots: dict[str, Shot], names: list[str]) -> None:
             print(f"lamphere-labs/assets/img/{filename}")
 
 
-def update_site_page(shots: tuple[Shot, ...]) -> None:
+def update_site_pages(shots: tuple[Shot, ...]) -> None:
     missing = [
         filename
         for shot in shots
@@ -725,12 +725,15 @@ def update_site_page(shots: tuple[Shot, ...]) -> None:
     ]
     if missing:
         fail(f"the gallery needs images that were never published: {missing}")
-    page = replace_gallery(SITE_PAGE.read_text(), render_gallery(shots))
+    gallery_page = replace_gallery(SITE_GALLERY_PAGE.read_text(), render_gallery(shots))
+    page = SITE_PAGE.read_text()
     for shot in shots:
         if is_hero(shot):
             page = set_hero_alt(page, shot)
+    SITE_GALLERY_PAGE.write_text(gallery_page)
     SITE_PAGE.write_text(page)
-    print(f"lamphere-labs/{SITE_PAGE.relative_to(SITE)}: gallery and hero alt text")
+    print(f"lamphere-labs/{SITE_GALLERY_PAGE.relative_to(SITE)}: gallery")
+    print(f"lamphere-labs/{SITE_PAGE.relative_to(SITE)}: hero alt text")
 
 
 def site_text() -> str:
@@ -754,18 +757,18 @@ def remove_stale_images(shots: tuple[Shot, ...]) -> None:
 
 def cmd_publish(args: argparse.Namespace) -> None:
     """Reviewed shots → img/, the site's resized copies and its gallery. Commits nothing."""
-    if not SITE_PAGE.exists():
+    if not SITE_PAGE.exists() or not SITE_GALLERY_PAGE.exists():
         fail(f"the website checkout isn't at {SITE}")
     shots = load_shots(read_manifest())
     by_name = {shot.name: shot for shot in shots}
     names = args.names or sorted(path.stem for path in OUT.glob("*.png") if not path.stem.endswith(".FAILED"))
     try:
         publish_images(by_name, names)
-        update_site_page(shots)
+        update_site_pages(shots)
     except ManifestError as error:
         fail(str(error))
     remove_stale_images(shots)
-    print(f"Check it locally: cd {SITE} && python3 -m http.server 8080, then open http://localhost:8080/tools/wickd/")
+    print(f"Check it locally: cd {SITE} && python3 -m http.server 8080, then open http://localhost:8080/tools/wickd/gallery/")
 
 
 def main() -> None:

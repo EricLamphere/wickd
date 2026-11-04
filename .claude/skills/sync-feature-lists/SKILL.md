@@ -34,10 +34,11 @@ neighbouring entries.
 | 4 | Website feature grid | same file → `#features` `.feature-grid` | Only for headline features. Keep `num` sequential (`01`, `02`, …) and the grid an even count |
 
 Also check in the website file:
-- **Gallery** (`.gallery-item`, `data-cap` + `.gallery-cap`) — if the feature has a
-  screenshot, add or update its item; Pro items say `(Pro)` in the caption. Image
-  sourcing and resizing rules are in `.claude/rules/related-repos.md`.
 - **Hero / platform note** — only if the change alters the product's one-line pitch.
+
+The gallery (`tools/wickd/gallery/index.html`) is generated from `shots.json` by the
+`screenshots` skill; if the feature has a screenshot, change it there (Pro items say
+`(Pro)` in the caption), never in the HTML.
 
 Escape `&` as `&amp;` in the HTML. Keep wording consistent across all four
 surfaces (same feature name everywhere), shortest in `Pricing.tsx`, longest in

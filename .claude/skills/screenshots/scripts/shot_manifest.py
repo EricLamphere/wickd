@@ -14,9 +14,9 @@ README_FEATURE = re.compile(r"^- \*\*(.+?)\*\*")
 GALLERY_START = "<!-- screenshots:gallery:start -->"
 GALLERY_END = "<!-- screenshots:gallery:end -->"
 SCREENSHOT_ASSET = re.compile(r".+_(1200|2400|2560)\.png")
-ASSET_PATH = "../../assets/img"
+HERO_ASSET_PATH = "../../assets/img"  # from tools/wickd/index.html
+GALLERY_ASSET_PATH = "../../../assets/img"  # from tools/wickd/gallery/index.html
 GALLERY_PLACES = ("main", "more")
-MAX_MAIN_GALLERY = 12
 
 
 class ManifestError(ValueError):
@@ -157,42 +157,19 @@ def site_assets(shot: Shot) -> tuple[tuple[int, str], ...]:
 
 
 def render_gallery(shots: tuple[Shot, ...]) -> str:
-    """The site's gallery: main shots, then the rest behind "see more". Manifest order within each."""
+    """The gallery page's grid: main shots, then the rest. Manifest order within each."""
     listed = [shot for shot in shots if not is_hero(shot)]
     main = [shot for shot in listed if shot.site.get("gallery") == "main"]
     more = [shot for shot in listed if shot.site.get("gallery") != "main"]
-    grid = _gallery_grid(main, "    ")
-    if not more:
-        return grid
-    noun = "screenshot" if len(more) == 1 else "screenshots"
-    return (
-        f"{grid}\n"
-        f'    <details class="gallery-more">\n'
-        f'      <summary class="btn btn-secondary">'
-        f'<span class="when-closed">See {len(more)} more {noun}</span>'
-        f'<span class="when-open">Show fewer</span></summary>\n'
-        f"{_gallery_grid(more, '      ')}\n"
-        f"    </details>"
-    )
-
-
-def _gallery_grid(shots: list[Shot], indent: str) -> str:
-    items = "\n".join(_gallery_item(shot, indent + "  ") for shot in shots)
-    return f'{indent}<div class="gallery-grid">\n{items}\n{indent}</div>'
-
-
-def gallery_problems(shots: tuple[Shot, ...]) -> tuple[str, ...]:
-    main = [shot for shot in shots if shot.site.get("gallery") == "main"]
-    if len(main) > MAX_MAIN_GALLERY:
-        return (f"{len(main)} shots in the main gallery; keep it to about 10 ({MAX_MAIN_GALLERY} at most)",)
-    return ()
+    items = "\n".join(_gallery_item(shot, "      ") for shot in main + more)
+    return f'    <div class="gallery-grid">\n{items}\n    </div>'
 
 
 def _gallery_item(shot: Shot, indent: str) -> str:
     caption, label, alt = (html.escape(text, quote=True) for text in (shot.caption, shot.label, shot.alt))
     return (
-        f'{indent}<div class="gallery-item" data-full="{ASSET_PATH}/{shot.name}_2400.png" data-cap="{caption}">\n'
-        f'{indent}  <img src="{ASSET_PATH}/{shot.name}_1200.png" loading="lazy" alt="{alt}">\n'
+        f'{indent}<div class="gallery-item" data-full="{GALLERY_ASSET_PATH}/{shot.name}_2400.png" data-cap="{caption}">\n'
+        f'{indent}  <img src="{GALLERY_ASSET_PATH}/{shot.name}_1200.png" loading="lazy" alt="{alt}">\n'
         f'{indent}  <div class="gallery-cap">{label}</div>\n'
         f"{indent}</div>"
     )
@@ -208,7 +185,7 @@ def replace_gallery(page: str, gallery: str) -> str:
 
 def set_hero_alt(page: str, shot: Shot) -> str:
     """A hero's image stays in its hand-written section; only its alt text follows the manifest."""
-    pattern = rf'(src="{re.escape(ASSET_PATH)}/{re.escape(shot.name)}_2560\.png" alt=")[^"]*(")'
+    pattern = rf'(src="{re.escape(HERO_ASSET_PATH)}/{re.escape(shot.name)}_2560\.png" alt=")[^"]*(")'
     updated, count = re.subn(pattern, lambda m: m[1] + html.escape(shot.alt, quote=True) + m[2], page)
     if count != 1:
         raise ManifestError(f"expected one hero image for {shot.name} on the page, found {count}")

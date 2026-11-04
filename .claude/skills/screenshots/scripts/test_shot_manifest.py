@@ -7,12 +7,12 @@ import pytest
 from shot_manifest import (
     ManifestError,
     coverage_problems,
-    gallery_problems,
     load_shots,
     parse_shot,
     readme_features,
     render_gallery,
     replace_gallery,
+    set_hero_alt,
     site_assets,
     stale_assets,
     step_to_js,
@@ -122,22 +122,25 @@ def test_gallery_lists_non_hero_shots_in_order_and_escapes_text():
     html = render_gallery((shot("b", ["x"]), shot("hero", ["y"], hero=True), shot("a", ["z"])))
     assert "hero" not in html
     assert html.index("b_1200.png") < html.index("a_1200.png")
-    assert 'data-full="../../assets/img/b_2400.png"' in html
+    assert 'data-full="../../../assets/img/b_2400.png"' in html
+    assert 'src="../../../assets/img/b_1200.png"' in html
     assert 'data-cap="Cap &amp; co"' in html
     assert 'alt="An &quot;alt&quot;"' in html
     assert '<div class="gallery-cap">Label &amp; co</div>' in html
 
 
-def test_gallery_puts_the_rest_behind_see_more():
-    html = render_gallery((shot("first", ["x"]), shot("later", ["y"], gallery="more"), shot("second", ["z"])))
-    closed_until = html.index("<details")
-    assert html.index("first_1200") < closed_until and html.index("second_1200") < closed_until
-    assert html.index("later_1200") > closed_until
-    assert "See 1 more screenshot<" in html
+def test_gallery_is_one_grid_with_main_shots_first():
+    html = render_gallery((shot("later", ["y"], gallery="more"), shot("first", ["x"]), shot("second", ["z"])))
+    assert html.count('class="gallery-grid"') == 1
+    assert "<details" not in html
+    assert html.index("first_1200") < html.index("second_1200") < html.index("later_1200")
 
 
-def test_gallery_without_extras_has_no_see_more():
-    assert "<details" not in render_gallery((shot("a", ["x"]),))
+def test_hero_alt_uses_the_product_page_image_path():
+    page = '<img src="../../assets/img/h_2560.png" alt="old">'
+    assert set_hero_alt(page, shot("h", ["x"], hero=True)) == (
+        '<img src="../../assets/img/h_2560.png" alt="An &quot;alt&quot;">'
+    )
 
 
 def test_gallery_placement_is_validated():
@@ -152,12 +155,6 @@ def test_a_hero_cannot_also_be_in_the_gallery():
            "site": {"hero": "true", "gallery": "main"}}
     with pytest.raises(ManifestError):
         parse_shot(raw)
-
-
-def test_too_many_main_gallery_images_is_a_problem():
-    many = tuple(shot(f"s{i}", ["x"]) for i in range(13))
-    assert gallery_problems(many) == ("13 shots in the main gallery; keep it to about 10 (12 at most)",)
-    assert gallery_problems(many[:12]) == ()
 
 
 def test_replace_gallery_swaps_only_what_is_between_the_markers():
@@ -188,4 +185,3 @@ def test_the_real_manifest_covers_the_real_readme():
     features = readme_features((REPO / "README.md").read_text()) + tuple(manifest["upcoming"])
     shots = load_shots(manifest)
     assert coverage_problems(shots, features, manifest["not_shown"]) == ()
-    assert gallery_problems(shots) == ()

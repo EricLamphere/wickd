@@ -79,9 +79,13 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
 `main` → live in ~1-2 minutes, no CI/CD workflow file).
 
 - `tools/wickd/index.html` is wickd's product page
-  (lampherelabs.com/tools/wickd) — hero shots, feature grid, screenshot
-  gallery with a click-to-enlarge/arrow-key-navigable lightbox, pricing,
-  install steps.
+  (lampherelabs.com/tools/wickd) — hero shots, feature grid, a button to the
+  gallery, pricing, install steps.
+- `tools/wickd/gallery/index.html` is the screenshot gallery
+  (lampherelabs.com/tools/wickd/gallery), with a
+  click-to-enlarge/arrow-key-navigable lightbox. Like every page on the site
+  it has its own inline styles, so a header, footer or color change on the
+  product page needs copying here.
 - `assets/img/` holds resized copies of screenshots sourced from this repo's
   `img/` directory, resized with `sips --resampleWidth` (not committed at
   full source resolution): hero shots at 2560px (`*_2560.png`), gallery
@@ -98,7 +102,7 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
   hero `main_base_2560.png`; every other `img/` screenshot is a gallery
   item as `<name>_1200.png` / `<name>_2400.png`).
 - When this repo's `img/` screenshots change (new screenshot, rename,
-  deletion), check whether `lamphere-labs/tools/wickd/index.html`'s
+  deletion), check whether `lamphere-labs/tools/wickd/gallery/index.html`'s
   gallery grid needs the same update. This repo's README only shows
   `img/main_pro.png` (under the intro); the full gallery lives on the site.
   See

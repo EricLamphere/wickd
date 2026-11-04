@@ -100,8 +100,8 @@ This does all of the following:
 
 - copies each shot to `img/`
 - writes the site's resized copies to `../lamphere-labs/assets/img/`: `<name>_2560.png` for shots with `site.hero`, otherwise `_1200` and `_2400`
-- regenerates the gallery in `tools/wickd/index.html` between the `screenshots:gallery` markers, from each shot's `caption`, `label`, `alt` and `site.gallery`: about 10 `main` shots, then the rest (`more`) behind a "See N more" button, each in `shots.json` order
-- updates the alt text on the hero images
+- regenerates the gallery in `tools/wickd/gallery/index.html` (lampherelabs.com/tools/wickd/gallery) between the `screenshots:gallery` markers, from each shot's `caption`, `label`, `alt` and `site.gallery`: the `main` shots, then the rest (`more`), each in `shots.json` order
+- updates the alt text on the hero images in `tools/wickd/index.html`
 - removes resized images nothing on the site refers to, and `img/` files that are neither a current shot nor in the README
 
 Never edit the gallery by hand; change `shots.json` and publish again.
@@ -125,7 +125,7 @@ python3 $S js "return shot.outline()"       # any JS; helpers are on `shot`
 python3 $S capture draft                    # the window as it is now
 ```
 
-Add the shot to `shots.json`, listing README feature names exactly. Each shot also needs a `caption` (the lightbox text), `label` (the gallery tile) and `alt`, all describing what's visible, and a `site.gallery` of `main` or `more`. Its position in the file is its position in that part of the gallery. `check` fails above 12 `main` shots; the aim is about 10, and a few of them should show metrics, dashboards and monitors. Steps:
+Add the shot to `shots.json`, listing README feature names exactly. Each shot also needs a `caption` (the lightbox text), `label` (the gallery tile) and `alt`, all describing what's visible, and a `site.gallery` of `main` or `more`. Its position in the file is its position in that part of the gallery. The `main` shots lead the page, and a few of them should show metrics, dashboards and monitors. Steps:
 
 | Step | Example |
 |------|---------|

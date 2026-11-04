@@ -30,7 +30,7 @@ When a README feature is added, renamed or removed, update `shots.json` in the
 same change. `shotctl.py check` and `test_shot_manifest.py` fail until it matches.
 This sits alongside [feature-lists.md](./feature-lists.md).
 
-The website's gallery in `lamphere-labs/tools/wickd/index.html` is generated from
+The website's gallery in `lamphere-labs/tools/wickd/gallery/index.html` is generated from
 `shots.json` by `shotctl.py publish`. Never edit it by hand.
 
 Never commit or push `lamphere-labs`, and never commit here unless asked.

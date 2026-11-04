@@ -79,18 +79,19 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
 `main` → live in ~1-2 minutes, no CI/CD workflow file).
 
 - `tools/wickd/index.html` is wickd's product page
-  (lampherelabs.com/tools/wickd) — hero shots, feature grid, a button to the
-  gallery, pricing, install steps.
+  (lampherelabs.com/tools/wickd) — hero shots, feature grid, four starter
+  gallery tiles and a button to the full gallery, pricing, install steps.
 - `tools/wickd/gallery/index.html` is the screenshot gallery
-  (lampherelabs.com/tools/wickd/gallery), with a
+  (lampherelabs.com/tools/wickd/gallery), showing every screenshot, with a
   click-to-enlarge/arrow-key-navigable lightbox. Like every page on the site
-  it has its own inline styles, so a header, footer or color change on the
-  product page needs copying here.
+  it has its own inline styles, so a header, footer, color, tile or lightbox
+  change on the product page needs copying here.
 - `assets/img/` holds resized copies of screenshots sourced from this repo's
   `img/` directory, resized with `sips --resampleWidth` (not committed at
   full source resolution): hero shots at 2560px (`*_2560.png`), gallery
-  thumbnails at 1200px (`*_1200.png`), and lightbox full-size images at
-  2400px (`*_2400.png`, the gallery items' `data-full`).
+  thumbnails at 1200px (`*_1200.png`, heroes included), and lightbox full-size
+  images at 2400px (`*_2400.png`, the gallery items' `data-full`; heroes use
+  their `_2560`).
 - **This repo's `img/*.png` files are the source of truth for screenshots.**
   Take them with the `screenshots` skill (see [screenshots.md](./screenshots.md)),
   whose `publish` command writes the resized copies below and regenerates the
@@ -103,7 +104,8 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
   item as `<name>_1200.png` / `<name>_2400.png`).
 - When this repo's `img/` screenshots change (new screenshot, rename,
   deletion), check whether `lamphere-labs/tools/wickd/gallery/index.html`'s
-  gallery grid needs the same update. This repo's README only shows
+  gallery grid and the product page's starter tiles need the same update.
+  This repo's README only shows
   `img/main_pro.png` (under the intro); the full gallery lives on the site.
   See
   [doc-update.md](./doc-update.md) for this repo's own doc-sync rules;

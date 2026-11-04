@@ -99,8 +99,9 @@ python3 $S publish            # or: publish main_pro health
 This does all of the following:
 
 - copies each shot to `img/`
-- writes the site's resized copies to `../lamphere-labs/assets/img/`: `<name>_2560.png` for shots with `site.hero`, otherwise `_1200` and `_2400`
-- regenerates the gallery in `tools/wickd/gallery/index.html` (lampherelabs.com/tools/wickd/gallery) between the `screenshots:gallery` markers, from each shot's `caption`, `label`, `alt` and `site.gallery`: the `main` shots, then the rest (`more`), each in `shots.json` order
+- writes the site's resized copies to `../lamphere-labs/assets/img/`: `_1200` for every shot, plus `_2560` for shots with `site.hero` and `_2400` for the rest
+- regenerates the gallery in `tools/wickd/gallery/index.html` (lampherelabs.com/tools/wickd/gallery) between the `screenshots:gallery` markers, from each shot's `caption`, `label`, `alt` and `site.gallery`. It shows every shot: the heroes, the preview, the `main` shots, then the rest (`more`), each in `shots.json` order
+- regenerates the four starter tiles on the product page (`tools/wickd/index.html`) between the `screenshots:preview` markers, from the top-level `preview` list in `shots.json`. Each tile costs page load, so keep it to the four the user chose
 - updates the alt text on the hero images in `tools/wickd/index.html`
 - removes resized images nothing on the site refers to, and `img/` files that are neither a current shot nor in the README
 
@@ -125,7 +126,7 @@ python3 $S js "return shot.outline()"       # any JS; helpers are on `shot`
 python3 $S capture draft                    # the window as it is now
 ```
 
-Add the shot to `shots.json`, listing README feature names exactly. Each shot also needs a `caption` (the lightbox text), `label` (the gallery tile) and `alt`, all describing what's visible, and a `site.gallery` of `main` or `more`. Its position in the file is its position in that part of the gallery. The `main` shots lead the page, and a few of them should show metrics, dashboards and monitors. Steps:
+Add the shot to `shots.json`, listing README feature names exactly. Each shot also needs a `caption` (the lightbox text), `label` (the gallery tile) and `alt`, all describing what's visible, and a `site.gallery` of `main` or `more`. Its position in the file is its position in that part of the gallery. After the heroes and the product page's `preview` shots, the `main` shots lead the page, and a few of them should show metrics, dashboards and monitors. Steps:
 
 | Step | Example |
 |------|---------|

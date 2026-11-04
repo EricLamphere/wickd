@@ -9,9 +9,12 @@ from shot_manifest import (
     coverage_problems,
     load_shots,
     parse_shot,
+    preview_shots,
     readme_features,
     render_gallery,
+    render_preview,
     replace_gallery,
+    replace_preview,
     set_hero_alt,
     site_assets,
     stale_assets,
@@ -118,9 +121,68 @@ def test_a_step_does_one_thing():
         step_to_js({"teleport": "a"})
 
 
-def test_gallery_lists_non_hero_shots_in_order_and_escapes_text():
-    html = render_gallery((shot("b", ["x"]), shot("hero", ["y"], hero=True), shot("a", ["z"])))
-    assert "hero" not in html
+def test_gallery_leads_with_heroes_then_the_preview_then_the_rest():
+    later = shot("later", ["w"], gallery="more")
+    main = shot("main", ["x"])
+    previewed = shot("previewed", ["y"], gallery="more")
+    hero = shot("hero", ["z"], hero=True)
+    html = render_gallery((later, main, previewed, hero), (previewed,))
+    assert (
+        html.index("hero_1200")
+        < html.index("previewed_1200")
+        < html.index("main_1200")
+        < html.index("later_1200")
+    )
+    assert html.count("previewed_1200") == 1
+
+
+def test_a_hero_tile_uses_a_thumbnail_and_enlarges_to_its_only_large_copy():
+    html = render_gallery((shot("hero", ["y"], hero=True),))
+    assert 'src="../../../assets/img/hero_1200.png"' in html
+    assert 'data-full="../../../assets/img/hero_2560.png"' in html
+    assert "hero_2400" not in html
+
+
+def test_preview_renders_lazy_tiles_with_the_product_page_paths():
+    html = render_preview((shot("a", ["x"]), shot("b", ["y"])))
+    assert html.index("a_1200.png") < html.index("b_1200.png")
+    assert 'src="../../assets/img/a_1200.png" loading="lazy"' in html
+    assert 'data-full="../../assets/img/a_2400.png"' in html
+    assert "../../../" not in html
+
+
+def preview_manifest(preview):
+    shots = [
+        {"name": name, "tier": "pro", "features": [name], "caption": "c", "label": "l", "alt": "a",
+         "site": {"hero": "true"} if name == "h" else {"gallery": "main"}}
+        for name in ("a", "b", "c", "d", "e", "h")
+    ]
+    return {"preview": preview, "shots": shots}
+
+
+def test_preview_shots_keep_the_order_the_manifest_lists():
+    manifest = preview_manifest(["d", "a", "c", "b"])
+    assert [s.name for s in preview_shots(manifest, load_shots(manifest))] == ["d", "a", "c", "b"]
+
+
+@pytest.mark.parametrize(
+    "preview",
+    [
+        ["a", "b", "c"],  # too few
+        ["a", "b", "c", "d", "e"],  # too many
+        ["a", "b", "c", "c"],  # a repeat
+        ["a", "b", "c", "nope"],  # unknown
+        ["a", "b", "c", "h"],  # a hero is already on the page
+    ],
+)
+def test_bad_previews_are_rejected(preview):
+    manifest = preview_manifest(preview)
+    with pytest.raises(ManifestError):
+        preview_shots(manifest, load_shots(manifest))
+
+
+def test_gallery_lists_shots_in_order_and_escapes_text():
+    html = render_gallery((shot("b", ["x"]), shot("a", ["z"])))
     assert html.index("b_1200.png") < html.index("a_1200.png")
     assert 'data-full="../../../assets/img/b_2400.png"' in html
     assert 'src="../../../assets/img/b_1200.png"' in html
@@ -170,9 +232,17 @@ def test_replace_gallery_needs_its_markers():
         replace_gallery("no markers", "new")
 
 
+def test_replace_preview_has_its_own_markers():
+    page = "a\n<!-- screenshots:preview:start -->\nold\n<!-- screenshots:preview:end -->\nb"
+    assert "old" not in replace_preview(page, "new")
+    assert "new" in replace_preview(page, "new")
+    with pytest.raises(ManifestError):
+        replace_preview("<!-- screenshots:gallery:start --><!-- screenshots:gallery:end -->", "new")
+
+
 def test_site_assets_per_shot_kind():
     assert site_assets(shot("a", ["x"])) == ((1200, "a_1200.png"), (2400, "a_2400.png"))
-    assert site_assets(shot("a", ["x"], hero=True)) == ((2560, "a_2560.png"),)
+    assert site_assets(shot("a", ["x"], hero=True)) == ((1200, "a_1200.png"), (2560, "a_2560.png"))
 
 
 def test_stale_assets_are_unreferenced_screenshot_sizes_only():

@@ -13,6 +13,9 @@ THEMES = ("dark", "light")
 README_FEATURE = re.compile(r"^- \*\*(.+?)\*\*")
 GALLERY_START = "<!-- screenshots:gallery:start -->"
 GALLERY_END = "<!-- screenshots:gallery:end -->"
+PREVIEW_START = "<!-- screenshots:preview:start -->"
+PREVIEW_END = "<!-- screenshots:preview:end -->"
+PREVIEW_SIZE = 4
 SCREENSHOT_ASSET = re.compile(r".+_(1200|2400|2560)\.png")
 HERO_ASSET_PATH = "../../assets/img"  # from tools/wickd/index.html
 GALLERY_ASSET_PATH = "../../../assets/img"  # from tools/wickd/gallery/index.html
@@ -151,36 +154,75 @@ def is_hero(shot: Shot) -> bool:
 
 def site_assets(shot: Shot) -> tuple[tuple[int, str], ...]:
     """(width, filename) of each resized copy the website needs."""
-    if is_hero(shot):
-        return ((2560, f"{shot.name}_2560.png"),)
-    return ((1200, f"{shot.name}_1200.png"), (2400, f"{shot.name}_2400.png"))
+    return ((1200, f"{shot.name}_1200.png"), (_full_width(shot), f"{shot.name}_{_full_width(shot)}.png"))
 
 
-def render_gallery(shots: tuple[Shot, ...]) -> str:
-    """The gallery page's grid: main shots, then the rest. Manifest order within each."""
-    listed = [shot for shot in shots if not is_hero(shot)]
-    main = [shot for shot in listed if shot.site.get("gallery") == "main"]
-    more = [shot for shot in listed if shot.site.get("gallery") != "main"]
-    items = "\n".join(_gallery_item(shot, "      ") for shot in main + more)
+def _full_width(shot: Shot) -> int:
+    return 2560 if is_hero(shot) else 2400
+
+
+def preview_shots(manifest: dict[str, Any], shots: tuple[Shot, ...]) -> tuple[Shot, ...]:
+    """The product page's starter tiles, in the order the manifest's `preview` lists them."""
+    names = manifest.get("preview", [])
+    if len(names) != PREVIEW_SIZE or len(set(names)) != PREVIEW_SIZE:
+        raise ManifestError(f"preview must list {PREVIEW_SIZE} different shots: {names}")
+    by_name = {shot.name: shot for shot in shots}
+    unknown = [name for name in names if name not in by_name]
+    if unknown:
+        raise ManifestError(f"preview names shots that don't exist: {unknown}")
+    heroes = [name for name in names if is_hero(by_name[name])]
+    if heroes:
+        raise ManifestError(f"preview can't repeat a hero, which is already on the page: {heroes}")
+    return tuple(by_name[name] for name in names)
+
+
+def render_preview(preview: tuple[Shot, ...]) -> str:
+    """The product page's starter tiles."""
+    return _grid(preview, HERO_ASSET_PATH)
+
+
+def render_gallery(shots: tuple[Shot, ...], preview: tuple[Shot, ...] = ()) -> str:
+    """The gallery page's grid: every shot. Heroes, the preview, main, then the rest."""
+    rest = [shot for shot in shots if not is_hero(shot) and shot not in preview]
+    ordered = (
+        *(shot for shot in shots if is_hero(shot)),
+        *preview,
+        *(shot for shot in rest if shot.site.get("gallery") == "main"),
+        *(shot for shot in rest if shot.site.get("gallery") != "main"),
+    )
+    return _grid(ordered, GALLERY_ASSET_PATH)
+
+
+def _grid(shots: tuple[Shot, ...], asset_path: str) -> str:
+    items = "\n".join(_gallery_item(shot, "      ", asset_path) for shot in shots)
     return f'    <div class="gallery-grid">\n{items}\n    </div>'
 
 
-def _gallery_item(shot: Shot, indent: str) -> str:
+def _gallery_item(shot: Shot, indent: str, asset_path: str) -> str:
     caption, label, alt = (html.escape(text, quote=True) for text in (shot.caption, shot.label, shot.alt))
+    full = f"{asset_path}/{shot.name}_{_full_width(shot)}.png"
     return (
-        f'{indent}<div class="gallery-item" data-full="{GALLERY_ASSET_PATH}/{shot.name}_2400.png" data-cap="{caption}">\n'
-        f'{indent}  <img src="{GALLERY_ASSET_PATH}/{shot.name}_1200.png" loading="lazy" alt="{alt}">\n'
+        f'{indent}<div class="gallery-item" data-full="{full}" data-cap="{caption}">\n'
+        f'{indent}  <img src="{asset_path}/{shot.name}_1200.png" loading="lazy" alt="{alt}">\n'
         f'{indent}  <div class="gallery-cap">{label}</div>\n'
         f"{indent}</div>"
     )
 
 
 def replace_gallery(page: str, gallery: str) -> str:
-    before, start, rest = page.partition(GALLERY_START)
-    _, end, after = rest.partition(GALLERY_END)
+    return _replace_between(page, GALLERY_START, GALLERY_END, gallery)
+
+
+def replace_preview(page: str, preview: str) -> str:
+    return _replace_between(page, PREVIEW_START, PREVIEW_END, preview)
+
+
+def _replace_between(page: str, start_marker: str, end_marker: str, content: str) -> str:
+    before, start, rest = page.partition(start_marker)
+    _, end, after = rest.partition(end_marker)
     if not start or not end:
-        raise ManifestError(f"the page has no {GALLERY_START} … {GALLERY_END} block")
-    return f"{before}{GALLERY_START}\n{gallery}\n    {GALLERY_END}{after}"
+        raise ManifestError(f"the page has no {start_marker} … {end_marker} block")
+    return f"{before}{start_marker}\n{content}\n    {end_marker}{after}"
 
 
 def set_hero_alt(page: str, shot: Shot) -> str:

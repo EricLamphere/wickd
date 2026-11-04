@@ -37,9 +37,12 @@ from shot_manifest import (
     coverage_problems,
     is_hero,
     load_shots,
+    preview_shots,
     readme_features,
     render_gallery,
+    render_preview,
     replace_gallery,
+    replace_preview,
     set_hero_alt,
     site_assets,
     stale_assets,
@@ -684,6 +687,7 @@ def cmd_check(_: argparse.Namespace) -> None:
     manifest = read_manifest()
     try:
         shots = load_shots(manifest)
+        preview_shots(manifest, shots)
         features = readme_features((REPO / "README.md").read_text())
     except ManifestError as error:
         fail(str(error))
@@ -716,7 +720,7 @@ def publish_images(shots: dict[str, Shot], names: list[str]) -> None:
             print(f"lamphere-labs/assets/img/{filename}")
 
 
-def update_site_pages(shots: tuple[Shot, ...]) -> None:
+def update_site_pages(shots: tuple[Shot, ...], preview: tuple[Shot, ...]) -> None:
     missing = [
         filename
         for shot in shots
@@ -725,15 +729,15 @@ def update_site_pages(shots: tuple[Shot, ...]) -> None:
     ]
     if missing:
         fail(f"the gallery needs images that were never published: {missing}")
-    gallery_page = replace_gallery(SITE_GALLERY_PAGE.read_text(), render_gallery(shots))
-    page = SITE_PAGE.read_text()
+    gallery_page = replace_gallery(SITE_GALLERY_PAGE.read_text(), render_gallery(shots, preview))
+    page = replace_preview(SITE_PAGE.read_text(), render_preview(preview))
     for shot in shots:
         if is_hero(shot):
             page = set_hero_alt(page, shot)
     SITE_GALLERY_PAGE.write_text(gallery_page)
     SITE_PAGE.write_text(page)
     print(f"lamphere-labs/{SITE_GALLERY_PAGE.relative_to(SITE)}: gallery")
-    print(f"lamphere-labs/{SITE_PAGE.relative_to(SITE)}: hero alt text")
+    print(f"lamphere-labs/{SITE_PAGE.relative_to(SITE)}: preview and hero alt text")
 
 
 def site_text() -> str:
@@ -759,12 +763,14 @@ def cmd_publish(args: argparse.Namespace) -> None:
     """Reviewed shots → img/, the site's resized copies and its gallery. Commits nothing."""
     if not SITE_PAGE.exists() or not SITE_GALLERY_PAGE.exists():
         fail(f"the website checkout isn't at {SITE}")
-    shots = load_shots(read_manifest())
+    manifest = read_manifest()
+    shots = load_shots(manifest)
     by_name = {shot.name: shot for shot in shots}
     names = args.names or sorted(path.stem for path in OUT.glob("*.png") if not path.stem.endswith(".FAILED"))
     try:
+        preview = preview_shots(manifest, shots)
         publish_images(by_name, names)
-        update_site_pages(shots)
+        update_site_pages(shots, preview)
     except ManifestError as error:
         fail(str(error))
     remove_stale_images(shots)

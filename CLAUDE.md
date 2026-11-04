@@ -57,7 +57,7 @@ All 26 in `backend/app/db/models.py`:
 - `env_profiles` — named environment profiles per project
 - `profile_env_vars` — key/value vars belonging to a profile
 - `project_env_vars` — project-level env vars (not profile-scoped); includes `dbt_target` for active target; `REQUIREMENTS_PATH` for per-project requirements; `WORKSPACE_PATH` for SQL workspace dir (default `wickd/workspace`); `DASHBOARDS_PATH` for metric dashboard files (default `wickd/dashboards`); `DIFF_BASE_TARGET` for metric compare's "before" target and data diff's prod side (Pro)
-- `app_settings` — global app config (key/value); keys: `dbt_projects_path`, `global_requirements_path`, `dbt_core_version`, `log_level`, `theme`, `python_path`, `setup_completed`, `ai_model`, `ai_endpoint_url`, `ai_endpoint_model`, `metricflow_mode` (auto/off)
+- `app_settings` — global app config (key/value); keys: `dbt_projects_path`, `global_requirements_path`, `dbt_core_version`, `log_level`, `theme`, `python_path`, `setup_completed`, `ai_model`, `ai_endpoint_url`, `ai_endpoint_model`, `metricflow_mode` (auto/off), `combined_docs_profile_id` (home page profile for combined docs)
 - `global_env_vars` — default env vars (key unique) for every project and for global setup's pip install; precedence (low → high) is process env → global env vars → active profile → project env vars (`app/envvars.py` `layer_env()`, used by `load_project_env()`)
 - `global_profiles` — named env var sets shared across all projects
 - `global_profile_vars` — key/value vars belonging to a global profile

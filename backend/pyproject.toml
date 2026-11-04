@@ -43,6 +43,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "slow: builds real environments over the network; run with WICKD_SLOW_TESTS=1",
+  "real_init: combined docs tests that run the real init pipeline code instead of a stub",
 ]
 
 [tool.ruff]

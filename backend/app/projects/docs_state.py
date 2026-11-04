@@ -10,7 +10,7 @@ from typing import Literal
 
 from app.events.bus import Event, bus
 
-DocsRunState = Literal["queued", "generating", "done", "error"]
+DocsRunState = Literal["queued", "initializing", "generating", "done", "error"]
 
 MAX_ERROR_CHARS = 400
 FAILURE_TAIL_LINES = 5
@@ -31,7 +31,7 @@ def run_of(project_id: int) -> DocsRun | None:
 
 def is_active(project_id: int) -> bool:
     run = _runs.get(project_id)
-    return run is not None and run.state in ("queued", "generating")
+    return run is not None and run.state in ("queued", "initializing", "generating")
 
 
 def reset() -> None:

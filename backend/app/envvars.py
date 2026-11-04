@@ -3,7 +3,7 @@
 Layers, lowest to highest priority:
   1. wickd's own process environment
   2. global (default) env vars — Global Settings → Profiles
-  3. the project's active profile
+  3. the project's active profile (combined docs: the profile picked on the home page, if any)
   4. the project's own env vars
 """
 import re

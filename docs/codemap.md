@@ -82,6 +82,7 @@ frontend/src/
     useUrlTab.ts  — useUrlTab(param, allowed, fallback, rememberKey?) — in-page tab state in a URL search param so tab switches are history entries; sticky by default (remembered per page path + param for the session, restored with replace; restores in one render merged into one URL write; `null` opts out — Docs restores its own view). Used by Health (?tab=), Run History (?tab=), Metrics (?tab=), Test Gaps (?gaps=), project home file tabs (?file=), Docs (?browse=, ?view=). useStickyTab(key, allowed, fallback) — sticky inner tabs in local state (Metrics results, Run History detail, Docs code/dependency tabs). EVERY tab must be sticky (rule in .claude/rules/frontend-patterns.md); helpers in stickyTab.ts (tested). Side/bottom pane tabs stay out of the URL
   components/
     NavArrows.tsx — header back/forward buttons (right of the wickd home link)
+    HomeProfileSelector.tsx — Home page header's Profile dropdown: the global profile combined docs generation uses for init + docs (GET/PUT /workspace/docs/profile; null = each project's own)
     NodeSearchResults.tsx — Home page "Models & columns" results under the project grid while the search box has 2+ chars; HomeCommandPalette shows the same hits (Enter → DAG, ⌘Enter → Files)
   routes/
     Home.tsx      — Project list (respects WICKD_PROJECTS_PATH configured banner)

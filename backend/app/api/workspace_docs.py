@@ -2,7 +2,8 @@
 
 The docs themselves stay per project (GET /projects/{id}/docs/data, cached per project by
 the frontend); the home page joins them. Generation runs one project at a time, since each
-one compiles against its warehouse.
+one compiles against its warehouse: its init pipeline first, then its docs, both with the
+profile picked on the home page (else the project's own) and the project's env vars.
 """
 
 import asyncio
@@ -16,8 +17,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.docs import _docs_dir, _generate_docs
+from app.api.init import load_project_env, run_init_for_docs
 from app.db.engine import get_session
-from app.db.models import AppSetting, Project
+from app.db.models import AppSetting, GlobalProfile, Project
 from app.logging_setup import get_logger
 from app.projects import docs_state
 from app.projects.service import wait_for_startup_scan
@@ -27,6 +29,7 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/api/workspace/docs", tags=["workspace-docs"])
 
 SELECTION_KEY = "combined_docs_projects"
+PROFILE_KEY = "combined_docs_profile_id"
 MAX_PROJECTS = 1000
 
 ProjectIds = Annotated[list[int], Field(max_length=MAX_PROJECTS)]
@@ -61,6 +64,10 @@ class GenerateResultDto(BaseModel):
     queued: list[int]
 
 
+class WorkspaceProfileDto(BaseModel):
+    profile_id: int | None
+
+
 async def _active_projects(session: AsyncSession) -> list[Project]:
     await wait_for_startup_scan()
     result = await session.execute(select(Project).where(Project.ignored.is_(False)).order_by(Project.name))
@@ -78,6 +85,19 @@ async def saved_selection(session: AsyncSession) -> list[int]:
         log.warning("combined_docs_selection_unreadable")
         return []
     return [i for i in parsed if isinstance(i, int)] if isinstance(parsed, list) else []
+
+
+async def saved_profile_id(session: AsyncSession) -> int | None:
+    """The profile picked on the home page. One deleted since, or unreadable, reads as none."""
+    row = await session.get(AppSetting, PROFILE_KEY)
+    if row is None:
+        return None
+    try:
+        profile_id = int(row.value)
+    except ValueError:
+        log.warning("combined_docs_profile_unreadable", value=row.value)
+        return None
+    return profile_id if await session.get(GlobalProfile, profile_id) is not None else None
 
 
 async def scope_projects(session: AsyncSession) -> list[Project]:
@@ -140,11 +160,46 @@ async def put_selection(dto: SelectionDto, session: AsyncSession = Depends(get_s
     return SelectionDto(project_ids=project_ids)
 
 
-async def _generate_in_turn(targets: list[tuple[int, str]]) -> None:
+@router.get("/profile", response_model=WorkspaceProfileDto)
+async def get_profile(session: AsyncSession = Depends(get_session)) -> WorkspaceProfileDto:
+    return WorkspaceProfileDto(profile_id=await saved_profile_id(session))
+
+
+@router.put("/profile", response_model=WorkspaceProfileDto)
+async def put_profile(
+    dto: WorkspaceProfileDto, session: AsyncSession = Depends(get_session)
+) -> WorkspaceProfileDto:
+    if dto.profile_id is not None and await session.get(GlobalProfile, dto.profile_id) is None:
+        raise HTTPException(status_code=404, detail="global profile not found")
+    row = await session.get(AppSetting, PROFILE_KEY)
+    if dto.profile_id is None:
+        if row is not None:
+            await session.delete(row)
+    elif row is None:
+        session.add(AppSetting(key=PROFILE_KEY, value=str(dto.profile_id)))
+    else:
+        row.value = str(dto.profile_id)
+    await session.commit()
+    return dto
+
+
+async def _init_then_generate(project_id: int, path: str, profile_id: int | None) -> None:
+    await docs_state.mark(project_id, "initializing")
+    failure = await run_init_for_docs(project_id, profile_id=profile_id)
+    if failure is not None:
+        tail = docs_state.failure_summary(list(failure.log_lines))
+        await docs_state.mark(project_id, "error", f"Init step '{failure.step}' failed:\n{tail}")
+        return
+    # Loaded after the pipeline, so vars its scripts just captured are included
+    env = await load_project_env(project_id, profile_id=profile_id)
+    await _generate_docs(project_id, path, env=env)
+
+
+async def _generate_in_turn(targets: list[tuple[int, str]], profile_id: int | None) -> None:
     async with _generation_lock:
         for project_id, path in targets:
             try:
-                await _generate_docs(project_id, path)
+                await _init_then_generate(project_id, path, profile_id)
             except Exception as exc:  # noqa: BLE001 — one project's failure must not stop the rest
                 log.warning("combined_docs_generate_failed", project_id=project_id, error=str(exc))
                 await docs_state.mark(project_id, "error", str(exc))
@@ -154,10 +209,11 @@ async def _generate_in_turn(targets: list[tuple[int, str]]) -> None:
 async def generate(dto: GenerateDto, session: AsyncSession = Depends(get_session)) -> GenerateResultDto:
     by_id = await _require_known(session, dto.project_ids)
     wanted = [i for i in dict.fromkeys(dto.project_ids) if not docs_state.is_active(i)]
+    profile_id = await saved_profile_id(session)
     for project_id in wanted:
         await docs_state.mark(project_id, "queued")
     if wanted:
-        task = asyncio.create_task(_generate_in_turn([(i, by_id[i].path) for i in wanted]))
+        task = asyncio.create_task(_generate_in_turn([(i, by_id[i].path) for i in wanted], profile_id))
         _generation_tasks.add(task)
         task.add_done_callback(_generation_tasks.discard)
     return GenerateResultDto(queued=wanted)

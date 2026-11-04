@@ -600,10 +600,22 @@ async def run_single_step(
 
 
 _ACTIVE_GLOBAL_PROFILE_KEY = "active_global_profile_id"
+DOCS_GENERATE_STEP = "base: dbt docs generate"
 
 
-async def _active_profile_vars(session: AsyncSession, project_vars: dict[str, str]) -> dict[str, str]:
-    raw_id = project_vars.get(_ACTIVE_GLOBAL_PROFILE_KEY)
+@dataclass(frozen=True)
+class InitFailure:
+    """The step that stopped a pipeline run, and what it printed."""
+
+    step: str
+    log_lines: tuple[str, ...]
+
+
+async def _active_profile_vars(
+    session: AsyncSession, project_vars: dict[str, str], profile_id: int | None = None
+) -> dict[str, str]:
+    """The vars of `profile_id` if given, else of the project's own active profile."""
+    raw_id = str(profile_id) if profile_id is not None else project_vars.get(_ACTIVE_GLOBAL_PROFILE_KEY)
     if raw_id is None:
         return {}
     try:
@@ -621,10 +633,10 @@ async def _active_profile_vars(session: AsyncSession, project_vars: dict[str, st
 
 
 async def project_env(
-    session: AsyncSession, project_id: int, base: Mapping[str, str]
+    session: AsyncSession, project_id: int, base: Mapping[str, str], profile_id: int | None = None
 ) -> dict[str, str]:
-    """`base` layered with global env vars, then the active profile, then project vars
-    (see app/envvars.py for the precedence)."""
+    """`base` layered with global env vars, then the active profile (`profile_id` stands in
+    for it when given), then project vars (see app/envvars.py for the precedence)."""
     result = await session.execute(
         select(ProjectEnvVar).where(ProjectEnvVar.project_id == project_id)
     )
@@ -632,16 +644,30 @@ async def project_env(
     return layer_env(
         base=base,
         global_vars=await load_global_env_vars(session),
-        profile_vars=await _active_profile_vars(session, project_vars),
+        profile_vars=await _active_profile_vars(session, project_vars, profile_id),
         project_vars=project_vars,
     )
 
 
-async def load_project_env(project_id: int) -> dict[str, str]:
+async def load_project_env(project_id: int, profile_id: int | None = None) -> dict[str, str]:
     """The environment dbt and init steps run with for this project."""
     from app.db.engine import SessionLocal
     async with SessionLocal() as session:
-        return await project_env(session, project_id, base=os.environ)
+        return await project_env(session, project_id, base=os.environ, profile_id=profile_id)
+
+
+async def run_init_for_docs(project_id: int, profile_id: int | None = None) -> InitFailure | None:
+    """Run a project's enabled init steps before combined docs generation, waiting for any
+    run in progress. Its docs step is skipped: the caller generates docs straight after."""
+    from app.db.engine import SessionLocal
+    async with SessionLocal() as session:
+        project = await session.get(Project, project_id)
+        if project is None:
+            raise ValueError(f"project {project_id} not found")
+        project_path = project.path
+        rows = await _sync_steps_from_disk(session, project)
+    steps = [r for r in rows if r.enabled and r.name != DOCS_GENERATE_STEP]
+    return await _run_init_steps(project_id, project_path, steps, profile_id=profile_id)
 
 
 async def _set_project_init_status(project_id: int, **fields: object) -> None:
@@ -669,17 +695,21 @@ async def _set_step_status(project_id: int, step_name: str, **fields: object) ->
         await s.commit()
 
 
-async def _run_init_steps(project_id: int, project_path: str, steps: list[InitStep]) -> None:
+async def _run_init_steps(
+    project_id: int, project_path: str, steps: list[InitStep], profile_id: int | None = None
+) -> InitFailure | None:
     lock = _init_lock_for(project_id)
     async with lock:
         _active_runs[project_id] = _ActiveRun(steps=tuple(s.name for s in steps))
         try:
-            await _run_init_steps_locked(project_id, project_path, steps)
+            return await _run_init_steps_locked(project_id, project_path, steps, profile_id=profile_id)
         finally:
             _active_runs.pop(project_id, None)
 
 
-async def _run_init_steps_locked(project_id: int, project_path: str, steps: list[InitStep]) -> None:
+async def _run_init_steps_locked(
+    project_id: int, project_path: str, steps: list[InitStep], profile_id: int | None = None
+) -> InitFailure | None:
     topic = f"project:{project_id}"
     append_project_log(project_path, "=== Init pipeline started ===", project_id)
     await _set_project_init_status(
@@ -695,7 +725,7 @@ async def _run_init_steps_locked(project_id: int, project_path: str, steps: list
             data={"steps": [s.name for s in steps]},
         )
     )
-    env = await load_project_env(project_id)
+    env = await load_project_env(project_id, profile_id=profile_id)
 
     for step in steps:
         append_project_log(project_path, f"--- Step: {step.name} ---", project_id)
@@ -846,7 +876,7 @@ async def _run_init_steps_locked(project_id: int, project_path: str, steps: list
                     data={"status": "error", "failed_step": step.name},
                 )
             )
-            return
+            return InitFailure(step=step.name, log_lines=tuple(log_lines))
     append_project_log(project_path, "=== Init pipeline finished: SUCCESS ===", project_id)
     await _set_project_init_status(
         project_id,
@@ -862,6 +892,7 @@ async def _run_init_steps_locked(project_id: int, project_path: str, steps: list
             data={"status": "success"},
         )
     )
+    return None
 
 
 async def _capture_script_exports(

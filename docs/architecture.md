@@ -699,6 +699,8 @@ GET    /api/global-env                                    list global (default) 
 PUT    /api/global-env/{key}                              upsert one (422 on an invalid name)
 DELETE /api/global-env/{key}                              remove one (204, no-op if missing)
 
+GET    /api/workspace/docs/profile                       global profile picked on the home page for combined docs (`{profile_id}`, null = each project's own)
+PUT    /api/workspace/docs/profile                       set it (`{profile_id}`, null clears; 404 on an unknown profile). Saved in app_settings as `combined_docs_profile_id`
 GET    /api/global-profiles
 POST   /api/global-profiles
 DELETE /api/global-profiles/{profile_id}

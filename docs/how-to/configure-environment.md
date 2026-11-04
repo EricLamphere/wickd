@@ -98,6 +98,17 @@ Global profiles work the same as per-project profiles but are shared across all 
 
 Use global profiles for credentials or env vars that apply to multiple projects (e.g. warehouse credentials shared across a team workspace).
 
+### Profile on the Home page
+
+The **Profile** dropdown in the Home page header picks the global profile for **combined docs** (Home → Docs). Generating combined docs runs each project's enabled init steps and then its docs, one project at a time, and both use:
+
+1. the project's environment variables (highest)
+2. the Home page profile, in place of the project's own active profile
+3. global environment variables
+4. wickd's process environment (lowest)
+
+**Each project's own** (the default) uses whichever profile each project has active. The dropdown doesn't change any project's own selection, and it only affects combined docs. If a project's init step fails, its docs aren't regenerated: the project's card shows the failed step and its output, and the remaining projects continue.
+
 ---
 
 ## Settings

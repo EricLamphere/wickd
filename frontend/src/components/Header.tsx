@@ -6,6 +6,7 @@ import { Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { GlobalSettingsModal } from './GlobalSettingsModal';
 import { GlobalSetupModal } from './GlobalSetupModal';
+import { HomeProfileSelector } from './HomeProfileSelector';
 import { NavArrows } from './NavArrows';
 
 const PLATFORM_ICONS: Record<string, string> = {
@@ -165,6 +166,7 @@ export default function Header() {
         )}
         {isHomepage && (
           <>
+            <HomeProfileSelector />
             <button
               onClick={() => setGlobalSetupOpen(true)}
               title="Installs your global requirements.txt, or dbt-core (the version chosen in setup, or the latest) if none is set"

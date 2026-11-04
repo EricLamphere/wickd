@@ -1,5 +1,5 @@
 import { BookOpen, Loader2 } from 'lucide-react';
-import type { WorkspaceDocsProject } from '../../lib/workspaceApi';
+import { isDocsRunActive, type WorkspaceDocsProject, type WorkspaceDocsState } from '../../lib/workspaceApi';
 import { docStats, type ProjectDocs } from './docsJoin';
 import { platformMeta, timeAgo } from './ProjectCards';
 
@@ -35,6 +35,12 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+const BUSY_LABEL: Partial<Record<WorkspaceDocsState, string>> = {
+  queued: 'Queued',
+  initializing: 'Running init',
+  generating: 'Generating',
+};
+
 function ProjectDocsCard({ project, docs, failed, onOpen, onGenerate }: {
   project: WorkspaceDocsProject;
   docs: ProjectDocs | undefined;
@@ -42,7 +48,7 @@ function ProjectDocsCard({ project, docs, failed, onOpen, onGenerate }: {
   onOpen: () => void;
   onGenerate: () => void;
 }) {
-  const busy = project.state === 'queued' || project.state === 'generating';
+  const busy = isDocsRunActive(project.state);
   const stats = docs ? docStats(docs.data) : null;
   const coverage = stats && stats.documentable > 0
     ? `${Math.round((stats.described / stats.documentable) * 100)}%`
@@ -64,7 +70,7 @@ function ProjectDocsCard({ project, docs, failed, onOpen, onGenerate }: {
         )}
         {busy && (
           <span className="flex items-center gap-1 ml-auto text-[11px] text-gray-500 whitespace-nowrap">
-            <Loader2 className="w-3 h-3 animate-spin" /> {project.state === 'queued' ? 'Queued' : 'Generating'}
+            <Loader2 className="w-3 h-3 animate-spin" /> {BUSY_LABEL[project.state]}
           </span>
         )}
       </div>

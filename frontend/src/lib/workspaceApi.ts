@@ -3,7 +3,12 @@
 import { del, get, post, put } from './api';
 import { streamPost, type AskHandlers, type AskResult } from './aiApi';
 
-export type WorkspaceDocsState = 'idle' | 'queued' | 'generating' | 'done' | 'error';
+export type WorkspaceDocsState = 'idle' | 'queued' | 'initializing' | 'generating' | 'done' | 'error';
+
+/** Still on its way: queued, in its init pipeline, or generating docs. */
+export function isDocsRunActive(state: WorkspaceDocsState): boolean {
+  return state === 'queued' || state === 'initializing' || state === 'generating';
+}
 
 export interface WorkspaceDocsProject {
   id: number;
@@ -50,6 +55,9 @@ export const workspaceApi = {
     put<{ project_ids: number[] }>('/workspace/docs/selection', { project_ids: projectIds }),
   generateDocs: (projectIds: number[]) =>
     post<{ queued: number[] }>('/workspace/docs/generate', { project_ids: projectIds }),
+  profile: () => get<{ profile_id: number | null }>('/workspace/docs/profile'),
+  setProfile: (profileId: number | null) =>
+    put<{ profile_id: number | null }>('/workspace/docs/profile', { profile_id: profileId }),
 
   conversations: () => get<WorkspaceConversation[]>(AI),
   createConversation: () => post<WorkspaceConversationDetail>(AI),

@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { BookOpen, ChevronsDownUp, Database, ExternalLink, LayoutGrid, Loader2, RefreshCw, Search } from 'lucide-react';
 import { api, type DocsDataDto } from '../../lib/api';
+import { isDocsRunActive } from '../../lib/workspaceApi';
 import { useUrlTab } from '../../lib/useUrlTab';
 import { FilterDropdown } from '../Project/components/FilterDropdown';
 import { DocsScopeProvider, type DocsScope } from '../Project/DocsBrowser/docsScope';
@@ -244,8 +245,8 @@ export function CombinedDocs() {
     else collapseGroup();
   };
 
-  const missing = selectedProjects.filter((p) => !p.generated_at && p.state !== 'queued' && p.state !== 'generating');
-  const busy = selectedProjects.some((p) => p.state === 'queued' || p.state === 'generating');
+  const missing = selectedProjects.filter((p) => !p.generated_at && !isDocsRunActive(p.state));
+  const busy = selectedProjects.some((p) => isDocsRunActive(p.state));
 
   if (isLoading) {
     return <div className="flex flex-1 items-center justify-center text-xs text-gray-600">Loading…</div>;
@@ -286,7 +287,7 @@ export function CombinedDocs() {
             <button
               onClick={() => generate(selectedProjects.map((p) => p.id))}
               disabled={busy}
-              title="Compiles every selected project against its warehouse, one at a time"
+              title="Runs each selected project's init pipeline, then compiles it against its warehouse, one at a time, with the profile picked in the header"
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-gray-700 bg-surface-elevated hover:bg-gray-700 text-gray-300 transition-colors disabled:opacity-50"
             >
               <RefreshCw className="w-3 h-3" /> Regenerate all

@@ -41,7 +41,7 @@ def test_step_run_state_in_a_run() -> None:
 async def test_run_is_tracked_only_while_in_flight() -> None:
     seen: list[object] = []
 
-    async def fake_locked(project_id, _path, _steps):
+    async def fake_locked(project_id, _path, _steps, **_kwargs):
         seen.append(init_api._active_runs.get(project_id))
 
     class Step:

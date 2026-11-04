@@ -60,6 +60,9 @@ def clean_state(tmp_path, monkeypatch):
 def no_real_init_pipeline(request, monkeypatch):
     """Generation runs the init pipeline first; tests about the pipeline itself opt out."""
     if "real_init" in request.keywords:
+        # Commands are stubbed, but looking up the binaries raises where dbt isn't installed (CI)
+        monkeypatch.setattr(init_api, "venv_dbt", lambda: Path("dbt"))
+        monkeypatch.setattr(init_api, "venv_pip", lambda: Path("pip"))
         return
     monkeypatch.setattr(workspace_docs, "run_init_for_docs", AsyncMock(return_value=None))
 

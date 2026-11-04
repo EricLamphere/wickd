@@ -88,7 +88,9 @@ lampherelabs.com, deployed via Cloudflare Pages Git integration (push to
   thumbnails at 1200px (`*_1200.png`), and lightbox full-size images at
   2400px (`*_2400.png`, the gallery items' `data-full`).
 - **This repo's `img/*.png` files are the source of truth for screenshots.**
-  When updating one, also refresh the corresponding resized copy in
+  Take them with the `screenshots` skill (see [screenshots.md](./screenshots.md)),
+  whose `publish` command writes the resized copies below and regenerates the
+  site's gallery. If you do update one by hand, also refresh the corresponding resized copy in
   `lamphere-labs/assets/img/` and check whether `tools/wickd/index.html`
   references it by name — the two repos' filenames don't always match
   (e.g. this repo's `main_pro.png` → the site's top hero shot

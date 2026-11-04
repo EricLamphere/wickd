@@ -1,0 +1,1294 @@
+{
+  "demo": {
+    "source_root": "~/Projects/dbt_projects",
+    "projects": [
+      "duckdb_dbt",
+      "marketing_dbt"
+    ],
+    "prepare": [
+      {
+        "goto": "/projects/{pid:duckdb_dbt}/health"
+      },
+      {
+        "api": {
+          "method": "POST",
+          "path": "/api/projects/{pid:duckdb_dbt}/build",
+          "body": {
+            "threads": 4
+          }
+        }
+      },
+      {
+        "js": "await shot.sleep(1500); const done = async () => { const h = await shot.api('GET', '/api/projects/{pid:duckdb_dbt}/run-history?limit=1'); const r = h.items[0]; return r && r.status !== 'running'; }; for (let i = 0; i < 300; i++) { if (await done()) return true; await shot.sleep(1000); } throw new Error('build never finished');",
+        "timeout": 310000
+      },
+      {
+        "click": "Run all"
+      },
+      {
+        "js": "await shot.sleep(1500); for (let i = 0; i < 240; i++) { const s = JSON.stringify(await shot.api('GET', '/api/projects/{pid:duckdb_dbt}/health/summary')); if (!s.includes('\"running\"')) return true; await shot.sleep(1000); } throw new Error('health checks never finished');",
+        "timeout": 250000
+      },
+      {
+        "api": {
+          "method": "POST",
+          "path": "/api/projects/{pid:duckdb_dbt}/column-lineage/start"
+        },
+        "only_tier": "pro"
+      },
+      {
+        "js": "for (let i = 0; i < 240; i++) { const s = await shot.api('GET', '/api/projects/{pid:duckdb_dbt}/column-lineage'); if (s && s.status !== 'running') return s.status; await shot.sleep(1000); } throw new Error('lineage never finished');",
+        "timeout": 250000,
+        "only_tier": "pro"
+      },
+      {
+        "api": {
+          "method": "POST",
+          "path": "/api/projects/{pid:duckdb_dbt}/metric-monitors/refresh",
+          "body": {}
+        },
+        "only_tier": "pro"
+      },
+      {
+        "sleep": 8000
+      }
+    ],
+    "edits": {
+      "contract_break": [
+        {
+          "file": "duckdb_dbt/models/silver/int_customer_orders.sql",
+          "find": "    c.country,\n",
+          "replace": ""
+        },
+        {
+          "file": "duckdb_dbt/models/silver/int_customer_orders.sql",
+          "find": "coalesce(o.orders_count, 0) as orders_count",
+          "replace": "coalesce(o.orders_count, 0) as order_count"
+        }
+      ],
+      "metric_filter": [
+        {
+          "file": "duckdb_dbt/models/semantic/_semantic__metrics.yml",
+          "find": "      measure: net_revenue\n\n  - name: gross_revenue",
+          "replace": "      measure: net_revenue\n    filter: \"{{ Dimension('customer__country') }} != 'US'\"\n\n  - name: gross_revenue"
+        }
+      ],
+      "data_change": [
+        {
+          "file": "duckdb_dbt/models/silver/int_customer_orders.sql",
+          "find": "sum(net_amount_dollars) as lifetime_net_revenue",
+          "replace": "sum(net_amount_dollars) * 1.02 as lifetime_net_revenue"
+        }
+      ]
+    },
+    "seed_edits": [
+      {
+        "file": "duckdb_dbt/models/silver/int_sales_enriched.sql",
+        "prepend": "{{ config(pre_hook=\"select sum(i % 7) from range(4000000000) t(i)\") }}\n"
+      },
+      {
+        "file": "duckdb_dbt/charts/sales.yml",
+        "find": "Net revenue and margin from mart_sales_analytics",
+        "replace": "Net revenue and margin by channel and category"
+      },
+      {
+        "file": "duckdb_dbt/wickd/workspace/test.sql",
+        "delete": true
+      },
+      {
+        "file": "duckdb_dbt/wickd/workspace/top_customers_by_country.sql",
+        "content": "-- Each country's most valuable customers, and how recently we've seen them\nwith customer_value as (\n\n    select\n        customer_id,\n        first_name || ' ' || last_name as customer_name,\n        country,\n        loyalty_tier,\n        segment,\n        orders_count,\n        lifetime_net_revenue,\n        rfm_recency_days\n    from {{ ref('mart_customer_360') }}\n    where orders_count > 0\n\n),\n\nranked as (\n\n    select\n        *,\n        rank() over (\n            partition by country\n            order by lifetime_net_revenue desc\n        ) as country_rank,\n        round(\n            100.0 * lifetime_net_revenue\n                / sum(lifetime_net_revenue) over (partition by country),\n            1\n        ) as pct_of_country_revenue\n    from customer_value\n\n)\n\nselect\n    country,\n    country_rank,\n    customer_name,\n    loyalty_tier,\n    segment,\n    orders_count,\n    round(lifetime_net_revenue, 2) as lifetime_revenue,\n    pct_of_country_revenue,\n    rfm_recency_days as days_since_last_order\nfrom ranked\nwhere country_rank <= 3\norder by country, country_rank\n"
+      }
+    ]
+  },
+  "upcoming": [
+    "Combined docs"
+  ],
+  "not_shown": {
+    "Live sync with disk": "Behaviour over time; a still can't show it.",
+    "Back / forward navigation": "The arrows are in every shot's header; it never needs framing."
+  },
+  "shots": [
+    {
+      "name": "main_pro",
+      "tier": "pro",
+      "pair": "dag_base",
+      "site": {
+        "hero": "true"
+      },
+      "caption": "Column-level lineage traced from raw data through every model, with its impact below and Wicky (Pro) answering from warehouse queries",
+      "features": [
+        "Interactive DAG",
+        "Impact analysis",
+        "Column-level lineage",
+        "Column-level impact",
+        "Wicky, the local AI assistant"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=model.duckdb_dbt.int_customer_orders"
+        },
+        {
+          "wait": "▼ 19 columns"
+        },
+        {
+          "settle": true
+        },
+        {
+          "click": {
+            "sel": "[title=\"Collapse panel\"]"
+          }
+        },
+        {
+          "sleep": 500
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'impact', impactMode:'selection'}})); await shot.sleep(800); return true;"
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-wicky', {detail:{chatMode:'query', question:'Which country has the highest revenue?'}})); return true;"
+        },
+        {
+          "wait": "Review the SQL, then run it",
+          "timeout": 300000
+        },
+        {
+          "js": "const runs=[...document.querySelectorAll('button')].filter(b=>b.innerText.trim()==='Run'); runs[runs.length-1].click(); return runs.length;"
+        },
+        {
+          "wait": "Answer from results",
+          "timeout": 180000
+        },
+        {
+          "settle": true,
+          "timeout": 240000
+        },
+        {
+          "js": "const b=shot.byText('Load column lineage'); if (b) { b.click(); await shot.sleep(1500); await shot.settle({timeout:120000}); } return true;",
+          "timeout": 150000
+        },
+        {
+          "js": "const t=[...document.querySelectorAll('button')].find(b=>/^Type\\b/.test(b.innerText.trim())); t.click(); await shot.sleep(300); await shot.click({text:'source',exact:true}); await shot.sleep(200); await shot.click({text:'seed',exact:true}); await shot.sleep(200); t.click(); await shot.sleep(300); return true;"
+        },
+        {
+          "type": {
+            "sel": "input[type=search]",
+            "value": "raw_customers+"
+          }
+        },
+        {
+          "sleep": 1200
+        },
+        {
+          "js": "document.activeElement.blur(); return true;"
+        },
+        {
+          "click": {
+            "text": "columns",
+            "within": {
+              "sel": ".react-flow__node[data-id$=\".raw.raw_customers\"]"
+            }
+          }
+        },
+        {
+          "click": {
+            "text": "columns",
+            "within": {
+              "sel": ".react-flow__node[data-id$=\".duckdb_dbt.stg_customers\"]"
+            }
+          }
+        },
+        {
+          "click": {
+            "text": "columns",
+            "within": {
+              "sel": ".react-flow__node[data-id$=\".duckdb_dbt.int_customer_orders\"]"
+            }
+          }
+        },
+        {
+          "click": {
+            "text": "columns",
+            "within": {
+              "sel": ".react-flow__node[data-id$=\".duckdb_dbt.mart_customer_360\"]"
+            }
+          }
+        },
+        {
+          "sleep": 500
+        },
+        {
+          "click": {
+            "text": "customer_id",
+            "exact": true,
+            "within": {
+              "sel": ".react-flow__node[data-id$=\".duckdb_dbt.int_customer_orders\"]"
+            }
+          }
+        },
+        {
+          "sleep": 600
+        },
+        {
+          "click": {
+            "sel": ".react-flow__controls-fitview"
+          }
+        },
+        {
+          "sleep": 1000
+        },
+        {
+          "settle": true
+        }
+      ],
+      "storage": {
+        "wickd:wicky-width": "560"
+      },
+      "label": "Column lineage, impact and Wicky (Pro)",
+      "alt": "wickd DAG with models expanded to their columns and customer_id's lineage highlighted from the raw_customers source through to mart_customer_360, with column-level impact below and Wicky, the local AI assistant, answering a question from a warehouse query"
+    },
+    {
+      "name": "main_base",
+      "tier": "base",
+      "site": {
+        "hero": "true"
+      },
+      "caption": "Editing, not just browsing — the file tree, the SQL editor, the model's properties and run controls, and its lineage below",
+      "features": [
+        "File explorer & editor",
+        "Run / build / test",
+        "Node DAG & Node SQL"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/files?path=models/gold/mart_customer_360.sql"
+        },
+        {
+          "wait": "Run"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'node-dag'}})); await shot.sleep(800); return true;"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        }
+      ],
+      "storage": {
+        "wickd:bottom-pane-height": "380"
+      },
+      "label": "Files and data preview",
+      "alt": "wickd file explorer with SQL editor, model properties panel, and the selected model's node DAG"
+    },
+    {
+      "name": "metric_dashboard",
+      "tier": "base",
+      "caption": "Metric dashboards — a drag-and-drop builder over YAML files in your project",
+      "features": [
+        "Metric dashboards"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/metrics?tab=dashboards&dashboard=executive-overview"
+        },
+        {
+          "wait": "Refresh on"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "click": "Refresh on"
+        },
+        {
+          "sleep": 1500
+        },
+        {
+          "settle": true,
+          "timeout": 180000
+        }
+      ],
+      "label": "Metric dashboards",
+      "alt": "wickd dashboard builder with metrics on the left, widgets on the right and charts on the canvas",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "metric_explorer",
+      "tier": "base",
+      "caption": "Metric explorer — build a query in one line, with the chart, the rows and the SQL MetricFlow writes",
+      "features": [
+        "Metric explorer"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/metrics?tab=explore&metrics=revenue&group_by=customer__country"
+        },
+        {
+          "wait": {
+            "text": "SQL",
+            "exact": true
+          },
+          "timeout": 60000
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        },
+        {
+          "click": {
+            "text": "SQL",
+            "exact": true
+          }
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        }
+      ],
+      "label": "Metric explorer",
+      "alt": "wickd metric explorer with revenue by country, its settings, and the SQL MetricFlow generated",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "metric_monitors",
+      "tier": "pro",
+      "caption": "Metric monitors (Pro) — anomalies against a seasonal baseline, with the expected band",
+      "features": [
+        "Metric monitors"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/metrics?tab=monitors&monitor=2"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        }
+      ],
+      "label": "Metric monitors (Pro)",
+      "alt": "wickd metric monitor chart with its expected band and flagged periods",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "metric_debug",
+      "tier": "pro",
+      "caption": "Metric debugging — MetricFlow's plan step by step and warehouse checks, with the number explained (Pro)",
+      "features": [
+        "Metric debugging",
+        "Metric explanations"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/metrics?tab=explore&metrics=revenue&grain=week"
+        },
+        {
+          "wait": {
+            "text": "Debug",
+            "exact": true
+          },
+          "timeout": 60000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "click": {
+            "text": "Debug",
+            "exact": true
+          }
+        },
+        {
+          "wait": "Explain this number",
+          "timeout": 180000
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        },
+        {
+          "click": "Explain this number"
+        },
+        {
+          "sleep": 2000
+        },
+        {
+          "settle": true,
+          "timeout": 300000
+        }
+      ],
+      "edits": "metric_filter",
+      "label": "Metric debugging (Pro)",
+      "alt": "wickd metric debugging: a written explanation, MetricFlow's plan step by step, and quality checks",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "source_control",
+      "tier": "pro",
+      "caption": "Source control with contract checks (Pro) — what your uncommitted work breaks, before you commit",
+      "features": [
+        "Source control",
+        "Contract checks"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/git"
+        },
+        {
+          "wait": "int_customer_orders.sql"
+        },
+        {
+          "click": "int_customer_orders.sql"
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'impact', impactMode:'working', contracts:true}})); await shot.sleep(800); return true;"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "const b=await shot.waitFor(()=>[...document.querySelectorAll('button')].find(x=>/^(Check contracts|Re-check)$/.test(x.innerText.trim())),30000,'the contract check button'); b.click(); await shot.sleep(3000); return b.innerText;",
+          "timeout": 40000
+        },
+        {
+          "wait": "Re-check",
+          "timeout": 180000
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        }
+      ],
+      "storage": {
+        "wickd:bottom-pane-height": "380"
+      },
+      "edits": "contract_break",
+      "label": "Source control & contracts (Pro)",
+      "alt": "wickd source control with a diff, and contract check results for the uncommitted change",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "data_diff",
+      "tier": "pro",
+      "caption": "Data diff (Pro) — your changed model built in dev and compared with prod, row by row",
+      "features": [
+        "Data diff"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models"
+        },
+        {
+          "settle": true
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'impact', impactMode:'working'}})); await shot.sleep(800); return true;"
+        },
+        {
+          "wait": {
+            "text": "Data PRO",
+            "exact": true
+          },
+          "timeout": 30000
+        },
+        {
+          "click": {
+            "text": "Data PRO",
+            "exact": true
+          }
+        },
+        {
+          "wait": "changed model",
+          "timeout": 30000
+        },
+        {
+          "click": "changed model"
+        },
+        {
+          "sleep": 3000
+        },
+        {
+          "settle": true,
+          "timeout": 300000
+        },
+        {
+          "js": "const b=await shot.waitFor(()=>[...document.querySelectorAll('button')].find(x=>/rows$/.test(x.innerText.trim())),60000,'the diff result'); b.click(); return b.innerText;",
+          "timeout": 70000
+        },
+        {
+          "sleep": 1000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        }
+      ],
+      "storage": {
+        "wickd:bottom-pane-height": "460"
+      },
+      "edits": "data_change",
+      "label": "Data diff (Pro)",
+      "alt": "wickd data diff comparing a changed model in dev with prod, showing changed columns and sample rows",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "docs",
+      "tier": "base",
+      "caption": "Native docs browser — columns, descriptions, tests, lineage, all searchable",
+      "features": [
+        "Docs browser"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/docs?node=model.duckdb_dbt.mart_customer_360"
+        },
+        {
+          "wait": "Description"
+        }
+      ],
+      "label": "Docs browser",
+      "alt": "wickd native docs browser showing model detail",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "sql_workspace",
+      "tier": "base",
+      "caption": "SQL Workspace — Monaco editor, ref autocomplete, compiled SQL, and live query results",
+      "features": [
+        "SQL Workspace"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/workspace"
+        },
+        {
+          "wait": "top_customers_by_country.sql"
+        },
+        {
+          "click": "top_customers_by_country.sql"
+        },
+        {
+          "wait": {
+            "sel": ".monaco-editor"
+          }
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        },
+        {
+          "click": {
+            "text": "Run",
+            "exact": true
+          }
+        },
+        {
+          "wait": "Query Results",
+          "timeout": 60000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        }
+      ],
+      "label": "SQL Workspace",
+      "alt": "wickd SQL workspace with a ranking query in the editor and its results beside it",
+      "site": {
+        "gallery": "main"
+      },
+      "storage": {
+        "wickd:ws-results-width": "1180"
+      }
+    },
+    {
+      "name": "run_history",
+      "tier": "pro",
+      "caption": "Run history — every invocation, and a timeline of what each dbt thread was doing, with the critical path (Pro) highlighted",
+      "features": [
+        "Run history"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/runs"
+        },
+        {
+          "wait": "Run History"
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        },
+        {
+          "js": "const row=await shot.waitFor(()=>[...document.querySelectorAll('tbody tr')].find(r=>{const t=r.innerText; return /\\bprod\\b/.test(t)&&/\\brun\\b/.test(t)&&/\\ball\\b/.test(t)&&/\\bok\\b/.test(t)&&!/\\berr\\b/.test(t);}),20000,'a full prod run with no failures'); row.click(); return row.innerText.slice(0,40);",
+          "timeout": 30000
+        },
+        {
+          "wait": "Timeline"
+        },
+        {
+          "click": "Timeline"
+        },
+        {
+          "wait": "thread utilisation",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        }
+      ],
+      "label": "Run history",
+      "alt": "wickd run history with a 4-thread run's timeline, showing each model's bar per thread and the critical path highlighted",
+      "site": {
+        "gallery": "main"
+      },
+      "storage": {
+        "wickd:run-history-pane-width": "1200"
+      }
+    },
+    {
+      "name": "health",
+      "tier": "base",
+      "caption": "Health — your connection, schema drift, source freshness and semantic layer at a glance, with a terminal below",
+      "features": [
+        "Health checks",
+        "Integrated terminal & project creation"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/health"
+        },
+        {
+          "wait": "Run all"
+        },
+        {
+          "click": {
+            "text": "Terminal",
+            "exact": true
+          }
+        },
+        {
+          "sleep": 1500
+        }
+      ],
+      "label": "Health & terminal",
+      "alt": "wickd Health overview with connection, drift, freshness and semantic layer cards, and a terminal open below",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
+      "name": "app_home",
+      "tier": "base",
+      "caption": "Project discovery, with ⌘K finding models and columns across every project",
+      "features": [
+        "Command palette",
+        "Search across projects"
+      ],
+      "steps": [
+        {
+          "goto": "/"
+        },
+        {
+          "wait": "duckdb_dbt"
+        },
+        {
+          "settle": true
+        },
+        {
+          "key": {
+            "name": "k",
+            "meta": true
+          }
+        },
+        {
+          "type": {
+            "sel": "input[placeholder^=\"Open a project\"]",
+            "value": "customer_id"
+          }
+        },
+        {
+          "sleep": 1200
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Homepage & search",
+      "alt": "wickd homepage with the command palette searching models and columns across projects",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "combined_docs",
+      "tier": "pro",
+      "caption": "Combined docs across your projects, with Wicky (Pro) answering questions about all of them",
+      "features": [
+        "Combined docs"
+      ],
+      "steps": [
+        {
+          "api": {
+            "method": "PUT",
+            "path": "/api/workspace/docs/selection",
+            "body": {
+              "project_ids": [
+                "{pid:duckdb_dbt}",
+                "{pid:marketing_dbt}"
+              ]
+            }
+          }
+        },
+        {
+          "goto": "/?tab=docs"
+        },
+        {
+          "wait": "Regenerate all"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "const find=()=>[...document.querySelectorAll('button')].find(b=>/^Generate \\d+ missing/.test(b.innerText.trim())); const b=find(); if (b) { b.click(); await shot.sleep(1500); await shot.waitFor(()=>!find(),180000,'docs to generate'); } return true;",
+          "timeout": 200000
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        },
+        {
+          "click": "Where is customer_id used?"
+        },
+        {
+          "sleep": 2000
+        },
+        {
+          "settle": true,
+          "timeout": 300000
+        }
+      ],
+      "storage": {
+        "wickd:wicky-open": "true",
+        "wickd:wicky-width": "520"
+      },
+      "label": "Combined docs (Pro)",
+      "alt": "wickd combined docs across projects, with Wicky open on the right",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "project_home",
+      "tier": "base",
+      "caption": "Project home — counts, quick runs and recent runs, with any dbt command a keystroke away",
+      "features": [
+        "Arbitrary dbt commands"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}"
+        },
+        {
+          "wait": "View all"
+        },
+        {
+          "settle": true
+        },
+        {
+          "type": {
+            "sel": "input[placeholder*=\"--select\"]",
+            "value": "ls --select mart_customer_360+ --resource-type model"
+          }
+        },
+        {
+          "sleep": 300
+        }
+      ],
+      "label": "Project home",
+      "alt": "wickd project home page with counts, quick runs, a dbt command box and recent runs",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "init_pipeline",
+      "tier": "base",
+      "caption": "Initialization — pip install, dbt deps and your own setup scripts as one pipeline",
+      "features": [
+        "Environment control"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/init"
+        },
+        {
+          "wait": "Initialize"
+        }
+      ],
+      "label": "Init pipeline",
+      "alt": "wickd Initialization page: setup steps connected by a flowing pipeline",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "dag_base",
+      "tier": "base",
+      "pair": "main_pro",
+      "caption": "The DAG — selectors, filters and live status, with any model's output beside it and its downstream impact with risk flags below",
+      "features": [
+        "Interactive DAG",
+        "Impact analysis",
+        "Data preview"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=model.duckdb_dbt.mart_customer_360"
+        },
+        {
+          "wait": "▼ 19 columns"
+        },
+        {
+          "settle": true
+        },
+        {
+          "click": "Data Preview"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'impact', impactMode:'selection'}})); await shot.sleep(800); return true;"
+        },
+        {
+          "click": {
+            "sel": ".react-flow__controls-fitview"
+          }
+        },
+        {
+          "sleep": 1000
+        }
+      ],
+      "label": "Interactive DAG",
+      "alt": "wickd DAG on the free tier, with a preview of the selected model's output in the side panel and downstream impact below",
+      "site": {
+        "gallery": "more"
+      },
+      "storage": {
+        "wickd:side-pane-width:dag": "620"
+      }
+    },
+    {
+      "name": "run_performance",
+      "tier": "pro",
+      "caption": "Run performance insights (Pro) — regressions against each node's usual time, and the slowest nodes with their trends",
+      "features": [
+        "Run performance insights"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/runs?tab=performance"
+        },
+        {
+          "wait": "MEDIAN",
+          "timeout": 60000
+        }
+      ],
+      "label": "Run performance (Pro)",
+      "alt": "wickd run performance: a regression and the slowest nodes with recent run trends",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "test_gaps",
+      "tier": "pro",
+      "caption": "Smarter test suggestions (Pro) — the riskiest untested columns, ranked, with the evidence",
+      "features": [
+        "Smarter test suggestions"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/health?tab=test-gaps"
+        },
+        {
+          "wait": "USED BY",
+          "timeout": 60000
+        },
+        {
+          "settle": true
+        },
+        {
+          "click": {
+            "text": "category",
+            "exact": true
+          }
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Test gaps (Pro)",
+      "alt": "wickd Test Gaps: untested columns ranked by risk, with one expanded to show its evidence",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "doc_generator",
+      "tier": "base",
+      "caption": "Documentation generator — warehouse columns added to your YAML, reviewed as a diff before anything is written",
+      "features": [
+        "Documentation generator"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/health?tab=schema-drift"
+        },
+        {
+          "wait": "Run",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "click": "warehouse-only column"
+        },
+        {
+          "wait": "Accept all",
+          "timeout": 120000
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Documentation generator",
+      "alt": "wickd review window adding a warehouse column to a schema YAML, opened from Schema Drift",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "lineage_propagation",
+      "tier": "pro",
+      "caption": "Lineage propagation (Pro) — empty column descriptions filled from the upstream columns they pass through",
+      "features": [
+        "Lineage propagation"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/docs"
+        },
+        {
+          "wait": "Fill descriptions from lineage",
+          "timeout": 60000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "click": "Fill descriptions from lineage"
+        },
+        {
+          "wait": "Accept all",
+          "timeout": 120000
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Lineage propagation (Pro)",
+      "alt": "wickd review window with column descriptions inherited from upstream",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "refactor",
+      "tier": "pro",
+      "caption": "Refactors (Pro) — rename a model everywhere it's used, as one multi-file diff to review",
+      "features": [
+        "Refactors"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=model.duckdb_dbt.int_customer_orders"
+        },
+        {
+          "settle": true
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:start-refactor', {detail:{op:'rename_model', uniqueId:'model.duckdb_dbt.int_customer_orders', model:'int_customer_orders'}})); return true;"
+        },
+        {
+          "type": {
+            "sel": "input:not([type])",
+            "value": "int_customer_order_facts"
+          }
+        },
+        {
+          "sleep": 200
+        },
+        {
+          "click": "Prepare rename"
+        },
+        {
+          "wait": "Accept all",
+          "timeout": 120000
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Refactors (Pro)",
+      "alt": "wickd refactor review: a model rename shown as one multi-file diff",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "dag_export",
+      "tier": "base",
+      "caption": "DAG exports — interactive HTML, SVG or PNG of exactly what's on screen",
+      "features": [
+        "DAG exports"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models"
+        },
+        {
+          "wait": "▼ 19 columns"
+        },
+        {
+          "click": {
+            "text": "Export",
+            "exact": true
+          }
+        },
+        {
+          "sleep": 800
+        }
+      ],
+      "label": "DAG exports",
+      "alt": "wickd Export DAG dialog with interactive HTML, SVG and PNG formats",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "semantic_layer",
+      "tier": "base",
+      "caption": "Semantic layer — metrics and semantic models in the DAG, with their definitions and lineage",
+      "features": [
+        "Semantic layer (MetricFlow)"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=metric.duckdb_dbt.revenue"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'node-dag'}})); await shot.sleep(800); return true;"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        }
+      ],
+      "storage": {
+        "wickd:bottom-pane-height": "420"
+      },
+      "label": "Semantic layer",
+      "alt": "wickd DAG with a metric selected, showing its definition and its lineage through a semantic model",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "semantic_draft",
+      "tier": "pro",
+      "caption": "Semantic layer drafts (Pro) — Wicky drafts a semantic model and metrics, checked first, for you to review as YAML",
+      "features": [
+        "Semantic layer drafts"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=model.duckdb_dbt.int_inventory_movements"
+        },
+        {
+          "wait": "▼ 19 columns"
+        },
+        {
+          "settle": true
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-wicky', {detail:{action:'semantic_draft', uniqueId:'model.duckdb_dbt.int_inventory_movements'}})); return true;"
+        },
+        {
+          "wait": {
+            "text": "Review",
+            "exact": true
+          },
+          "timeout": 420000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "click": {
+            "text": "Review",
+            "exact": true
+          }
+        },
+        {
+          "wait": "Accept all"
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Semantic drafts (Pro)",
+      "alt": "wickd review window with a drafted semantic model and metrics, each checked against the warehouse",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "metric_compare",
+      "tier": "pro",
+      "caption": "Metric compare (Pro) — your uncommitted change against HEAD, with the rows that moved",
+      "features": [
+        "Metric compare"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/metrics?tab=explore&metrics=revenue&group_by=customer__country&cmp=working"
+        },
+        {
+          "wait": "Run comparison",
+          "timeout": 60000
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "const done=()=>/rows? differ|No differences/.test(document.body.innerText); for(let a=0;a<4;a++){ await shot.settle({timeout:60000}); shot.byText('Run comparison').click(); try { await shot.waitFor(done,60000,'the comparison'); await shot.sleep(1000); await shot.settle({timeout:60000}); if(done()) return a; } catch(e){} } throw new Error('the comparison never finished');",
+          "timeout": 320000
+        }
+      ],
+      "edits": "metric_filter",
+      "label": "Metric compare (Pro)",
+      "alt": "wickd metric compare: uncommitted changes against HEAD, by country, with the row that changed",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "charts",
+      "tier": "base",
+      "caption": "dbt Charts boards — build snapshots, open them live, and see validation problems",
+      "features": [
+        "dbt Charts boards"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/charts?board=sales"
+        },
+        {
+          "wait": "Open YAML"
+        },
+        {
+          "click": {
+            "text": "Build board"
+          }
+        },
+        {
+          "sleep": 1500
+        },
+        {
+          "settle": true,
+          "timeout": 240000
+        }
+      ],
+      "label": "dbt Charts",
+      "alt": "wickd Charts page showing a built dbt Charts board",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "light_theme",
+      "tier": "base",
+      "theme": "light",
+      "caption": "Light theme — the whole app, shown here with per-column profile stats",
+      "features": [
+        "Light & dark themes",
+        "Column profiling & test coverage"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/files?path=models/gold/mart_customer_360.sql"
+        },
+        {
+          "wait": "Profile"
+        },
+        {
+          "click": "Profile"
+        },
+        {
+          "wait": "Run Profile"
+        },
+        {
+          "click": "Run Profile"
+        },
+        {
+          "sleep": 1500
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        }
+      ],
+      "storage": {
+        "wickd:side-pane-width:files": "620"
+      },
+      "label": "Light theme & profiling",
+      "alt": "wickd light theme: file explorer with a column profile",
+      "site": {
+        "gallery": "more"
+      }
+    }
+  ]
+}

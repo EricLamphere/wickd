@@ -112,6 +112,8 @@ The app icon's source is `src-tauri/icons/icon.svg`. After editing it, regenerat
 
 Inside the app (header, loading screen, setup wizard) and in browser tabs, wickd uses the *mark*: the icon's flame without the tile, from `frontend/public/` — `wickd-mark.svg` for dark backgrounds, `wickd-mark-light.svg` for light ones (`components/WickdIcon.tsx` picks by theme), and `favicon.svg`, which switches between the two with `prefers-color-scheme`. Keep them in sync with `icon.svg` when the flame changes; the lamphere-labs site uses copies of the same three files in `assets/img/`.
 
+Debug builds of the shell (`cargo build` in `src-tauri/`) can attach to a backend that's already running instead of starting a bundled one: set `WICKD_SHELL_URL` (e.g. `http://127.0.0.1:8002`) and optionally `WICKD_SHELL_SIZE` (e.g. `1920x1145`) and `WICKD_SHELL_ZOOM` (e.g. `0.8`, to lay the app out larger than the display allows). Release builds ignore all three. The README and website screenshots are taken this way; see `.claude/skills/screenshots/SKILL.md`.
+
 ## Releasing (maintainers)
 
 Releases are Developer ID signed and notarized by Apple.

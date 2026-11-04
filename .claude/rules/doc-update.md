@@ -20,6 +20,7 @@ Changes that require doc updates:
 
 | Changed | Update |
 |---------|--------|
+| New or significantly changed module/file | `docs/codemap.md` (never `CLAUDE.md`: it loads into every session and has a size budget) |
 | New API endpoint | `docs/architecture.md` → API Routes section |
 | New DB table/column | `docs/architecture.md` → Database Schema section; `CLAUDE.md` → Database Tables section |
 | New env var or setting | `docs/architecture.md` → Configuration table; `CONTRIBUTING.md` → Configuration table; `CLAUDE.md` → Global Settings section |

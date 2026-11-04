@@ -49,6 +49,8 @@ Open `CLAUDE.md`. Update:
 
 Keep the existing format. Add rows/lines to tables rather than rewriting.
 
+Module and file descriptions go in `docs/codemap.md`, not `CLAUDE.md`. `CLAUDE.md` loads into every session and has a size budget, so only change its Directory Map overview when a top-level directory is added or removed.
+
 ## Step 5: Update docs/architecture.md
 
 Open `docs/architecture.md`. Update:

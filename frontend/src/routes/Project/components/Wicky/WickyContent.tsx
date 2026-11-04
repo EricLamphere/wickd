@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { GraphDto, ModelNode } from '../../../../lib/api';
 import type { ChatRequest } from './AiChat';
@@ -31,6 +31,15 @@ function isFailing(model: ModelNode, graph: GraphDto | null): boolean {
 
 /** Wicky, the AI assistant (wickd Pro): unlock → set up a local model → document + ask. */
 export function WickyContent({ projectId, model, graph, request, onRequestTaken }: WickyContentProps) {
+  return (
+    <WickyGate>
+      <WickyReady projectId={projectId} model={model} graph={graph} request={request} onRequestTaken={onRequestTaken} />
+    </WickyGate>
+  );
+}
+
+/** Shows `children` once Wicky is usable: entitled, Pro installed, a model ready. */
+export function WickyGate({ children }: { children: ReactNode }) {
   const { status, loading, downloads } = useAiStatus();
   const [upgradeOpen, setUpgradeOpen] = useState(false);
 
@@ -62,7 +71,7 @@ export function WickyContent({ projectId, model, graph, request, onRequestTaken 
 
   if (!status.ready) return <AiSetup status={status} downloads={downloads} />;
 
-  return <WickyReady projectId={projectId} model={model} graph={graph} request={request} onRequestTaken={onRequestTaken} />;
+  return <>{children}</>;
 }
 
 function WickyReady({ projectId, model, graph, request: external, onRequestTaken }: WickyContentProps) {

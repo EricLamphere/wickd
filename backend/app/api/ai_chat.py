@@ -7,7 +7,7 @@ would flood every other subscriber's queue for no benefit.
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
@@ -203,7 +203,10 @@ async def _build_messages(
     )
 
 
-async def _answer(cid: int, messages: list[dict], config, unique_id: str | None) -> AsyncIterator[str]:
+async def stream_reply(
+    messages: list[dict], config, save: Callable[[str], Awaitable[int | None]], log_id: int
+) -> AsyncIterator[str]:
+    """SSE `delta`s from the model, then `done` / `error`; `save` stores what was generated."""
     parts: list[str] = []
     error: str | None = None
     try:
@@ -214,14 +217,18 @@ async def _answer(cid: int, messages: list[dict], config, unique_id: str | None)
             yield _sse("delta", {"text": text})
     except (RuntimeUnavailable, LlmError) as exc:
         error = str(exc)
-        log.warning("ai_ask_failed", conversation_id=cid, error=error)
+        log.warning("ai_ask_failed", conversation_id=log_id, error=error)
     finally:
         # Saved even when the client stops reading mid-answer, so history matches what was shown.
-        message_id = await _save_reply(cid, "".join(parts), unique_id)
+        message_id = await save("".join(parts))
     if error is not None:
         yield _sse("error", {"message": error})
     else:
         yield _sse("done", {"message_id": message_id})
+
+
+def _answer(cid: int, messages: list[dict], config, unique_id: str | None) -> AsyncIterator[str]:
+    return stream_reply(messages, config, lambda content: _save_reply(cid, content, unique_id), cid)
 
 
 async def _save_reply(cid: int, content: str, unique_id: str | None) -> int | None:

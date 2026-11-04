@@ -66,7 +66,7 @@ const MODES = [
 const NODE_SUGGESTIONS = ['What does this model do?', 'How is each column derived?', 'What would break if I changed it?'];
 const PROJECT_SUGGESTIONS = ['Give me an overview of this project', 'Which models are the main marts?', 'Which models have no description?'];
 
-function Bubble({ role, children }: { role: AiMessageDto['role']; children: React.ReactNode }) {
+export function Bubble({ role, children }: { role: AiMessageDto['role']; children: React.ReactNode }) {
   // `action` entries open with what the user asked for, styled like their own message
   return role !== 'assistant' ? (
     <div className="self-end max-w-[90%] px-2.5 py-1.5 rounded-lg bg-brand-900/50 text-gray-200 whitespace-pre-wrap break-words">

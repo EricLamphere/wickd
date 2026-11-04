@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { FolderOpen, Plus, RefreshCw, Settings2 } from 'lucide-react';
+import { BookOpen, FolderOpen, Plus, RefreshCw, Settings2 } from 'lucide-react';
 import type { NodeSearchHit, Project } from '../lib/api';
 import { nodeSearchSubtitle, nodeSearchUrl } from '../lib/nodeSearch';
 import { useNodeSearch } from '../lib/useNodeSearch';
@@ -147,6 +147,13 @@ export function HomeCommandPalette({
         onExecute: onNewProject,
       },
       {
+        id: 'action-combined-docs',
+        category: 'action',
+        title: 'Combined docs',
+        icon: <BookOpen size={14} />,
+        onExecute: () => onOpenUrl('/?tab=docs'),
+      },
+      {
         id: 'action-rescan',
         category: 'action',
         title: 'Rescan projects',
@@ -163,7 +170,7 @@ export function HomeCommandPalette({
     ];
 
     return [...projectCommands, ...actionCommands];
-  }, [projects, onNavigateToProject, onNewProject, onRescan, onOpenGlobalSettings]);
+  }, [projects, onNavigateToProject, onNewProject, onOpenUrl, onRescan, onOpenGlobalSettings]);
 
   const { data: nodeResults } = useNodeSearch(query);
   const filtered = useMemo(() => {

@@ -52,6 +52,8 @@ from app.api import sql as sql_api
 from app.api import terminal as terminal_api
 from app.api import test_gaps as test_gaps_api
 from app.api import workspace as workspace_api
+from app.api import workspace_ai as workspace_ai_api
+from app.api import workspace_docs as workspace_docs_api
 from app.charts.runtime import charts_servers
 from app.config import settings
 from app.db.engine import SessionLocal
@@ -154,6 +156,8 @@ app.include_router(init_script_test_api.router)
 app.include_router(license_api.router)
 app.include_router(env_api.router)
 app.include_router(docs_api.router)
+app.include_router(workspace_docs_api.router)
+app.include_router(workspace_ai_api.router)
 app.include_router(events_api.router)
 app.include_router(files_api.router)
 app.include_router(files_api.fs_router)

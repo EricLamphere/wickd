@@ -413,6 +413,34 @@ class LicenseState(Base):
     limit_activations: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class WorkspaceConversation(Base):
+    """A home page Wicky chat across projects (wickd Pro AI): Ask only, not tied to a project."""
+    __tablename__ = "workspace_conversations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    messages: Mapped[list["WorkspaceMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="WorkspaceMessage.id"
+    )
+
+
+class WorkspaceMessage(Base):
+    __tablename__ = "workspace_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("workspace_conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    conversation: Mapped["WorkspaceConversation"] = relationship(back_populates="messages")
+
+
 class AiConversation(Base):
     """An Ask-mode chat thread about a project (wickd Pro AI)."""
     __tablename__ = "ai_conversations"

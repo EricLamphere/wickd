@@ -25,7 +25,7 @@ const PROJECT_EVENT_TYPES = [
 ];
 
 /** Events on the `global` topic (not tied to a project). */
-const GLOBAL_EVENT_TYPES = ['ai_model_download', 'metricflow_env', 'charts_env'];
+const GLOBAL_EVENT_TYPES = ['ai_model_download', 'metricflow_env', 'charts_env', 'workspace_docs'];
 
 const RECONNECT_DELAY_MS = 3000;
 

@@ -24,6 +24,10 @@ other's types.
     parse_refactor_intent(raw, manifest, unique_id) -> {"op", "unique_id", "model", "new_name",
         "column"? (rename_column), "cte"? (extract_cte)} | {"op": "none", "reason"}
 
+    workspace_ask_messages(projects, not_compiled, history, question) -> list[message]
+        (home page Wicky; projects = [{name, nodes: [search index node as a dict]}];
+        supports_workspace_ask() is False on older wickd_pro)
+
 `run_info` is app/ai/run_context.py's node_run_info() output; `perf_info` is
 app/ai/perf_context.py's node_performance_info() output.
 """
@@ -150,3 +154,17 @@ def metric_query_prompt(catalog: dict, history: list[dict], question: str) -> di
 
 def parse_metric_query(raw: str, catalog: dict) -> dict:
     return _pro().parse_metric_query(raw, catalog)
+
+
+def supports_workspace_ask() -> bool:
+    """Whether the installed wickd_pro can answer questions across projects."""
+    try:
+        return hasattr(_pro(), "workspace_ask_messages")
+    except AiUnavailable:
+        return False
+
+
+def workspace_ask_messages(
+    projects: list[dict], not_compiled: list[str], history: list[dict], question: str
+) -> list[dict]:
+    return _pro().workspace_ask_messages(projects, not_compiled, history, question)

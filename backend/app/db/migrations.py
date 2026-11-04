@@ -733,6 +733,29 @@ async def run_migrations() -> None:
         ))
         await session.commit()
 
+        if not await _table_exists(session, "workspace_conversations"):
+            await session.execute(text(
+                "CREATE TABLE workspace_conversations ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "title VARCHAR(255) NOT NULL DEFAULT '', "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.commit()
+        if not await _table_exists(session, "workspace_messages"):
+            await session.execute(text(
+                "CREATE TABLE workspace_messages ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "conversation_id INTEGER NOT NULL REFERENCES workspace_conversations(id) ON DELETE CASCADE, "
+                "role VARCHAR(16) NOT NULL, "
+                "content TEXT NOT NULL DEFAULT '', "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_workspace_messages_conversation_id ON workspace_messages (conversation_id)"
+            ))
+            await session.commit()
+
 
 async def init_db() -> None:
     await ensure_db_initialized()

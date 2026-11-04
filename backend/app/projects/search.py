@@ -32,6 +32,7 @@ class IndexedNode:
     original_file_path: str | None
     description: str
     columns: tuple[str, ...]
+    depends_on: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,12 @@ def _column_names(raw: dict) -> tuple[str, ...]:
     return tuple(name for name in columns if isinstance(name, str))
 
 
+def _depends_on(raw: dict) -> tuple[str, ...]:
+    depends_on = raw.get("depends_on")
+    nodes = depends_on.get("nodes") if isinstance(depends_on, dict) else None
+    return tuple(n for n in nodes if isinstance(n, str)) if isinstance(nodes, list) else ()
+
+
 def _indexed(unique_id: str, raw: dict, resource_type: str) -> IndexedNode | None:
     name = _str_or_none(raw.get("name"))
     if name is None:
@@ -80,6 +87,7 @@ def _indexed(unique_id: str, raw: dict, resource_type: str) -> IndexedNode | Non
         original_file_path=_str_or_none(raw.get("original_file_path")),
         description=description,
         columns=_column_names(raw),
+        depends_on=_depends_on(raw),
     )
 
 

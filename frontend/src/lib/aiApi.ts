@@ -308,7 +308,7 @@ async function readEventStream(
   }
 }
 
-async function streamPost(path: string, body: unknown, { onDelta, signal }: AskHandlers): Promise<AskResult> {
+export async function streamPost(path: string, body: unknown, { onDelta, signal }: AskHandlers): Promise<AskResult> {
   const res = await fetch(`/api${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

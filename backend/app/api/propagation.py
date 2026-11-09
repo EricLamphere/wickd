@@ -25,7 +25,8 @@ from app.ai.errors import ProposalError
 from app.api.ai_dtos import AiProposalDto, proposal_dto
 from app.api.ai_proposals import _publish
 from app.db.engine import get_session
-from app.db.models import AiProposal, AiProposalFile, ColumnLineageSnapshot, Project, ProjectEnvVar
+from app.db.models import AiProposal, AiProposalFile, Project, ProjectEnvVar
+from app.dbt.lineage_cache import usable_snapshot
 from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
 from app.propagation import inputs, pro
@@ -55,23 +56,8 @@ async def _project(session: AsyncSession, project_id: int) -> Project:
 
 
 async def _lineage(session: AsyncSession, project_id: int) -> dict:
-    result = await session.execute(
-        select(ColumnLineageSnapshot)
-        .where(ColumnLineageSnapshot.project_id == project_id)
-        .order_by(ColumnLineageSnapshot.id.desc())
-        .limit(1)
-    )
-    snap = result.scalar_one_or_none()
-    reason = None
+    snap, reason = await usable_snapshot(session, project_id, KINDS_LINEAGE_VERSION)
     if snap is None:
-        reason = "missing"
-    elif snap.status == "running":
-        reason = "running"
-    elif snap.status != "done":
-        reason = "error"
-    elif (snap.lineage_version or 1) < KINDS_LINEAGE_VERSION:
-        reason = "outdated"
-    if reason is not None:
         raise HTTPException(status_code=409, detail={"error": "lineage_not_ready", "reason": reason})
     try:
         return json.loads(snap.results_json or "{}")

@@ -13,11 +13,10 @@
 import json
 from pathlib import Path
 
-from sqlalchemy import select
-
 from app.db.engine import SessionLocal
-from app.db.models import ColumnLineageSnapshot, Project
+from app.db.models import Project
 from app.dbt import slim
+from app.dbt.lineage_cache import latest_done, staleness
 from app.dbt.revisions import RevisionError, compiled_manifest
 from app.dbt.slim_preview import is_protected, node, resource_type, selector_for
 from app.dbt.state import StateDir
@@ -37,20 +36,15 @@ def _loads(raw: str | None) -> dict:
 
 
 async def fresh_lineage(project: Project) -> tuple[dict, dict] | None:
-    """(lineage, row_deps) from the latest done snapshot, or None when missing / old / stale."""
+    """(lineage, row_deps) from the cached snapshot, or None when missing / too old / out of date
+    (the project's content changed since it was traced; see app/dbt/lineage_freshness.py)."""
     async with SessionLocal() as session:
-        snap = (await session.execute(
-            select(ColumnLineageSnapshot)
-            .where(ColumnLineageSnapshot.project_id == project.id, ColumnLineageSnapshot.status == "done")
-            .order_by(ColumnLineageSnapshot.id.desc()).limit(1)
-        )).scalar_one_or_none()
+        snap = await latest_done(session, project.id)
     if snap is None or (snap.lineage_version or 1) < MIN_LINEAGE_VERSION:
         return None
-    try:
-        mtime = (Path(project.path) / "target" / "manifest.json").stat().st_mtime
-    except OSError:
+    if not (Path(project.path) / "target" / "manifest.json").exists():
         return None
-    if snap.manifest_mtime != mtime:
+    if await staleness(project.path, snap) is not None:
         return None
     return _loads(snap.results_json), _loads(snap.row_dependencies_json)
 

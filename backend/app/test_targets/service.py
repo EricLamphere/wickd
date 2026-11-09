@@ -14,12 +14,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.documentation import load_manifest_dict
 from app.ai.errors import ProposalError
-from app.db.models import ColumnLineageSnapshot
+from app.dbt.lineage_cache import usable_snapshot
 from app.logging_setup import get_logger
 from app.test_targets import pro
 
@@ -51,21 +50,9 @@ def _loads(raw: str | None) -> dict:
 
 
 async def latest_inputs(session: AsyncSession, project_id: int) -> LineageInputs:
-    result = await session.execute(
-        select(ColumnLineageSnapshot)
-        .where(ColumnLineageSnapshot.project_id == project_id)
-        .order_by(ColumnLineageSnapshot.id.desc())
-        .limit(1)
-    )
-    snap = result.scalar_one_or_none()
+    snap, reason = await usable_snapshot(session, project_id, STRUCTURE_LINEAGE_VERSION)
     if snap is None:
-        raise LineageNotReady("missing")
-    if snap.status == "running":
-        raise LineageNotReady("running")
-    if snap.status != "done":
-        raise LineageNotReady("error")
-    if (snap.lineage_version or 1) < STRUCTURE_LINEAGE_VERSION:
-        raise LineageNotReady("outdated")
+        raise LineageNotReady(reason or "missing")
     return LineageInputs(
         snapshot_id=snap.id,
         lineage=_loads(snap.results_json),

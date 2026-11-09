@@ -20,6 +20,7 @@ export default function TestGapsCard({ projectId, onOpen }: { projectId: number;
     loading: gaps.loading,
     notReady: gaps.notReady,
     lineageRunning: lineage.running,
+    lineageStale: lineage.stale,
     total: gaps.data?.total ?? null,
     failed: !!gaps.error && !gaps.notReady && !gaps.locked,
   });

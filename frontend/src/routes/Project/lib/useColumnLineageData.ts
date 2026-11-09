@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, isProFeatureRequiredError } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
+import { isLineageScanning, lineageAction, lineageScanError } from './columnLineageState';
 
 /** Snapshots older than this lack row dependencies, which column-level impact needs. */
 export const IMPACT_LINEAGE_VERSION = 2;
@@ -15,9 +16,10 @@ function startErrorMessage(err: unknown): string | null {
 }
 
 /**
- * The project's latest column lineage snapshot (Pro) for impact analysis,
- * plus a `start()` to compute it. Shares the ['column-lineage', id] query
- * with the DAG page; progress arrives over SSE.
+ * The project's cached column lineage snapshot (Pro; the latest finished one, kept while a
+ * refresh runs), whether it's out of date, and a `start()` that computes it — or returns the
+ * cache when it's current. Shares the ['column-lineage', id] query with the DAG page; progress
+ * arrives over SSE.
  */
 export function useColumnLineageData(projectId: number, enabled: boolean) {
   const qc = useQueryClient();
@@ -29,6 +31,11 @@ export function useColumnLineageData(projectId: number, enabled: boolean) {
 
   useProjectEvents(projectId, useCallback((event) => {
     if (event.type === 'column_lineage_compiling') setCompiling(true);
+    // a scan began (refresh_status), or the manifest changed (the cache may now be out of date)
+    if (event.type === 'column_lineage_started' || event.type === 'graph_changed') {
+      qc.invalidateQueries({ queryKey: ['column-lineage', projectId] });
+      qc.invalidateQueries({ queryKey: ['column-lineage-status', projectId] });
+    }
     if (event.type === 'column_lineage_progress') {
       const d = event.data as { checked: number; total: number };
       setCompiling(false);
@@ -38,6 +45,7 @@ export function useColumnLineageData(projectId: number, enabled: boolean) {
       setCompiling(false);
       setProgress(null);
       qc.invalidateQueries({ queryKey: ['column-lineage', projectId] });
+      qc.invalidateQueries({ queryKey: ['column-lineage-status', projectId] });
     }
   }, [projectId, qc]));
 
@@ -48,6 +56,14 @@ export function useColumnLineageData(projectId: number, enabled: boolean) {
     staleTime: Infinity,
     retry: (failureCount, err) => !isProFeatureRequiredError(err) && failureCount < 3,
   });
+  // Small (no results), so fetched even when the snapshot isn't: decides Load / Refresh / nothing.
+  const status = useQuery({
+    queryKey: ['column-lineage-status', projectId],
+    queryFn: () => api.models.columnLineageStatus(projectId),
+    enabled: !!projectId,
+    staleTime: Infinity,
+    retry: (failureCount, err) => !isProFeatureRequiredError(err) && failureCount < 3,
+  });
 
   const start = useCallback(async () => {
     setStarting(true);
@@ -55,6 +71,7 @@ export function useColumnLineageData(projectId: number, enabled: boolean) {
     try {
       await api.models.startColumnLineage(projectId);
       qc.invalidateQueries({ queryKey: ['column-lineage', projectId] });
+      qc.invalidateQueries({ queryKey: ['column-lineage-status', projectId] });
     } catch (err) {
       if (isProFeatureRequiredError(err)) setLocked(true);
       else setStartError(startErrorMessage(err));
@@ -64,15 +81,23 @@ export function useColumnLineageData(projectId: number, enabled: boolean) {
   }, [projectId, qc]);
 
   const snapshot = query.data ?? null;
+  const cache = status.data ?? snapshot;
+  const running = compiling || starting || isLineageScanning(cache);
+  const isLocked = locked || isProFeatureRequiredError(query.error) || isProFeatureRequiredError(status.error);
   return {
     snapshot,
-    /** Finished and new enough to include row dependencies. */
+    /** Finished and new enough to include row dependencies (possibly out of date: see `stale`). */
     ready: snapshot?.status === 'done' && snapshot.lineage_version >= IMPACT_LINEAGE_VERSION,
-    running: compiling || starting || snapshot?.status === 'running',
+    /** The cache no longer matches the project; `staleReason` says why. */
+    stale: cache?.status === 'done' && cache.stale,
+    staleReason: cache?.status === 'done' ? cache.stale_reason : null,
+    /** What a control should offer: load, refresh (only when stale), or nothing. */
+    action: lineageAction({ locked: isLocked, loading: running, snapshot: cache }),
+    running,
     compiling,
     progress,
-    locked: locked || isProFeatureRequiredError(query.error),
-    error: startError ?? (snapshot?.status === 'error' ? snapshot.error_message : null),
+    locked: isLocked,
+    error: startError ?? lineageScanError(cache),
     start,
   };
 }

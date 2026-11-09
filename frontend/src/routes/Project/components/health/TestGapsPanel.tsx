@@ -40,7 +40,7 @@ export default function TestGapsPanel({ projectId }: { projectId: number }) {
     );
   }
 
-  // re-trace lineage (a no-op when the manifest hasn't changed), then re-rank against the current manifest
+  // re-trace lineage (offered only once the cache is out of date), then re-rank against the current manifest
   const refresh = async () => {
     await lineage.start();
     qc.invalidateQueries({ queryKey: ['test-gaps', projectId] });
@@ -67,16 +67,23 @@ export default function TestGapsPanel({ projectId }: { projectId: number }) {
             before you review it.
           </p>
         </div>
-        <button
-          onClick={refresh}
-          disabled={refreshing}
-          title="Re-trace column lineage and re-rank. Picks up changed joins and grain, and tests added since."
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:bg-gray-700 disabled:opacity-60 shrink-0"
-        >
-          {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {refreshing ? `Refreshing${progress}` : 'Refresh'}
-        </button>
+        {(refreshing || lineage.action === 'refresh') && (
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            title={lineage.staleReason
+              ? `Column lineage is out of date: ${lineage.staleReason} Re-trace it and re-rank.`
+              : 'Re-trace column lineage and re-rank.'}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:bg-gray-700 disabled:opacity-60 shrink-0"
+          >
+            {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+            {refreshing ? `Refreshing${progress}` : 'Refresh lineage'}
+          </button>
+        )}
       </div>
+      {!refreshing && lineage.stale && !gaps.notReady && (
+        <p className="text-xs text-amber-300">Column lineage is out of date: {lineage.staleReason} Gaps below are from the last scan.</p>
+      )}
       {lineage.error && <p className="text-xs text-red-400">{lineage.error}</p>}
 
       <div className="flex gap-1 border-b border-gray-800">

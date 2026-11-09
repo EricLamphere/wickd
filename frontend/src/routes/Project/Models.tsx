@@ -30,6 +30,7 @@ import { computeLayout, NODE_HEIGHT } from './lib/layout';
 import { type FilterState, defaultFilter, applyFilter, serializeFilter, deserializeFilter } from './lib/dagFilter';
 import { isSemanticType } from './lib/semantic';
 import { ColumnLineageContext, type ColumnLineageContextValue } from './lib/columnLineageContext';
+import { isLineageScanning, lineageAction, lineageScanError } from './lib/columnLineageState';
 import { buildCoverageMap, getModelCoverageStats } from './lib/testCoverage';
 import { unitTestBadges } from './lib/unitTests';
 import CoverageLegend from './components/CoverageLegend';
@@ -138,7 +139,6 @@ export default function ModelsPage() {
     staleTime: 0,
   });
 
-  const [columnLineageEnabled, setColumnLineageEnabled] = useState(false);
   const [columnLineageCompiling, setColumnLineageCompiling] = useState(false);
   const [columnLineageProgress, setColumnLineageProgress] = useState<{ checked: number; total: number } | null>(null);
   // The Pro feature the upgrade prompt is for; null when it's closed
@@ -156,14 +156,21 @@ export default function ModelsPage() {
     queryFn: () => api.models.columnLineage(id),
     refetchInterval: false,
     staleTime: Infinity,
-    enabled: columnLineageEnabled,
+    // The saved lineage is a cache: load it on open (Pro only), never recompute it here.
+    enabled: license?.entitled === true,
     retry: (failureCount, err) => !isProFeatureRequiredError(err) && failureCount < 3,
   });
-  // Only treat lineage as "loaded" once a snapshot has actually finished computing —
-  // a `running` snapshot has partial/empty results and shouldn't be rendered as final.
+  // The cached (latest finished) snapshot, kept while a refresh runs. A first scan
+  // still running has no results yet, so nothing is rendered until it finishes.
   const columnLineage = columnLineageSnapshot?.status === 'done' ? columnLineageSnapshot : undefined;
-  const columnLineageLoading = columnLineageCompiling || columnLineageFetching || columnLineageSnapshot?.status === 'running';
-  const columnLineageLocked = isProFeatureRequiredError(columnLineageError);
+  const columnLineageLoading = columnLineageCompiling || isLineageScanning(columnLineageSnapshot)
+    || (columnLineageFetching && columnLineageSnapshot === undefined);
+  const columnLineageLocked = proLocked || isProFeatureRequiredError(columnLineageError);
+  const columnLineageAction = lineageAction({
+    locked: columnLineageLocked, loading: columnLineageLoading, snapshot: columnLineageSnapshot,
+  });
+  const columnLineageHint = lineageScanError(columnLineageSnapshot)
+    ?? (columnLineageAction === 'refresh' ? `Column lineage is out of date: ${columnLineageSnapshot?.stale_reason ?? 'the project changed'}` : null);
 
   // Pre-select model from ?model=<unique_id> query param (takes priority),
   // or from sessionStorage. Initialise directly from cache so the selection is
@@ -258,6 +265,8 @@ export default function ModelsPage() {
         sessionStorage.setItem(expandedNodesKey, '[]');
       } catch {}
       qc.invalidateQueries({ queryKey: ['models', id] });
+      // the cached lineage may now be out of date (cheap: no rescan)
+      qc.invalidateQueries({ queryKey: ['column-lineage', id] });
     }
     if (event.type === 'compile_started') setCompiling(true);
     if (event.type === 'compile_finished') {
@@ -270,11 +279,13 @@ export default function ModelsPage() {
     if (event.type === 'column_lineage_compiling') {
       setColumnLineageCompiling(true);
     }
+    if (event.type === 'column_lineage_started') {
+      qc.invalidateQueries({ queryKey: ['column-lineage', id] });
+    }
     if (event.type === 'column_lineage_progress') {
       const d = event.data as { checked: number; total: number };
       setColumnLineageCompiling(false);
       setColumnLineageProgress({ checked: d.checked, total: d.total });
-      qc.invalidateQueries({ queryKey: ['column-lineage', id] });
     }
     if (event.type === 'column_lineage_finished') {
       setColumnLineageCompiling(false);
@@ -609,8 +620,7 @@ export default function ModelsPage() {
   );
 
   const handleLoadColumnLineage = useCallback(() => {
-    setColumnLineageEnabled(true);
-    // Kick off (or piggyback on) a background scan. A 409 just means one
+    // Kick off (or piggyback on) a background scan; returns the cache if it's current. A 409 just means one
     // is already running for this project — that's fine, the existing
     // run's progress/finished events will update our query either way.
     api.models.startColumnLineage(id).catch((err) => {
@@ -665,8 +675,8 @@ export default function ModelsPage() {
             onToggleCoverage={handleToggleCoverage}
             durationOverlay={durationOverlay.enabled}
             onToggleDurations={durationOverlay.toggle}
-            columnLineageLoaded={!!columnLineage}
-            columnLineageLoading={columnLineageLoading}
+            columnLineageAction={columnLineageAction}
+            columnLineageHint={columnLineageHint}
             columnLineageCompiling={columnLineageCompiling}
             columnLineageProgress={columnLineageProgress}
             columnLineageLocked={columnLineageLocked}

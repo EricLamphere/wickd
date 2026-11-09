@@ -4,6 +4,7 @@ import type { GraphDto } from '../../../lib/api';
 import { type FilterState, emptyFilter, isFilterActive, getAvailableFilters } from '../lib/dagFilter';
 import { ProFeatureButton } from '../../../components/ProFeatureButton';
 import { FilterDropdown } from './FilterDropdown';
+import type { LineageAction } from '../lib/columnLineageState';
 
 interface DagFilterBarProps {
   graph: GraphDto | null;
@@ -18,8 +19,10 @@ interface DagFilterBarProps {
   onToggleCoverage?: () => void;
   durationOverlay?: boolean;
   onToggleDurations?: () => void;
-  columnLineageLoaded: boolean;
-  columnLineageLoading: boolean;
+  /** load / refresh (only once the cache is out of date) / none (cache current) / loading / locked */
+  columnLineageAction: LineageAction;
+  /** Tooltip: why the cache is out of date, or the last scan's error */
+  columnLineageHint?: string | null;
   columnLineageCompiling?: boolean;
   columnLineageProgress?: { checked: number; total: number } | null;
   onLoadColumnLineage: () => void;
@@ -42,8 +45,8 @@ export default function DagFilterBar({
   onToggleCoverage,
   durationOverlay,
   onToggleDurations,
-  columnLineageLoaded,
-  columnLineageLoading,
+  columnLineageAction,
+  columnLineageHint,
   columnLineageCompiling = false,
   columnLineageProgress,
   onLoadColumnLineage,
@@ -160,22 +163,24 @@ export default function DagFilterBar({
       )}
 
       {/* Action buttons */}
-      <ProFeatureButton
-        onClick={columnLineageLocked ? onColumnLineageLockedClick! : onLoadColumnLineage}
-        disabled={!columnLineageLocked && columnLineageLoading}
-        title={columnLineageLocked ? 'Column-level lineage is a wickd Pro feature' : undefined}
-      >
-        {columnLineageLocked && <Lock size={12} />}
-        {columnLineageLocked
-          ? 'Column lineage (Pro)'
-          : columnLineageCompiling
-            ? 'Compiling…'
-            : columnLineageLoading
-              ? (columnLineageProgress
-                  ? `Column lineage: ${columnLineageProgress.checked}/${columnLineageProgress.total}…`
-                  : 'Loading column lineage…')
-              : columnLineageLoaded ? 'Refresh column lineage' : 'Load column lineage'}
-      </ProFeatureButton>
+      {columnLineageAction !== 'none' && (
+        <ProFeatureButton
+          onClick={columnLineageLocked ? onColumnLineageLockedClick! : onLoadColumnLineage}
+          disabled={columnLineageAction === 'loading'}
+          title={columnLineageLocked ? 'Column-level lineage is a wickd Pro feature' : columnLineageHint ?? undefined}
+        >
+          {columnLineageLocked && <Lock size={12} />}
+          {columnLineageLocked
+            ? 'Column lineage (Pro)'
+            : columnLineageCompiling
+              ? 'Compiling…'
+              : columnLineageAction === 'loading'
+                ? (columnLineageProgress
+                    ? `Column lineage: ${columnLineageProgress.checked}/${columnLineageProgress.total}…`
+                    : 'Loading column lineage…')
+                : columnLineageAction === 'refresh' ? 'Refresh column lineage' : 'Load column lineage'}
+        </ProFeatureButton>
+      )}
       <button
         onClick={onExport}
         title="Export the DAG as shown, as HTML, SVG or PNG"

@@ -40,12 +40,19 @@ describe('testGapsView', () => {
 });
 
 describe('testGapsCardState', () => {
-  const base = { locked: false, loading: false, notReady: null, lineageRunning: false, total: 3, failed: false } as const;
+  const base = {
+    locked: false, loading: false, notReady: null, lineageRunning: false, lineageStale: false, total: 3, failed: false,
+  } as const;
 
   it('counts gaps, or says there are none', () => {
-    expect(testGapsCardState(base)).toEqual({ tone: 'warn', headline: '3 columns could use a test', canRefresh: true });
+    expect(testGapsCardState(base)).toEqual({ tone: 'warn', headline: '3 columns could use a test', canRefresh: false });
     expect(testGapsCardState({ ...base, total: 1 }).headline).toBe('1 column could use a test');
-    expect(testGapsCardState({ ...base, total: 0 })).toEqual({ tone: 'ok', headline: 'No gaps found', canRefresh: true });
+    expect(testGapsCardState({ ...base, total: 0 })).toEqual({ tone: 'ok', headline: 'No gaps found', canRefresh: false });
+  });
+
+  it('offers a lineage refresh only once the cache is out of date', () => {
+    expect(testGapsCardState({ ...base, lineageStale: true }).canRefresh).toBe(true);
+    expect(testGapsCardState({ ...base, total: 0, lineageStale: true }).canRefresh).toBe(true);
   });
 
   it('waits on column lineage', () => {

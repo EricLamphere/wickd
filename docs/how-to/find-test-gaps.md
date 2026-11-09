@@ -21,7 +21,8 @@ No AI model is needed.
 ## See the gaps
 
 The **Health** overview has a Test Gaps card with the number of gaps and the top three; click
-it to open the full list, or use **Refresh lineage** on the card to re-scan.
+it to open the full list. When the column lineage is out of date (a model's SQL changed since it was
+scanned), the card also offers **Refresh lineage**.
 
 1. Open **Health → Test Gaps**.
 2. Each row is a column, or a group of columns for a model-level test, with:
@@ -51,8 +52,9 @@ still a gap. Use a row's **Unignore** button, or tick several and click **Unigno
 
 ## Refresh
 
-**Refresh** (top right) re-traces column lineage and re-ranks. Use it after changing a model's joins
-or GROUP BY. Tests you add drop off the list on their own once dbt rewrites the manifest (accepting a
+**Refresh lineage** (top right) appears once column lineage is out of date, for example after you
+change a model's joins or GROUP BY. It re-traces only the models that changed, then re-ranks. Until then,
+the gaps come from the saved lineage. Tests you add drop off the list on their own once dbt rewrites the manifest (accepting a
 proposal in wickd compiles the models for you).
 
 ## Add the tests

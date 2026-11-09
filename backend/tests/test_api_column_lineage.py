@@ -43,6 +43,7 @@ reads from.
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -125,10 +126,7 @@ def _fake_algorithm(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(column_lineage_module, "supports_structure", _supports_rows)
     import app.api.column_lineage as api_module
     monkeypatch.setattr(api_module, "prepare_lineage_jobs", _fake_prepare_lineage_jobs)
-    monkeypatch.setattr(api_module, "supports_row_dependencies", _supports_rows)
     monkeypatch.setattr(api_module, "trace_job_structure", _fake_trace_job_structure)
-    monkeypatch.setattr(api_module, "supports_transform_kinds", _supports_rows)
-    monkeypatch.setattr(api_module, "supports_structure", _supports_rows)
 
 
 @pytest.fixture(autouse=True)
@@ -241,7 +239,8 @@ async def _wait_for_done(client: AsyncClient, pid: int, timeout: float = 30.0) -
             r = await client.get(f"/api/projects/{pid}/column-lineage")
             assert r.status_code == 200
             body = r.json()
-            if body is not None and body["status"] in ("done", "error"):
+            # a refresh in progress is reported on the cached snapshot (refresh_status)
+            if body is not None and body["status"] in ("done", "error") and body.get("refresh_status") != "running":
                 return body
             await asyncio.sleep(0.1)
 
@@ -458,9 +457,7 @@ async def test_start_twice_returns_409_while_running(
     second = await client.post(f"/api/projects/{pid}/column-lineage/start")
     # 409 (still running) is the expected case. But on a fast machine the
     # scan (2 tiny models) can complete before the second request lands —
-    # then start_column_lineage's manifest-mtime short-circuit kicks in and
-    # returns the already-`done` snapshot: 200 if the manifest is unchanged,
-    # or a fresh 202 restart if it decided a new scan was needed anyway.
+    # then the cached snapshot still matches the manifest and comes back (200).
     assert second.status_code in (200, 202, 409)
 
     await _wait_for_done(client, pid)
@@ -509,11 +506,164 @@ async def test_rerun_short_circuits_when_manifest_unchanged(
     first_final = await _wait_for_done(client, pid)
     first_id = first_final["id"]
 
-    # Manifest mtime unchanged — a second start should short-circuit and
-    # return the same snapshot rather than kicking off a new run.
+    # Content unchanged — a second start should return the cached snapshot
+    # rather than kicking off a new run.
     second_start = await client.post(f"/api/projects/{pid}/column-lineage/start")
     assert second_start.status_code == 200
     assert second_start.json()["id"] == first_id
+
+
+async def _scanned_project(client: AsyncClient, db_session: AsyncSession, tmp_path: Path, name: str) -> tuple[int, Path]:
+    proj_dir = tmp_path / name
+    (proj_dir / "target").mkdir(parents=True)
+    _make_manifest(proj_dir / "target")
+    pid = await _seed_project(db_session, str(proj_dir))
+    assert (await client.post(f"/api/projects/{pid}/column-lineage/start")).status_code == 202
+    await _wait_for_done(client, pid)
+    return pid, proj_dir / "target" / "manifest.json"
+
+
+def _rewrite(manifest: Path, edit) -> None:
+    """Rewrite the manifest (new content via `edit`, new mtime) as a dbt command would."""
+    data = json.loads(manifest.read_text())
+    edit(data)
+    manifest.write_text(json.dumps(data))
+    stat = manifest.stat()
+    os.utime(manifest, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+
+
+async def test_dbt_rewriting_the_manifest_keeps_the_cache(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
+    """dbt rewrites manifest.json on every command; same content (or a selective run that drops
+    other nodes' compiled SQL) must not invalidate the cache."""
+    pid, manifest = await _scanned_project(client, db_session, tmp_path, "proj_rewrite")
+
+    _rewrite(manifest, lambda d: d["metadata"].update(generated_at="later", invocation_id="x"))
+    body = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+    assert body["stale"] is False and body["stale_reason"] is None
+
+    _rewrite(manifest, lambda d: d["nodes"]["model.proj.stg_orders"].pop("compiled_code"))
+    body = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+    assert body["stale"] is False
+    again = await client.post(f"/api/projects/{pid}/column-lineage/start")
+    assert again.status_code == 200 and again.json()["id"] == body["id"]
+
+
+async def test_changed_sql_marks_stale_and_refresh_reuses_unchanged_models(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
+    pid, manifest = await _scanned_project(client, db_session, tmp_path, "proj_stale")
+    first = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+
+    # stg_orders' SQL changed, but the orders job (the only one) reads the same inputs
+    _rewrite(manifest, lambda d: d["nodes"]["model.proj.stg_orders"].update(
+        compiled_code="SELECT id AS order_id, 1 AS x FROM raw.orders"))
+    body = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+    assert body["stale"] is True
+    assert body["stale_reason"] == "1 node changed since this was loaded."
+
+    queue = await bus.subscribe(f"project:{pid}")
+    try:
+        assert (await client.post(f"/api/projects/{pid}/column-lineage/start")).status_code == 202
+        started = None
+        async with asyncio.timeout(30):
+            while True:
+                event = await queue.get()
+                if event.type == "column_lineage_started" and event.data.get("total"):
+                    started = event.data
+                if event.type == "column_lineage_finished":
+                    break
+    finally:
+        await bus.unsubscribe(f"project:{pid}", queue)
+    assert started == {"snapshot_id": started["snapshot_id"], "total": 1, "reused": 1}
+
+    final = await _wait_for_done(client, pid)
+    assert final["id"] != first["id"] and final["stale"] is False
+    assert final["results"] == first["results"]
+    assert final["row_dependencies"] == first["row_dependencies"]
+
+
+async def test_cache_stays_visible_during_and_after_a_failed_refresh(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
+    pid, _ = await _scanned_project(client, db_session, tmp_path, "proj_refresh")
+    cached = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+
+    db_session.add(ColumnLineageSnapshot(project_id=pid, status="running", results_json="{}"))
+    await db_session.commit()
+    body = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+    assert body["id"] == cached["id"] and body["status"] == "done"
+    assert body["refresh_status"] == "running" and body["refresh_error"] is None
+
+    db_session.add(ColumnLineageSnapshot(project_id=pid, status="error", results_json="{}", error_message="boom"))
+    await db_session.commit()
+    body = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+    assert body["id"] == cached["id"] and body["results"] == cached["results"]
+    assert body["refresh_status"] == "error" and body["refresh_error"] == "boom"
+
+
+async def test_status_reports_the_cache_without_results(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
+    proj_dir = tmp_path / "proj_status"
+    (proj_dir / "target").mkdir(parents=True)
+    _make_manifest(proj_dir / "target")
+    pid = await _seed_project(db_session, str(proj_dir))
+    assert (await client.get(f"/api/projects/{pid}/column-lineage/status")).json()["status"] is None
+
+    assert (await client.post(f"/api/projects/{pid}/column-lineage/start")).status_code == 202
+    final = await _wait_for_done(client, pid)
+    body = (await client.get(f"/api/projects/{pid}/column-lineage/status")).json()
+    assert body == {
+        "snapshot_id": final["id"], "status": "done", "lineage_version": 4, "total_models": 1,
+        "stale": False, "stale_reason": None, "refresh_status": None, "refresh_error": None,
+        "error_message": None,
+    }
+    _rewrite(proj_dir / "target" / "manifest.json",
+             lambda d: d["nodes"]["model.proj.orders"].update(compiled_code="SELECT 1 AS order_id"))
+    body = (await client.get(f"/api/projects/{pid}/column-lineage/status")).json()
+    assert body["stale"] is True and body["stale_reason"] == "1 node changed since this was loaded."
+
+
+async def test_snapshot_without_fingerprint_reads_as_stale(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path
+) -> None:
+    proj_dir = tmp_path / "proj_legacy"
+    (proj_dir / "target").mkdir(parents=True)
+    _make_manifest(proj_dir / "target")
+    pid = await _seed_project(db_session, str(proj_dir))
+    db_session.add(ColumnLineageSnapshot(project_id=pid, status="done", results_json="{}", lineage_version=4))
+    await db_session.commit()
+
+    body = (await client.get(f"/api/projects/{pid}/column-lineage")).json()
+    assert body["stale"] is True and "refresh once" in body["stale_reason"]
+    assert (await client.post(f"/api/projects/{pid}/column-lineage/start")).status_code == 202
+    await _wait_for_done(client, pid)
+
+
+async def test_selective_run_manifest_compiles_before_scanning(
+    client: AsyncClient, db_session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`dbt run -s x` leaves compiled SQL on x only; scanning that would drop every other model."""
+    proj_dir = tmp_path / "proj_partial"
+    (proj_dir / "target").mkdir(parents=True)
+    _make_manifest(proj_dir / "target")
+    manifest = proj_dir / "target" / "manifest.json"
+    _rewrite(manifest, lambda d: d["nodes"]["model.proj.orders"].pop("compiled_code"))
+    pid = await _seed_project(db_session, str(proj_dir))
+    compiled: list[int] = []
+
+    async def _fake_compile_project(project_id: int, project_path: str) -> bool:
+        compiled.append(project_id)
+        _make_manifest(Path(project_path) / "target")
+        return True
+
+    import app.api.models as models_module
+    monkeypatch.setattr(models_module, "_compile_project", _fake_compile_project)
+    assert (await client.post(f"/api/projects/{pid}/column-lineage/start")).status_code == 202
+    final = await _wait_for_done(client, pid)
+    assert compiled == [pid] and "model.proj.orders" in final["results"]
 
 
 class TestEntitlementGating:
@@ -550,6 +700,8 @@ class TestEntitlementGating:
         pid = await _seed_project(db_session, str(proj_dir))
 
         r = await client.get(f"/api/projects/{pid}/column-lineage")
+        assert r.status_code == 403
+        r = await client.get(f"/api/projects/{pid}/column-lineage/status")
         assert r.status_code == 403
 
     async def test_get_snapshot_returns_403_when_not_entitled(

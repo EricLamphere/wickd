@@ -769,6 +769,19 @@ async def run_migrations() -> None:
             ))
             await session.commit()
 
+        # column lineage cache keyed on content, not manifest mtime (app/dbt/lineage_freshness.py)
+        if not await _column_exists(session, "column_lineage_snapshots", "fingerprint_json"):
+            await session.execute(text(
+                "ALTER TABLE column_lineage_snapshots ADD COLUMN fingerprint_json TEXT NOT NULL DEFAULT ''"
+            ))
+            await session.commit()
+        if not await _column_exists(session, "column_lineage_snapshots", "job_keys_json"):
+            await session.execute(text(
+                "ALTER TABLE column_lineage_snapshots ADD COLUMN job_keys_json TEXT NOT NULL DEFAULT '{}'"
+            ))
+            await session.commit()
+
+
 async def init_db() -> None:
     await ensure_db_initialized()
     await run_migrations()

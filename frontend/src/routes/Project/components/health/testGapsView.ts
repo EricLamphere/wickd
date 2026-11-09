@@ -42,6 +42,8 @@ export function testGapsCardState(input: {
   loading: boolean;
   notReady: 'missing' | 'running' | 'outdated' | 'error' | null;
   lineageRunning: boolean;
+  /** the cached lineage no longer matches the project: the only time a refresh is offered with results shown */
+  lineageStale: boolean;
   total: number | null;
   failed: boolean;
 }): TestGapsCardState {
@@ -54,11 +56,11 @@ export function testGapsCardState(input: {
   if (input.notReady === 'error') return { tone: 'fail', headline: 'Column lineage failed', canRefresh: true };
   if (input.failed) return { tone: 'fail', headline: 'Couldn’t rank columns', canRefresh: true };
   if (input.loading || input.total === null) return { tone: 'running', headline: 'Ranking columns…', canRefresh: false };
-  if (input.total === 0) return { tone: 'ok', headline: 'No gaps found', canRefresh: true };
+  if (input.total === 0) return { tone: 'ok', headline: 'No gaps found', canRefresh: input.lineageStale };
   return {
     tone: 'warn',
     headline: `${input.total} column${input.total === 1 ? '' : 's'} could use a test`,
-    canRefresh: true,
+    canRefresh: input.lineageStale,
   };
 }
 

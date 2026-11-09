@@ -111,6 +111,9 @@ Click **Durations** (timer icon) to badge each node with its median successful r
 
 Click **Load column lineage** in the filter bar to compute column-to-column lineage across the whole project. This traces exactly which upstream column each downstream column was derived from, by parsing each model's compiled SQL with sqlglot.
 
+- **Loaded once, then cached.** The result is saved and loads automatically every time you open the DAG. It stays valid across `dbt run`, `build`, `compile` and `parse`; only a real change to a model's SQL, columns, dependencies or macros (or a wickd update to the lineage engine) makes it out of date. Then the button reads **Refresh column lineage**, and hovering it shows why. While the lineage is current, there's no button.
+- **Refreshes are incremental.** A refresh re-traces only the models whose inputs changed and reuses the rest, so after editing one model it finishes almost immediately even on a large project. The cached lineage stays usable while a refresh runs.
+
 Key points:
 - **No yml documentation required.** Lineage is derived from a model's compiled SQL alone — a model with SQL but no `columns:` block in its schema.yml still gets full lineage. yml-documented columns are only used as a fallback for cases the SQL parse can't resolve on its own (for example, a top-level `SELECT *`, or a model that hasn't been compiled yet).
 - **Case-insensitive matching.** Warehouses that normalize unquoted identifier casing (e.g. Snowflake uppercases them) still resolve correctly — parent/column matching is case-insensitive, and the resulting column names are always shown in their original, correctly-cased spelling.
@@ -119,7 +122,7 @@ Key points:
 - Once loaded, expand a model node to reveal its columns. Click a column to highlight its lineage — connected columns and models are highlighted, everything else dims.
 - Cmd/ctrl-click multiple columns to select several traces at once.
 - Toggle **Direct lineage** / **Full lineage** (the pill above the canvas, visible once a column is selected) to switch between showing only immediate upstream/downstream columns versus the full transitive closure.
-- Click **Refresh column lineage** to re-run the scan after models change — it's skipped automatically (and returns instantly) if `target/manifest.json` hasn't changed since the last successful scan.
+- Click **Refresh column lineage** (shown only once the lineage is out of date) to bring it up to date. If any model is missing compiled SQL (after `dbt parse` or a run of a few models), wickd runs `dbt compile` first.
 
 ### Clearing filters
 
@@ -162,7 +165,7 @@ The **Downstream impact** card in the SidePane summarizes what sits downstream o
 - **incremental**: incremental models that may need `--full-refresh` if the schema changes
 - **failing** / **stale**: nodes whose last run errored or warned, or that are out of date
 
-**Build impacted** runs `dbt build --select <node>+`, which builds the node and everything downstream and runs their tests. **Show impact** opens the **Impact** tab in the bottom pane, which lists the selected node and then every downstream node grouped by depth (direct children first). Each row shows its type, materialization, data/unit test count, column test coverage, and flags. The tab follows your selection like the Node DAG tab does. With several nodes Cmd/ctrl-clicked on the DAG, the card (in the multi-selection panel) and the tab show their combined impact: each downstream node appears once, at its shortest distance from any selected node, and Build impacted selects `a+ b+ …`. Use **Copy selector** for the `--select` value, and Cmd/ctrl-click a name to open its file.
+**Build impacted…** opens the same build dialog as the Impact tab's button: it starts on the selected node(s) and everything downstream (`dbt build --select <node>+`), and you can switch to what changed vs production, pick the state method, prune to the smallest safe set or defer, and check the exact command and nodes before clicking **Run build**. **Show impact** opens the **Impact** tab in the bottom pane, which lists the selected node and then every downstream node grouped by depth (direct children first). Each row shows its type, materialization, data/unit test count, column test coverage, and flags. The tab follows your selection like the Node DAG tab does. With several nodes Cmd/ctrl-clicked on the DAG, the card (in the multi-selection panel) and the tab show their combined impact: each downstream node appears once, at its shortest distance from any selected node, and Build impacted… starts from `a+ b+ …`. Use **Copy selector** for the `--select` value, and Cmd/ctrl-click a name to open its file.
 
 The switch at the left of the Impact tab's toolbar picks what to analyze:
 - **Selection**: the node(s) selected on the DAG or Files page (described above)

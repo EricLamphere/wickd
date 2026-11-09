@@ -543,8 +543,28 @@ export interface ColumnLineageDto {
   results: Record<string, Record<string, ColumnLineageEntry[]>>;
   /** uid → upstream columns the model filters / joins / groups on (empty when lineage_version is 1). */
   row_dependencies: Record<string, ColumnLineageEntry[]>;
-  /** 1 = projection lineage only; 2 = also row dependencies; 3 = also transform kinds. */
+  /** 1 = projection lineage only; 2 = also row dependencies; 3 = also transform kinds; 4 = also join keys and grain. */
   lineage_version: number;
+  error_message: string | null;
+  /** The cached (latest finished) snapshot no longer matches the project's content: offer a refresh. */
+  stale: boolean;
+  stale_reason: string | null;
+  /** A newer scan behind this cached snapshot: running, or error (refresh_error says why). */
+  refresh_status: 'running' | 'error' | null;
+  refresh_error: string | null;
+}
+
+/** The column lineage cache's state without its results (GET …/column-lineage/status). */
+export interface ColumnLineageStatusDto {
+  snapshot_id: number | null;
+  /** the cached snapshot's status; null = never scanned */
+  status: 'running' | 'done' | 'error' | null;
+  lineage_version: number | null;
+  total_models: number;
+  stale: boolean;
+  stale_reason: string | null;
+  refresh_status: 'running' | 'error' | null;
+  refresh_error: string | null;
   error_message: string | null;
 }
 
@@ -1012,6 +1032,8 @@ export const api = {
     graph: (projectId: number) => get<GraphDto>(`/projects/${projectId}/models`),
     columnLineage: (projectId: number) =>
       get<ColumnLineageDto | null>(`/projects/${projectId}/column-lineage`),
+    columnLineageStatus: (projectId: number) =>
+      get<ColumnLineageStatusDto>(`/projects/${projectId}/column-lineage/status`),
     startColumnLineage: (projectId: number) =>
       post<ColumnLineageDto>(`/projects/${projectId}/column-lineage/start`),
     sql: (projectId: number, uniqueId: string) =>

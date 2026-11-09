@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
-import { Hammer, ListTree, Loader2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Hammer, ListTree } from 'lucide-react';
 import type { GraphDto, ModelNode } from '../../../../lib/api';
-import { summaryFlags, buildImpactSelector, computeImpact } from '../../lib/impact';
+import { summaryFlags, buildImpactSelector, computeImpact, totalImpactTests } from '../../lib/impact';
 import { openBottomTab } from '../../lib/bottomPaneEvents';
-import { FlagBadge, ImpactCounts, useBuildImpacted } from '../impact/impactUi';
+import { FlagBadge, ImpactCounts } from '../impact/impactUi';
+import { BuildImpactedDialog } from '../slim/BuildImpactedDialog';
+import { rowsFromImpact } from '../slim/buildRows';
 
 interface ImpactSummaryProps {
   projectId: number;
@@ -18,7 +20,7 @@ const NO_IMPACT_TYPES = new Set(['test', 'exposure']);
 export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
   const seedKey = nodes.filter((n) => !NO_IMPACT_TYPES.has(n.resource_type)).map((n) => n.unique_id).join('|');
   const impact = useMemo(() => computeImpact(graph, seedKey ? seedKey.split('|') : []), [graph, seedKey]);
-  const { build, building, error } = useBuildImpacted(projectId);
+  const [buildOpen, setBuildOpen] = useState(false);
   const { summary } = impact;
   const flags = summaryFlags(summary);
   const nothingDownstream = summary.downstreamCount === 0;
@@ -26,6 +28,12 @@ export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
   const seedNodes = impact.seeds.map((n) => n.node);
   // empty for exposures / semantic nodes alone: dbt build has nothing to do for them
   const buildSelectorText = buildImpactSelector(seedNodes);
+  // the same build dialog as the Impact tab's Build impacted…, scoped to the selection
+  const shown = {
+    selector: buildSelectorText,
+    rows: rowsFromImpact(impact, false),
+    tests: totalImpactTests(summary),
+  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -48,17 +56,25 @@ export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
             Show impact
           </button>
           <button
-            onClick={() => build(seedNodes)}
-            disabled={building || !buildSelectorText}
-            title={buildSelectorText ? `dbt build --select ${buildSelectorText}` : 'Nothing to build: only exposures or semantic nodes are selected'}
+            onClick={() => setBuildOpen(true)}
+            title="Opens the build dialog: choose what to build, see the exact dbt command and the nodes, then run it"
             className="flex items-center justify-center gap-1.5 py-1.5 text-xs rounded border bg-surface-elevated border-gray-700 text-gray-200 hover:border-brand-600 hover:text-brand-300 transition-colors disabled:opacity-50"
           >
-            {building ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Hammer className="w-3.5 h-3.5" />}
-            Build impacted
+            <Hammer className="w-3.5 h-3.5" />
+            Build impacted…
           </button>
         </div>
-        {error && <p className="text-[10px] text-red-400">{error}</p>}
       </div>
+      {buildOpen && (
+        <BuildImpactedDialog
+          projectId={projectId}
+          scope="working"
+          base={null}
+          shown={shown}
+          shownLabel="The selected nodes"
+          onClose={() => setBuildOpen(false)}
+        />
+      )}
     </div>
   );
 }

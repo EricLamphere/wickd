@@ -62,7 +62,7 @@ To run all models in the project, click the top node in the DAG (or use the DAG 
 ## Building only what changed, deferring, cloning and retrying
 
 - **Defer to prod** (side pane run controls, below Options): adds `--defer --state <prod manifest>` to every run, build and test until you turn it off; the Header shows a "Deferring to …" chip meanwhile.
-- **Build impacted…** (bottom pane → Impact): a dialog to build what the Impact view shows or what changed vs production (`state:modified+`), with the exact command and nodes before anything runs.
+- **Build impacted…** (bottom pane → Impact, or the side pane's Downstream impact card): a dialog to build what the Impact view shows or what changed vs production (`state:modified+`), with the exact command and nodes before anything runs.
 - **Clone from prod** (side pane, tables / incrementals / snapshots): `dbt clone` of that model.
 - **Retry failed** (Execution DAG header, after a failed run): `dbt retry`.
 

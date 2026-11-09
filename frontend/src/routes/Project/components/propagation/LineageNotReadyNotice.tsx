@@ -17,7 +17,8 @@ export function LineageNotReadyNotice({ projectId, reason, compact = false, outd
   /** What an older scan lacks, for this feature (defaults to propagation's transform kinds). */
   outdated?: string;
 }) {
-  const lineage = useColumnLineageData(projectId, true);
+  // status only: the (large) snapshot isn't needed here
+  const lineage = useColumnLineageData(projectId, false);
   const busy = lineage.running || reason === 'running';
   const progress = lineage.compiling
     ? 'Compiling…'

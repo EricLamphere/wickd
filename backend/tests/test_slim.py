@@ -16,6 +16,8 @@ import app.db.engine as db_engine
 from app.db.engine import get_session
 from app.db.models import Base, ColumnLineageSnapshot, Project, ProjectEnvVar, RunInvocation
 from app.dbt import slim_preview, slim_prune, state
+from app.dbt.lineage_cache import current_tracer
+from app.dbt.lineage_freshness import manifest_fingerprint
 from app.dbt.slim_preview import Listed
 from app.licensing import entitlements
 from app.main import app
@@ -224,17 +226,24 @@ async def test_preview_prune_is_pro_and_uses_the_pruned_list(db, client, tmp_pat
 
 
 async def test_lineage_must_be_fresh_for_pruning(db, tmp_path: Path):
+    """Fresh = same content as the traced manifest; dbt rewriting the file (new mtime) doesn't count."""
     project = await _project(db, tmp_path, {})
     manifest = Path(project.path) / "target" / "manifest.json"
-    manifest.write_text("{}")
+    content = {"nodes": {"model.p.m": {"resource_type": "model", "name": "m", "compiled_code": "select 1"}}}
+    manifest.write_text(json.dumps(content))
     assert await slim_prune.fresh_lineage(project) is None
     async with db() as session:
-        session.add(ColumnLineageSnapshot(project_id=project.id, status="done", results_json='{"m": {}}',
-                                          row_dependencies_json="{}", lineage_version=4,
-                                          manifest_mtime=manifest.stat().st_mtime))
+        session.add(ColumnLineageSnapshot(
+            project_id=project.id, status="done", results_json='{"m": {}}', row_dependencies_json="{}",
+            lineage_version=4, fingerprint_json=manifest_fingerprint(content).to_json(current_tracer()),
+        ))
         await session.commit()
     assert await slim_prune.fresh_lineage(project) == ({"m": {}}, {})
     os.utime(manifest, (time.time() + 10, time.time() + 10))
+    assert await slim_prune.fresh_lineage(project) == ({"m": {}}, {})
+    content["nodes"]["model.p.m"]["compiled_code"] = "select 2"
+    manifest.write_text(json.dumps(content))
+    os.utime(manifest, (time.time() + 20, time.time() + 20))
     assert await slim_prune.fresh_lineage(project) is None
 
 

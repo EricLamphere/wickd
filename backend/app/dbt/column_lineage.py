@@ -150,3 +150,19 @@ def supports_structure() -> bool:
 
 def build_column_lineage(manifest_path: Path) -> dict:
     return _pro().build_column_lineage(manifest_path)
+
+
+# Bumped whenever snapshots gain data older ones lack, so a saved snapshot isn't
+# served as current. 2 = row dependencies, 3 = transform kinds on projection refs
+# (identity / rename / cast / derived), 4 = join pairs and grain per model
+# (join_keys_json, for test suggestions).
+LINEAGE_VERSION = 4
+
+
+def current_lineage_version() -> int:
+    """What a scan run now would produce (older Pro builds lack structure / kinds / row dependencies)."""
+    if supports_structure():
+        return LINEAGE_VERSION
+    if supports_transform_kinds():
+        return 3
+    return 2 if supports_row_dependencies() else 1

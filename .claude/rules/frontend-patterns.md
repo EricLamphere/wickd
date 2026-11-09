@@ -72,6 +72,7 @@ When handling SSE events, invalidate the relevant query:
 | `ai_model_download` (global stream) | `['ai-status']` once the download settles |
 | `files_changed` | `['file-content', projectId]` (bottom pane Node SQL tab) |
 | `column_lineage_finished`, `graph_changed`, `files_changed`, `ai_proposal_updated` | `['propagate-preview', projectId]`, `['tag-flow', projectId]` (lineage propagation, `components/propagation/`) |
+| `column_lineage_started`, `column_lineage_finished`, `graph_changed` (cheap: re-checks staleness, never rescans) | `['column-lineage', projectId]`, `['column-lineage-status', projectId]` (`routes/Project/lib/useColumnLineageData.ts`, DAG `Models.tsx`) |
 | `column_lineage_finished`, `graph_changed`, `files_changed`, `ai_proposal_updated` | `['test-gaps', projectId]` (Health Test Gaps, `components/health/useTestGaps.ts`) |
 | `statuses_changed` | `['run-analysis', projectId]`, `['performance', projectId]` (Run History, `RunHistory/index.tsx`), `['node-durations', projectId]` (DAG Durations overlay, `lib/useDurationOverlay.ts`) |
 

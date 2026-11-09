@@ -56,6 +56,34 @@ function SeedPicker({ seed, columns, picked, onChange }: {
   );
 }
 
+function ScanProgress({ lineage }: { lineage: LineageState }) {
+  return (
+    <span className="flex items-center gap-2 text-xs text-gray-400">
+      <Loader2 size={12} className="animate-spin" />
+      {lineage.compiling ? 'Compiling project…'
+        : lineage.progress ? `Tracing column lineage ${lineage.progress.checked}/${lineage.progress.total}…`
+        : 'Tracing column lineage…'}
+    </span>
+  );
+}
+
+/** Above the picker while the cached lineage is refreshing, or once it's out of date. */
+function CacheStatus({ lineage }: { lineage: LineageState }) {
+  if (lineage.running) return <div className="mb-1.5"><ScanProgress lineage={lineage} /></div>;
+  return (
+    <div className="flex flex-wrap items-center gap-2 mb-1.5 text-[11px] text-amber-300">
+      <span>Column lineage is out of date{lineage.staleReason ? `: ${lineage.staleReason}` : '.'}</span>
+      <button
+        onClick={() => lineage.start()}
+        className="px-1.5 py-0.5 rounded border border-amber-800 hover:bg-amber-950/60 text-amber-200"
+      >
+        Refresh column lineage
+      </button>
+      {lineage.error && <span className="text-red-400 truncate">{lineage.error}</span>}
+    </div>
+  );
+}
+
 interface ImpactColumnBarProps {
   lineage: LineageState;
   seeds: readonly ModelNode[];
@@ -95,16 +123,8 @@ export function ImpactColumnBar({ lineage, seeds, columnsFor, picked, onPick, fr
         </div>
       );
     }
-    if (lineage.running) {
-      return (
-        <span className="flex items-center gap-2 text-xs text-gray-400">
-          <Loader2 size={12} className="animate-spin" />
-          {lineage.compiling ? 'Compiling project…'
-            : lineage.progress ? `Tracing column lineage ${lineage.progress.checked}/${lineage.progress.total}…`
-            : 'Tracing column lineage…'}
-        </span>
-      );
-    }
+    // no usable cache yet: wait for the scan (with a cache, its picker stays usable during a refresh)
+    if (lineage.running && !lineage.ready) return <ScanProgress lineage={lineage} />;
     if (!lineage.ready) {
       const outdated = lineage.snapshot?.status === 'done';
       return (
@@ -140,6 +160,7 @@ export function ImpactColumnBar({ lineage, seeds, columnsFor, picked, onPick, fr
 
   return (
     <div className="px-4 py-2 border-b border-gray-800 shrink-0 max-h-40 overflow-y-auto">
+      {lineage.ready && !lineage.locked && (lineage.running || lineage.stale) && <CacheStatus lineage={lineage} />}
       {body}
       {upgradeOpen && <UpgradeModal feature={FEATURE} onClose={() => setUpgradeOpen(false)} />}
     </div>

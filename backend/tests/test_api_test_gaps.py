@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 import pytest
 import yaml
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.ai import pro as ai_pro
@@ -362,8 +363,18 @@ async def test_ignored_list_survives_the_gap_disappearing_and_lineage_going_stal
     [row] = (await client.get(f"{base}/ignored")).json()["rows"]
     assert (row["still_a_gap"], row["candidates"]) == (False, [])
 
+    # a refresh in progress keeps serving the cached lineage
     db_session.add(ColumnLineageSnapshot(project_id=pid, status="running", lineage_version=4))
     await db_session.commit()
+    service._cache.clear()
+    [row] = (await client.get(f"{base}/ignored")).json()["rows"]
+    assert row["still_a_gap"] is False
+
+    # no usable lineage (the cache predates join keys): the row keeps its saved label
+    await db_session.execute(update(ColumnLineageSnapshot).where(
+        ColumnLineageSnapshot.project_id == pid, ColumnLineageSnapshot.status == "done").values(lineage_version=3))
+    await db_session.commit()
+    service._cache.clear()
     [row] = (await client.get(f"{base}/ignored")).json()["rows"]
     assert row["still_a_gap"] is None and row["label"] == "customer_id"
 

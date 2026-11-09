@@ -349,15 +349,19 @@ column_lineage_snapshots
   checked_models  INTEGER    -- jobs completed so far (progress)
   results_json    TEXT       -- JSON {downstream_uid: {column: [{node, column}, ...]}}
   error_message   TEXT (nullable)
-  manifest_mtime  REAL       -- mtime of target/manifest.json this snapshot was computed from;
-                             -- used to short-circuit a re-scan when the manifest hasn't changed
+  manifest_mtime  REAL       -- mtime of target/manifest.json this snapshot was computed from (informational only:
+                             -- dbt rewrites the file on nearly every command, so freshness uses fingerprint_json)
   row_dependencies_json TEXT -- JSON {uid: [{node, column}, ...]}: upstream columns each model filters / joins /
                              -- groups on (WHERE, JOIN ON/USING, GROUP BY, HAVING, QUALIFY), i.e. which rows it has
   lineage_version INTEGER    -- 1 = projection lineage only; 2 = also row dependencies; 3 = also a transform `kind`
                              -- (identity | rename | cast | derived) on each results_json ref; 4 = also join_keys_json.
-                             -- The short-circuit only reuses a snapshot whose version matches what a scan would produce now
+                             -- Part of the tracer key, so a snapshot from another version reads as stale
   join_keys_json  TEXT       -- JSON {uid: {join_pairs: [{left: {node, column}, right: {node, column}, type}],
                              -- grain: {columns, via: group_by | distinct | dedupe} | null}} (lineage_version 4; test suggestions)
+  fingerprint_json TEXT      -- per-node content fingerprint of the manifest traced ({tracer, adapter, macros, nodes:
+                             -- {uid: [metadata hash, compiled SQL hash | null]}}; app/dbt/lineage_freshness.py);
+                             -- '' = traced before change tracking, reads as stale
+  job_keys_json   TEXT       -- JSON {uid: hash of the LineageJob's inputs}: a refresh reuses results for unchanged jobs
   -- Interrupted snapshots (status='running') are reset to 'error' on server restart
 
 metric_query_results       -- Metrics page result cache (semantic/query_cache.py)
@@ -513,8 +517,9 @@ POST   /api/projects/{id}/models/{unique_id}/profile    run dbt show (full table
 POST   /api/projects/{id}/models/{unique_id}/document/propose   add `- name:` entries for the node + columns to its schema YAML (body `{columns}`; null → probe the warehouse), as an `ai_proposals` row of kind `document_stub` (status ready, or empty with a note when nothing is missing) for the review window; Base — reviewing/accepting it needs no Pro license (`BASE_KINDS` in app/ai/gating.py); accepting compiles the node
 GET    /api/projects/{id}/models/{unique_id}/sql
 PUT    /api/projects/{id}/models/{unique_id}/sql
-POST   /api/projects/{id}/column-lineage/start            start async column lineage scan (202, or 200 if a fresh snapshot already exists); returns ColumnLineageSnapshot — Pro feature, 403 if not entitled
-GET    /api/projects/{id}/column-lineage                 get the latest ColumnLineageSnapshot for a project — Pro feature, 403 if not entitled
+POST   /api/projects/{id}/column-lineage/start            start async column lineage scan (202, or 200 with the cache when it still matches the project's content); returns ColumnLineageSnapshot — Pro feature, 403 if not entitled
+GET    /api/projects/{id}/column-lineage                 the cached (latest finished) ColumnLineageSnapshot, kept while a refresh runs, plus stale / stale_reason (content changed since it was traced) and refresh_status / refresh_error (a newer scan running or failed); the newest snapshot when none has finished — Pro feature, 403 if not entitled
+GET    /api/projects/{id}/column-lineage/status          the same cache state without results (snapshot_id, status, lineage_version, total_models, stale, stale_reason, refresh_status, refresh_error, error_message) — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/column-lineage/{snapshot_id}   get a specific ColumnLineageSnapshot by id — Pro feature, 403 if not entitled
 GET    /api/projects/{id}/propagate/descriptions?unique_id=&include_casts=true  Pro: how many empty column descriptions lineage could fill `{fillable, conflicts, by_node}`; 409 `{error: lineage_not_ready, reason: missing|running|outdated|error}` until a lineage_version 3 snapshot exists
 POST   /api/projects/{id}/propagate/descriptions         Pro: build a "propagate" proposal filling those descriptions (body `{unique_ids?, include_casts}`); 202, then `ai_proposal_updated`
@@ -802,8 +807,8 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `drift_finished` | `drift.py` | Drift panel renders column diff results (also sent after a single-model recheck, with `recheck`) |
 | `freshness_started` | `freshness.py` | Freshness panel shows running state |
 | `freshness_finished` | `freshness.py` | Freshness panel invalidates query, renders results |
-| `column_lineage_started` | `column_lineage.py` | DagFilterBar shows lineage loading state |
-| `column_lineage_progress` | `column_lineage.py` | DagFilterBar updates checked/total counter; invalidates column-lineage query |
+| `column_lineage_started` | `column_lineage.py` | DagFilterBar shows lineage loading state; invalidates column-lineage (+ status) query so refresh_status shows; payload `reused` = models carried over unchanged |
+| `column_lineage_progress` | `column_lineage.py` | DagFilterBar updates checked/total counter (checked starts at the reused count) |
 | `column_lineage_finished` | `column_lineage.py` | Invalidates column-lineage query → DAG lineage trace becomes available |
 | `ai_proposal_updated` | `ai_proposals.py` | Invalidates `['ai-proposals', id]` → Wicky chat shows generating / ready to review / error |
 | `ai_query_updated` | `ai_query.py` | A Query data query changed status (waiting/running/done/error); invalidates the Wicky conversation |
@@ -1003,19 +1008,18 @@ Column lineage is computed **SQL-first**: `dbt/column_lineage.py` derives each m
 The scan is a backgrounded, progress-reporting job — same pattern as schema drift and source freshness (`column_lineage_snapshots` table; see Database Schema):
 
 1. `POST /api/projects/{id}/column-lineage/start`:
-   - Reads `target/manifest.json`'s mtime; if the latest snapshot for the project is `done`, its `manifest_mtime` matches and its `lineage_version` equals what a scan would produce now (`LINEAGE_VERSION`, or 1 when the installed `wickd_pro` predates row dependencies — `supports_row_dependencies()`), short-circuits and returns that snapshot directly (200) — no recomputation.
-   - Otherwise, runs the "prep" phase (`prepare_lineage_jobs()`, in a thread executor) — cheap manifest parsing that builds one `LineageJob` per model needing lineage (no `sqlglot.lineage.lineage()` calls yet).
-   - Creates a `running` `ColumnLineageSnapshot` row, spawns a background `asyncio.Task`, publishes `column_lineage_started`, returns 202.
-2. Background runner (`_run_column_lineage`) fans the actual CPU-bound tracing out across a `ProcessPoolExecutor` (sized `max(1, min(8, cpu_count-1))`) — one `trace_job_full(job)` call per model (projection lineage + row dependencies), submitted via `loop.run_in_executor(pool, trace_job_full, job)` and collected with `asyncio.wait(..., return_when=FIRST_COMPLETED)` so each completed job's `checked`/`total`/`current` can be published as it lands.
-3. As each job completes: increments `checked_models`, merges the result into `results_json` and `row_dependencies_json`, commits, publishes `column_lineage_progress`.
-4. On completion: sets `status="done"`, `finished_at`, final `results_json` + `manifest_mtime`, publishes `column_lineage_finished`.
-5. `GET /api/projects/{id}/column-lineage` returns the latest snapshot (status + `results`, a nested dict from downstream node → column → list of upstream `{node, column}` refs).
+   - Returns the cache (200) when the latest finished snapshot still matches the project (`lineage_cache.staleness()` is None). Freshness is content-based, never the manifest's mtime (dbt rewrites `manifest.json` on nearly every command): `lineage_freshness.manifest_fingerprint()` hashes each node's metadata (name, relation, documented columns, parents, file checksum) and its compiled SQL, and `stale_reason()` compares that with the snapshot's `fingerprint_json`. Compiled SQL is compared only when both sides have it, because a selective command (`dbt run -s x`, `dbt parse`) strips `compiled_code` from the other nodes; then the file checksum, and the macros, stand in. The tracer key (wickd_pro source + sqlglot version + lineage version) is part of the fingerprint, so an engine update reads as stale. The current fingerprint is memoized per manifest (mtime + size).
+   - Otherwise creates a `running` `ColumnLineageSnapshot` row, spawns a background `asyncio.Task`, publishes `column_lineage_compiling` (when any model lacks compiled SQL, which runs `dbt compile` first; scanning such a manifest would drop those models) or `column_lineage_started`, and returns 202.
+2. The background task fingerprints the manifest, builds jobs (`prepare_lineage_jobs()`), and plans them against the previous finished snapshot's `job_keys_json` (`plan_jobs()`): a job whose key (a hash of every LineageJob input, with `name_to_uid` narrowed to names its SQL or parents mention) is unchanged reuses that model's results; only the rest are traced. `column_lineage_started` carries `total` and `reused`.
+3. `_run_column_lineage` fans the tracing out across a `ProcessPoolExecutor` (sized `max(1, min(8, cpu_count-1))`) — one `trace_job_structure(job)` per changed model, collected with `asyncio.wait(..., return_when=FIRST_COMPLETED)`. Each completion updates `checked_models` (which starts at the reused count) and publishes `column_lineage_progress`; results are written once at the end (readers use the cache, and re-serializing every result per model was quadratic). A job that raises stores no key, so the next refresh retries it.
+4. On completion: sets `status="done"`, `finished_at`, the results, `fingerprint_json` and `job_keys_json`, publishes `column_lineage_finished`.
+5. `GET /api/projects/{id}/column-lineage` returns the cache with `stale` / `stale_reason` and the state of any newer scan (`refresh_status` / `refresh_error`); `GET …/status` the same without results. Propagation, test gaps, refactors and contract checks read the cache (`lineage_cache.usable_snapshot()` / `latest_done()`), so a refresh in progress never hides it; the smallest safe set (`slim_prune.fresh_lineage()`) additionally requires it not stale.
 
 `build_column_lineage(manifest_path)` remains available as a synchronous, in-process, no-pool entry point sharing the same job-prep/trace logic — used by tests and any caller that just wants the full result computed inline.
 
 In the frontend (`Models.tsx`):
-- Toggling "Load column lineage" calls `POST .../column-lineage/start` (ignoring 409 — a run already in flight is fine) and keeps `useQuery(['column-lineage', id])` (`GET .../column-lineage`) as the source of truth for rendered data.
-- A `useProjectEvents` handler invalidates `['column-lineage', id]` on `column_lineage_progress`/`column_lineage_finished`, and tracks `{checked, total}` from `column_lineage_progress` for an optimistic progress indicator (mirrors `DriftPanel.tsx`).
+- The cached snapshot loads on open (`useQuery(['column-lineage', id])`, enabled when the license is entitled); it's never recomputed without a click. The filter bar button follows `lineageAction()` (`lib/columnLineageState.ts`): **Load column lineage** when nothing has finished, **Refresh column lineage** only when the cache is stale (tooltip: the reason), and nothing while it's current. It calls `POST .../column-lineage/start` (ignoring 409 — a run already in flight is fine).
+- A `useProjectEvents` handler invalidates `['column-lineage', id]` on `graph_changed` (cheap: re-checks staleness, no scan), `column_lineage_started` and `column_lineage_finished`, and tracks `{checked, total}` from `column_lineage_progress` for an optimistic progress indicator (mirrors `DriftPanel.tsx`).
 - `DagFilterBar` shows `Column lineage: {checked}/{total}…` while a scan is running.
 - If `columnLineage`'s query error or the `start` call's rejection is a 403 with `{"error": "pro_feature_required"}` (detected via `isProFeatureRequiredError()` in `lib/api.ts`), the lineage button renders locked (`Lock` icon, "Column lineage (Pro)") and clicking it opens `UpgradeModal` instead of starting a scan. `UpgradeModal` reads `GET /api/license` for status/reason copy and a Polar checkout link (`checkout_url`, from `POLAR_*_CHECKOUT_URL`), and lets the user paste + activate a license key inline (`PUT /api/license`) or force a recheck (`POST /api/license/recheck`).
 - Expanding a model node in the DAG reveals its columns; clicking a column toggles it in `activeColumnSels`
@@ -1038,7 +1042,7 @@ Builds on column lineage (section 10). Since `lineage_version` 4 the scan also r
 - **Ranking (private):** `wickd_pro.test_targets.rank_test_targets()` turns that into candidate tests per `(model, column)` with evidence: grain → `unique` + `not_null` (one column) or `not_null` each + `dbt_utils.unique_combination_of_columns` (several, only when dbt_utils is installed); inner-join keys → `not_null`; `relationships` from the many side to the one side only when the one side is known unique (single-column grain or an existing `unique` test). Existing tests are skipped. Score = (downstream columns + 3 × row-dependency uses + 5 × exposures reached) × 2 in the grain. Public shim `app/test_targets/pro.py`; snapshot loading and the per-snapshot cache in `app/test_targets/service.py`.
 - **Add tests:** `ai/test_generation.py` gets the model's ranking (`targets_for_model()`), adds the evidence-backed tests directly (`app/test_targets/items.py` `structural_tests()`), then prompts the AI model with the ranked columns and those tests as already present. Without an AI model (`llm_ready()`), or if it fails, only the lineage-backed tests are proposed. Everything is pre-checked in one `dbt show`; YAML via `render_tests()` (`add_column_tests()` + model-level `add_model_tests()`).
 - **Test gaps:** `api/test_gaps.py`; the batch proposal (`app/test_targets/batch.py`) is kind `tests` with `batch: true` and file/node on each item, so partial accept rebuilds one file (`app/ai/selection.py`).
-- **UI:** a Test Gaps card on the Health overview (count + top 3, Refresh lineage; it doesn't fetch the lineage snapshot and isn't part of Run all), and Health → **Test Gaps** tab (`?tab=test-gaps`, `TestGapsPanel`; its label carries the gap count as a badge, a dot while lineage is computing; Gaps / Ignored sub-tabs in `?gaps=`, Ignore selected / Unignore selected, and a Refresh button that re-traces lineage (a no-op when the manifest is unchanged) and re-ranks): a `RichTable` (search, a Test dropdown, checkboxes with shift-click ranges, per-row Ignore / Generate, expand for the evidence and the models that join on it, ⌘-click a model to open it), "Generate tests" → `ProposalReviewModal`, which shows each test's evidence ("From lineage: …"). `['test-gaps', id]` is invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
+- **UI:** a Test Gaps card on the Health overview (count + top 3, Refresh lineage when the lineage is missing, failed or out of date; it reads only `GET …/column-lineage/status`, not the snapshot and isn't part of Run all), and Health → **Test Gaps** tab (`?tab=test-gaps`, `TestGapsPanel`; its label carries the gap count as a badge, a dot while lineage is computing; Gaps / Ignored sub-tabs in `?gaps=`, Ignore selected / Unignore selected, and a Refresh lineage button, shown only while the cached lineage is out of date, that re-traces it and re-ranks): a `RichTable` (search, a Test dropdown, checkboxes with shift-click ranges, per-row Ignore / Generate, expand for the evidence and the models that join on it, ⌘-click a model to open it), "Generate tests" → `ProposalReviewModal`, which shows each test's evidence ("From lineage: …"). `['test-gaps', id]` is invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
 
 ### 10d-3. Unit tests (results Base, generation Pro; plan 19)
 

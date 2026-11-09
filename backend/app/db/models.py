@@ -333,6 +333,11 @@ class ColumnLineageSnapshot(Base):
     lineage_version: Mapped[int] = mapped_column(Integer, default=1)
     # {uid: {"join_pairs": [{left, right, type}], "grain": {columns, via} | null}} (lineage_version 4)
     join_keys_json: Mapped[str] = mapped_column(Text, default="{}")
+    # per-node content fingerprint of the manifest this was traced from (app/dbt/lineage_freshness.py);
+    # '' = traced before change tracking, so it reads as out of date
+    fingerprint_json: Mapped[str] = mapped_column(Text, default="")
+    # {uid: hash of the job's inputs}: a refresh reuses results whose inputs are unchanged
+    job_keys_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class RunInvocation(Base):

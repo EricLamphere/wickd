@@ -83,7 +83,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `drift_finished` | project | `api/drift.py` — snapshot id + final status; also sent by the single-model recheck (with `recheck: <unique_id>`) |
 | `freshness_started` | project | `api/freshness.py` — includes `snapshot_id` |
 | `freshness_finished` | project | `api/freshness.py` — includes `snapshot_id`, `ok`, `pass_count`, `warn_count`, `error_count` |
-| `column_lineage_started` | project | `api/column_lineage.py` — includes `snapshot_id`, `total` |
+| `column_lineage_started` | project | `api/column_lineage.py` — includes `snapshot_id`, `total`, `reused` (models whose inputs are unchanged, carried over from the cache) |
 | `column_lineage_progress` | project | `api/column_lineage.py` — includes `snapshot_id`, `checked`, `total`, `current` (model name) |
 | `column_lineage_finished` | project | `api/column_lineage.py` — includes `snapshot_id`, `ok` |
 | `ai_proposal_updated` | project | `api/ai_proposals.py` — includes `proposal_id`, `status`, `unique_id` |

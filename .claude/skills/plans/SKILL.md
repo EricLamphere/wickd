@@ -51,6 +51,9 @@ checkout at `../wickd-pro`), never in this repo — not in `docs/`, not in
 4. **Add a row to the README table** (`| NN | [Title](NN-feature-descriptor.md) | builds on | Not started |`),
    in number order.
 
+5. **Tag the Kanban tile.** If the plan is for a tile on the wickd Kanban board
+   (`kanban` skill) and its owner check passes, run `python3 .claude/skills/kanban/kanban.py plan "<tile>" NN`.
+
 ## Saving research
 
 Research goes in `../wickd-pro/docs/plans/research/`, named
@@ -70,5 +73,7 @@ Research goes in `../wickd-pro/docs/plans/research/`, named
      implemented).
    - Other plans linking to it: `grep -rn "NN-feature-descriptor" ../wickd-pro/docs`
      and update the paths.
+4. If the `kanban` owner check passes, move its Kanban tile to Done (`kanban.py done "plan NN"`) and tell the user
+   (see `.claude/rules/kanban.md`).
 
 Never commit or push in `wickd-pro` (or any repo) — the user does git.

@@ -8,6 +8,7 @@ The prod side is the DIFF_BASE_TARGET project setting; the dev side the active t
 
 import asyncio
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.init import load_project_env
 from app.data_diff.job import DiffRequest, Targets, run_job
+from app.data_diff.staleness import NodeRebuild, load_rebuilds, rebuilt_after
 from app.db.engine import get_session
 from app.db.models import DataDiffSnapshot, Project
 from app.dbt import data_diff
@@ -66,6 +68,9 @@ class DataDiffDto(BaseModel):
     error_message: str | None
     started_at: str
     finished_at: str | None
+    # the dev relation was rebuilt (run/build/clone/seed/snapshot) after this diff finished
+    dev_rebuilt_at: str | None = None
+    dev_rebuilt_by: str | None = None
 
 
 def _loads(raw: str | None, default: Any) -> Any:
@@ -76,7 +81,7 @@ def _loads(raw: str | None, default: Any) -> Any:
     return value if isinstance(value, type(default)) or (default is None and isinstance(value, (dict, list))) else default
 
 
-def _to_dto(s: DataDiffSnapshot) -> DataDiffDto:
+def _to_dto(s: DataDiffSnapshot, rebuild: NodeRebuild | None = None) -> DataDiffDto:
     return DataDiffDto(
         id=s.id, unique_id=s.unique_id, name=s.name, scope=s.scope, base_ref=s.base_ref, dev_target=s.dev_target,
         prod_target=s.prod_target, dev_relation=s.dev_relation, prod_relation=s.prod_relation, mode=s.mode,
@@ -84,7 +89,14 @@ def _to_dto(s: DataDiffSnapshot) -> DataDiffDto:
         built=bool(s.built), status=s.status, phase=s.phase, result=_loads(s.results_json, None),
         error_message=s.error_message, started_at=s.started_at.isoformat() if s.started_at else "",
         finished_at=s.finished_at.isoformat() if s.finished_at else None,
+        dev_rebuilt_at=rebuild.completed_at.isoformat() if rebuild else None,
+        dev_rebuilt_by=rebuild.command if rebuild else None,
     )
+
+
+async def _to_dtos(session: AsyncSession, project_id: int, snaps: Sequence[DataDiffSnapshot]) -> list[DataDiffDto]:
+    rebuilds = await load_rebuilds(session, project_id, sorted({s.unique_id for s in snaps}))
+    return [_to_dto(s, rebuilt_after(s, rebuilds)) for s in snaps]
 
 
 async def _gate(session: AsyncSession) -> None:
@@ -178,7 +190,7 @@ async def latest_data_diffs(
     rows = (await session.execute(
         select(DataDiffSnapshot).where(DataDiffSnapshot.id.in_(newest)).order_by(DataDiffSnapshot.id)
     )).scalars().all()
-    return [_to_dto(s) for s in rows]
+    return await _to_dtos(session, project_id, rows)
 
 
 @router.post("/{project_id}/data-diff/cancel")
@@ -199,4 +211,4 @@ async def get_data_diff(project_id: int, snapshot_id: int, session: AsyncSession
     snap = await session.get(DataDiffSnapshot, snapshot_id)
     if snap is None or snap.project_id != project_id:
         raise HTTPException(status_code=404, detail="data diff not found")
-    return _to_dto(snap)
+    return (await _to_dtos(session, project_id, [snap]))[0]

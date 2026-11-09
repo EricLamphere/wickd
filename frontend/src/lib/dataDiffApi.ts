@@ -80,6 +80,9 @@ export interface DataDiffDto {
   error_message: string | null;
   started_at: string;
   finished_at: string | null;
+  /** the dev relation was rebuilt after this diff finished: when, and by which dbt command */
+  dev_rebuilt_at?: string | null;
+  dev_rebuilt_by?: string | null;
 }
 
 export interface StartDataDiff {

@@ -21,6 +21,8 @@ Each row in the table shows:
 
 Click a row to open its **Detail Panel** on the right. Click the same row again to deselect it.
 
+**Retry** (the undo-arrow icon, and a Retry button in the detail panel) appears on the project's latest run when it failed. It runs `dbt retry`, which re-runs only the nodes that failed or were skipped. dbt reads `target/run_results.json` for this, so it only works on the last run, and wickd refuses (and suggests **Rerun**) when a later dbt command replaced that file. Runs started with a state selection or defer (see [slim builds](slim-builds.md)) keep those settings on **Rerun**.
+
 ## Filtering and Searching
 
 The filter bar at the top of the list has three controls:

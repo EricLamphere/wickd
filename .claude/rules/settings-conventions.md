@@ -47,7 +47,9 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `DASHBOARDS_PATH` | `ProjectEnvVar` | `wickd/dashboards` | `wickd/dashboards` |
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
 | `MONITOR_SCHEDULE` | `ProjectEnvVar` (saved through PUT …/metric-monitors/settings, which validates it) | (empty = off) | `0 9 * * 1-5` |
-| `DIFF_BASE_TARGET` | `ProjectEnvVar` (metric compare's "before" side; data diff's prod side, required there) | (empty = the active target) | `prod` |
+| `DIFF_BASE_TARGET` | `ProjectEnvVar` (metric compare's "before" side; data diff's prod side, required there; the target a `git:` STATE_SOURCE is parsed for) | (empty = the active target) | `prod` |
+| `STATE_SOURCE` | `ProjectEnvVar` (slim builds' production manifest: `git:<ref>` or `path:<folder>`; Test link resolves it) | (empty = git, the repo's base branch) | `git:main` |
+| `state_defer` | `ProjectEnvVar`, internal (sticky "Defer to prod": `defer` / `favor`; set from the side pane toggle / Header chip, not shown as a setting row) | (empty = off) | `defer` |
 
 ## Current Global Settings
 

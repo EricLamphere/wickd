@@ -162,14 +162,15 @@ export function vsExpected(value: number | null | undefined, expected: number | 
   return `${pct > 0 ? '+' : '−'}${Math.abs(pct).toFixed(Math.abs(pct) < 10 ? 1 : 0)}% vs expected`;
 }
 
-/** Downstream monitored metrics in an impact result: how many, and how many look wrong right now. */
-export function monitoredDownstream(
-  metricNames: string[], statuses: ReadonlyMap<string, MetricMonitorState>,
-): { count: number; alarming: string[] } {
-  const monitored = [...new Set(metricNames)].filter((n) => statuses.has(n));
-  const alarming = monitored.filter((n) => {
-    const s = statuses.get(n)?.status;
-    return s === 'anomaly' || s === 'warn' || s === 'error';
-  });
-  return { count: monitored.length, alarming };
+/**
+ * The Impact table's Flags chip for a monitored metric: red while it has an anomaly (or its
+ * refresh failed, so there's no current answer), otherwise a plain green "monitor".
+ */
+export function monitorChip(state: MetricMonitorState): { text: string; pill: string; title: string } {
+  const title = `Monitored · ${state.headline}`;
+  if (state.status === 'anomaly' || state.status === 'error') {
+    const { label, pill } = statusStyle(state.status);
+    return { text: `monitor: ${label.toLowerCase()}`, pill, title };
+  }
+  return { text: 'monitor', pill: TONE_BADGE.ok, title };
 }

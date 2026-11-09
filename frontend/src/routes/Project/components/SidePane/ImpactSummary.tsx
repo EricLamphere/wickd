@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { Hammer, ListTree, Loader2 } from 'lucide-react';
 import type { GraphDto, ModelNode } from '../../../../lib/api';
-import { IMPACT_FLAGS, buildImpactSelector, computeImpact, formatImpactCounts } from '../../lib/impact';
+import { summaryFlags, buildImpactSelector, computeImpact } from '../../lib/impact';
 import { openBottomTab } from '../../lib/bottomPaneEvents';
-import { FlagBadge, useBuildImpacted } from '../impact/impactUi';
+import { FlagBadge, ImpactCounts, useBuildImpacted } from '../impact/impactUi';
 
 interface ImpactSummaryProps {
   projectId: number;
@@ -20,7 +20,7 @@ export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
   const impact = useMemo(() => computeImpact(graph, seedKey ? seedKey.split('|') : []), [graph, seedKey]);
   const { build, building, error } = useBuildImpacted(projectId);
   const { summary } = impact;
-  const flags = IMPACT_FLAGS.filter((f) => summary.flagCounts[f] > 0);
+  const flags = summaryFlags(summary);
   const nothingDownstream = summary.downstreamCount === 0;
   if (impact.seeds.length === 0) return null;
   const seedNodes = impact.seeds.map((n) => n.node);
@@ -31,9 +31,9 @@ export function ImpactSummary({ projectId, nodes, graph }: ImpactSummaryProps) {
     <div className="flex flex-col gap-2">
       <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Downstream impact</span>
       <div className="flex flex-col gap-2 bg-surface-elevated/40 rounded-lg p-3">
-        <span className="text-xs text-gray-300">
-          {nothingDownstream ? 'Nothing downstream' : formatImpactCounts(summary)}
-        </span>
+        {nothingDownstream
+          ? <span className="text-xs text-gray-300">Nothing downstream</span>
+          : <ImpactCounts summary={summary} />}
         {flags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {flags.map((f) => <FlagBadge key={f} flag={f} count={summary.flagCounts[f]} />)}

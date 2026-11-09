@@ -2,8 +2,11 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { BookOpen, ChevronRight, Play, Hammer, FlaskConical, Layers, Loader2, Pencil, Plus, Trash2, Wand2 } from 'lucide-react';
 import { api, type ModelNode, type GraphDto, type RunOpts } from '../../../../lib/api';
+import { CloneFromProdButton } from '../slim/CloneFromProdButton';
+import { DeferToggle } from '../slim/DeferToggle';
 import { DocumentModelButton, canDocument } from './DocumentModelButton';
 import { ImpactSummary } from './ImpactSummary';
+import { DataDiffCard } from './DataDiffCard';
 import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
 import { childrenOfType, isSemanticType } from '../../lib/semantic';
 import { SemanticDetails } from './SemanticDetails';
@@ -520,6 +523,7 @@ export function PropertiesTab({
       )}
 
       {graph && <ImpactSummary projectId={projectId} nodes={[model]} graph={graph} />}
+      <DataDiffCard projectId={projectId} model={model} />
 
       <div className="border-t border-gray-800" />
 
@@ -550,6 +554,7 @@ export function PropertiesTab({
           <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Options</span>
 
           <RunOptions state={opts} dispatch={dispatchOpts} />
+          <DeferToggle projectId={projectId} />
         </div>
       )}
 
@@ -598,6 +603,7 @@ export function PropertiesTab({
         )}
         {canDocument(model) && <InheritDescriptionsButton projectId={projectId} uniqueId={model.unique_id} />}
         <AddToSemanticLayerButton model={model} graph={graph} />
+        <CloneFromProdButton projectId={projectId} name={model.name} resourceType={model.resource_type} materialized={model.materialized} />
         {model.resource_type === 'model' && model.original_file_path && (
           <button
             onClick={() => startRefactor({ op: 'rename_model', uniqueId: model.unique_id, model: model.name })}
@@ -760,6 +766,7 @@ function MultiSelectionTab({ projectId, selectedModels, graph }: {
         <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Options</span>
 
         <RunOptions state={runOpts} dispatch={dispatchOpts} />
+        <DeferToggle projectId={projectId} />
       </div>
     </div>
   );

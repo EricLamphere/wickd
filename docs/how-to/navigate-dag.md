@@ -169,10 +169,12 @@ The switch at the left of the Impact tab's toolbar picks what to analyze:
 - **Uncommitted**: everything you've changed but not committed, including staged and untracked files
 - **Branch**: everything on the current branch since it split from a base branch, plus uncommitted changes. Pick the base in the **vs** dropdown (it defaults to the remote's default branch, or `main`/`master`)
 
+The toolbar's **Build impacted…** button opens the build dialog: choose what the Impact view shows or what changed compared with production (`state:modified+`), downstream and defer options, see the exact dbt command (copyable) and the nodes, then **Run build**. See [Build only what changed](slim-builds.md).
+
 **Column-level impact (Pro).** In **Selection** mode, turn on **Columns** in the toolbar, load column lineage if prompted, then pick the columns you're changing (or **all columns**, e.g. for a filter or join change). The list narrows to what those columns actually reach:
 - An **Affected columns** column shows the downstream columns each node gets them through. `all · rows via <model>.<column>` means the node filters, joins or groups on an affected column, so every row and column can change. `all · not traced` means wickd couldn't trace that model's SQL, so it's assumed fully affected.
 - **Tests** shows how many of each node's tests check an affected column ("3 of 12"), and the toolbar shows how many downstream nodes are unaffected.
-- **Build impacted** builds exactly the affected nodes.
+- **Build impacted…** (with *What the Impact view shows*) builds exactly the affected nodes.
 
 Shortcut: with column lineage loaded on the DAG, clicking a column in an expanded node (Cmd+click for several) makes the Impact tab show that column's column-level impact automatically. Click the canvas to clear the column selection.
 
@@ -190,7 +192,7 @@ If the base can't be compiled (some adapters need a warehouse connection to comp
 
 ### Data diff (Pro)
 
-Turn on **Data** in the toolbar (Uncommitted / Branch) to build the changed models in dev and compare their rows with prod (`DIFF_BASE_TARGET`). A **Data** column shows each model's result (`+12 −3 ~140 rows`, `no changes`, …); click it for counts, changed columns, schema differences and sample rows. See [Diff data between dev and prod](diff-data.md).
+Turn on **Data diff** in the toolbar (Uncommitted / Branch): its section above the table (collapsible, like Contracts) builds the changed models in dev and compares their rows with prod (`DIFF_BASE_TARGET`), then sums up how each came out. A **Data** column shows each model's result (`+12 −3 ~140 rows`, `no changes`, …); click it for counts, changed columns, schema differences and sample rows. The side pane's **Data diff** card diffs the selected model on its own. See [Diff data between dev and prod](diff-data.md).
 
 In the git modes the first group is **Changed**, and each node shows why it counts: `edited`, `new file`, the schema YAML that documents it, or `via macro <name>` when you changed a macro it calls (directly or through another macro). A notice above the list says what was compared. It also warns when `dbt_project.yml`, `packages.yml` or similar project-wide files changed, and lists changed files the manifest doesn't know yet (new files appear after **Refresh DAG**). Editing a schema YAML marks every model it documents as changed, even if you only touched one of them. Exposures are listed but left out of **Build impacted**.
 

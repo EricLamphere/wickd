@@ -1,6 +1,6 @@
 import type { RunInvocationDto } from '../../../lib/api';
 import { CommandBadge } from '../components/CommandBadge';
-import { RerunButton, StatusBadge, StopButton, formatDuration, formatTime } from './shared';
+import { RerunButton, RetryButton, StatusBadge, StopButton, formatDuration, formatTime } from './shared';
 
 interface RunListProps {
   invocations: RunInvocationDto[];
@@ -10,9 +10,10 @@ interface RunListProps {
   onRowClick: (inv: RunInvocationDto) => void;
   onStop: () => void;
   onRerun: (invocationId: number) => void;
+  onRetry: (invocationId: number) => void;
 }
 
-export function RunList({ invocations, total, isLoading, selectedId, onRowClick, onStop, onRerun }: RunListProps) {
+export function RunList({ invocations, total, isLoading, selectedId, onRowClick, onStop, onRerun, onRetry }: RunListProps) {
   return (
     <div className="flex-1 overflow-auto">
       {isLoading ? (
@@ -77,7 +78,10 @@ export function RunList({ invocations, total, isLoading, selectedId, onRowClick,
                     {inv.status === 'running' ? (
                       <StopButton onClick={onStop} />
                     ) : (
-                      <RerunButton onClick={(e) => { e.stopPropagation(); onRerun(inv.id); }} />
+                      <span className="inline-flex items-center gap-0.5">
+                        {inv.retryable && <RetryButton onClick={(e) => { e.stopPropagation(); onRetry(inv.id); }} />}
+                        <RerunButton onClick={(e) => { e.stopPropagation(); onRerun(inv.id); }} />
+                      </span>
                     )}
                   </td>
                 </tr>

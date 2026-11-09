@@ -27,6 +27,7 @@ from app.dbt.manifest import load_manifest
 from app.dbt.run_results import load_run_results, load_run_results_file
 from app.dbt.runner import RunRequest, runner
 from app.dbt.select import SelectMode, build_selector
+from app.dbt.state import RunState, StateError, resolve_run_state
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.semantic import monitors
@@ -48,6 +49,11 @@ class RunRequestDto(BaseModel):
     debug: bool = False
     empty: bool = False
     vars: dict[str, str] | None = None
+    # slim builds (plan 18): `state` adds --state (for state: selectors); defer / favor_state
+    # None = the project's sticky "Defer to prod" choice
+    state: bool = False
+    defer: bool | None = None
+    favor_state: bool | None = None
 
 
 class CustomCommandDto(BaseModel):
@@ -74,6 +80,10 @@ class RunInvocationDto(BaseModel):
     model_count: int
     success_count: int
     error_count: int
+    # slim build settings the run used ({kind, ref, folder, sha, target, state, defer, favor_state})
+    state: dict | None = None
+    # the project's latest invocation, failed: `dbt retry` can pick up where it stopped
+    retryable: bool = False
 
 
 class ModelTimingDto(BaseModel):
@@ -88,13 +98,6 @@ class ModelTimingDto(BaseModel):
     thread_id: str | None = None
     rows_affected: int | None = None
     bytes_processed: int | None = None
-
-
-class NodeTrendPoint(BaseModel):
-    invocation_id: int
-    started_at: datetime | None
-    execution_time: float | None
-    status: str
 
 
 class RunInvocationDetailDto(RunInvocationDto):
@@ -289,6 +292,7 @@ class _InvocationSpec:
     profile_name: str | None
     inject_profiles_dir: bool = True
     custom_args: tuple[str, ...] | None = None
+    state_record: dict | None = None
 
 
 def _profiles_default_target(project: Project) -> str | None:
@@ -316,6 +320,7 @@ async def _create_invocation(project: Project, spec: _InvocationSpec) -> tuple[i
             status="running",
             started_at=datetime.now(UTC),
             custom_args=json.dumps(list(spec.custom_args)) if spec.custom_args is not None else None,
+            state_json=json.dumps(spec.state_record) if spec.state_record is not None else None,
         )
         session.add(inv)
         await session.commit()
@@ -404,6 +409,7 @@ async def _run_dbt_and_persist(
     debug: bool = False,
     empty: bool = False,
     vars: dict[str, str] | None = None,
+    run_state: RunState | None = None,
 ) -> None:
     env = await load_project_env(project.id)
     active_target = await _load_active_target(project.id)
@@ -419,6 +425,8 @@ async def _run_dbt_and_persist(
         extra += ("--empty",)
     if vars:
         extra += ("--vars", json.dumps(vars))
+    if run_state is not None:
+        extra += run_state.args
 
     selector_part = f" --select {select}" if select else ""
     extra_part = (" " + " ".join(extra)) if extra else ""
@@ -429,6 +437,7 @@ async def _run_dbt_and_persist(
         cli_command=f"dbt {command}{selector_part}{extra_part}",
         target=active_target or _profiles_default_target(project),
         profile_name=profile_name,
+        state_record=run_state.record if run_state is not None else None,
     )
     await _run_invocation(project, spec, env)
 
@@ -462,10 +471,17 @@ async def _launch(
     project: Project, command: str, dto: RunRequestDto
 ) -> RunResponseDto:
     select = _resolve_selector(dto)
+    env = await load_project_env(project.id)
+    try:
+        run_state = await resolve_run_state(
+            project, env, command, state=dto.state, defer=dto.defer, favor_state=dto.favor_state,
+        )
+    except StateError as exc:
+        raise HTTPException(status_code=400, detail={"error": exc.code, "message": exc.message}) from exc
     asyncio.create_task(
         _run_dbt_and_persist(
             project, command, select,
-            dto.full_refresh, dto.threads, dto.debug, dto.empty, dto.vars,
+            dto.full_refresh, dto.threads, dto.debug, dto.empty, dto.vars, run_state,
         )
     )
     return RunResponseDto(accepted=True, command=command, select=select)
@@ -547,11 +563,20 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=UTC)
 
 
+def _state_record(inv: RunInvocation) -> dict | None:
+    try:
+        value = json.loads(inv.state_json) if inv.state_json else None
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
 def _invocation_to_dto(
     inv: RunInvocation,
     model_count: int,
     success_count: int = 0,
     error_count: int = 0,
+    latest_id: int | None = None,
 ) -> RunInvocationDto:
     duration: float | None = None
     if inv.started_at and inv.finished_at:
@@ -570,7 +595,20 @@ def _invocation_to_dto(
         model_count=model_count,
         success_count=success_count,
         error_count=error_count,
+        state=_state_record(inv),
+        retryable=inv.id == latest_id and inv.status == "error" and inv.command in RETRYABLE_COMMANDS,
     )
+
+
+RETRYABLE_COMMANDS = frozenset({"run", "build", "test", "seed", "snapshot", "retry", "clone"})
+
+
+async def latest_invocation_id(session: AsyncSession, project_id: int) -> int | None:
+    result = await session.execute(
+        select(RunInvocation.id).where(RunInvocation.project_id == project_id)
+        .order_by(RunInvocation.id.desc()).limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 @router.get("/{project_id}/run-history", response_model=RunHistoryPageDto)
@@ -625,8 +663,9 @@ async def get_run_history(
         for row in counts_result.fetchall()
     }
 
+    latest_id = await latest_invocation_id(session, project_id)
     items = [
-        _invocation_to_dto(inv, *count_by_id.get(inv.id, (0, 0, 0)))
+        _invocation_to_dto(inv, *count_by_id.get(inv.id, (0, 0, 0)), latest_id=latest_id)
         for inv in invocations
     ]
     return RunHistoryPageDto(items=items, total=total, offset=offset, limit=limit)
@@ -671,7 +710,8 @@ async def get_run_invocation_detail(
 
     success_count = sum(1 for r in results if r.status == "success")
     error_count = sum(1 for r in results if r.status == "error")
-    base = _invocation_to_dto(inv, len(nodes), success_count, error_count)
+    base = _invocation_to_dto(inv, len(nodes), success_count, error_count,
+                              latest_id=await latest_invocation_id(session, project_id))
     return RunInvocationDetailDto(
         **base.model_dump(),
         nodes=nodes,
@@ -732,36 +772,9 @@ async def post_rerun_invocation(
         except (CustomCommandError, json.JSONDecodeError, TypeError) as exc:
             raise HTTPException(status_code=400, detail=f"cannot rerun this command: {exc}") from exc
         return _launch_custom(project, parsed)
-    dto = RunRequestDto(select=inv.selector)
-    return await _launch(project, inv.command, dto)
-
-
-@router.get("/{project_id}/node-trend/{unique_id:path}", response_model=list[NodeTrendPoint])
-async def get_node_trend(
-    project_id: int,
-    unique_id: str,
-    session: AsyncSession = Depends(get_session),
-) -> list[NodeTrendPoint]:
-    project = await session.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
-
-    results_q = await session.execute(
-        select(InvocationModelResult, RunInvocation.started_at)
-        .join(RunInvocation, InvocationModelResult.invocation_id == RunInvocation.id)
-        .where(
-            InvocationModelResult.project_id == project_id,
-            InvocationModelResult.unique_id == unique_id,
-        )
-        .order_by(RunInvocation.started_at.asc())
+    record = _state_record(inv) or {}
+    dto = RunRequestDto(
+        select=inv.selector, state=bool(record.get("state")),
+        defer=bool(record.get("defer")), favor_state=bool(record.get("favor_state")),
     )
-    rows = results_q.fetchall()
-    return [
-        NodeTrendPoint(
-            invocation_id=r.InvocationModelResult.invocation_id,
-            started_at=r.started_at,
-            execution_time=r.InvocationModelResult.execution_time,
-            status=r.InvocationModelResult.status,
-        )
-        for r in rows
-    ]
+    return await _launch(project, inv.command, dto)

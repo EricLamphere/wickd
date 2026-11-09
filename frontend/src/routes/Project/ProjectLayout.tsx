@@ -8,6 +8,7 @@ import { BottomPane } from './components/BottomPane';
 import { CommandPalette } from './components/CommandPalette';
 import { RefactorHost } from './components/refactor/RefactorHost';
 import { WickyPane } from './components/Wicky/WickyPane';
+import { useStatePreviewCache } from './components/slim/useStatePreviewCache';
 import { CommandPaletteContext } from './lib/commandPaletteContext';
 import {
   SelectedNodeContext,
@@ -22,6 +23,7 @@ export default function ProjectLayout() {
   useModifierKeyClass();
   const { projectId } = useParams<{ projectId: string }>();
   const id = Number(projectId);
+  useStatePreviewCache(id);
 
   const { data: graph } = useQuery({
     queryKey: ['models', id],

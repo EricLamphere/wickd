@@ -20,14 +20,33 @@ Nothing is ever built on prod. wickd only reads it.
 
 ## Run a diff
 
-1. Open the bottom pane's **Impact** tab and pick **Uncommitted** or **Branch**.
-2. Turn on **Data** (Pro) in the toolbar.
-3. Click **Diff N changed models**. With **Build in dev first** on (the default; remembered),
-   wickd runs `dbt run --select <models>` on your active target first; the run shows in Run History.
+1. Open the bottom pane's **Impact** tab, pick **Uncommitted** or **Branch** and turn on **Data diff**
+   (Pro) in the toolbar, next to **Contracts**. The **Data diff** section appears above the impact
+   table, laid out like the Contracts section: collapse it with its chevron and the header still
+   shows the last result and the Diff buttons. Without `DIFF_BASE_TARGET` it links to Environment.
+2. Click **Diff changed (N)** to diff just the changed models, or **Diff all impacted (N)** to also
+   diff every built model downstream of them (to see how a change ripples through). With **Build in
+   dev first** on (the default; remembered), wickd runs `dbt run --select <models>` on your active target first; the run shows in Run History.
    Turn it off to compare what's already built in dev.
-4. The **Data** column in the impact table fills in per model: `+12 −3 ~140 rows`, `no changes`,
-   `schema changed`, `not in prod`, … Click a badge for the details. Any other built model in the
-   table has a **Diff** button to diff just that one.
+3. The section's header sums up the result (`1 differs · 3 unchanged · 2 min ago`) and lists each
+   diffed model (changed or downstream) with its result, what needs attention first. The **Data** column in the impact
+   table shows the same per model: `+12 −3 ~140 rows`, `no changes`, `schema changed`, `not in prod`, …
+   Click a result for the details. Any other built model in the table has a **Diff** button to diff just that one.
+
+After **Build impacted…** finishes a build in Uncommitted / Branch, Data diff turns on and the
+section (and the Git page) offers **Diff now**: the models are already built, so it skips the build.
+
+### Elsewhere
+
+- **Git page → Impact**: the uncommitted changes' latest result, with each model clickable, or a
+  **Diff N changed models vs prod** button, so you can check the data before committing.
+- **Side pane** (DAG and Files): any built model shows its latest result and **Diff vs prod** /
+  **Diff again**. **Details** opens the result in the Impact tab.
+
+A result goes **stale** when the model is rebuilt in dev after the diff, by a run, build, seed,
+snapshot or **Clone from prod**. Its badge is then dashed and marked `· stale`, and the side pane
+says which command rebuilt it. Diff again to compare the current data. A clone that kept an existing
+dev relation (dbt reports it as `No-op`) doesn't count.
 
 **Cancel** stops the diff and the dbt command it's waiting on.
 

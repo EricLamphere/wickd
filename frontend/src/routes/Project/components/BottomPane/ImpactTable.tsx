@@ -3,12 +3,14 @@ import type { MouseEvent } from 'react';
 import type { ImpactLevel, ImpactNode } from '../../lib/impact';
 import { getModelCoverageStats, type CoverageMap } from '../../lib/testCoverage';
 import { typeIconFor } from '../../lib/nodeTypeIcon';
+import { resourceColor } from '../../lib/resourceTypeStyle';
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE } from '../../lib/openInFiles';
 import type { AffectedColumnsLabel } from '../../lib/columnImpact';
 import type { BreakingBadge } from '../../lib/contractChecks';
 import { isDiffable, type DiffBadge } from '../../lib/dataDiff';
 import { FlagBadge } from '../impact/impactUi';
-import { statusStyle, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
+import { DiffBadgePill } from '../dataDiff/diffUi';
+import { monitorChip, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
 
 interface ImpactTableProps {
   /** Depth 0 (the selected nodes) first, then each downstream depth. */
@@ -48,8 +50,9 @@ function BreakingFlag({ badge }: { badge: BreakingBadge }) {
 }
 
 const GRID_BASE = 'grid items-center gap-4 px-4';
-const GRID_COLS = 'grid-cols-[minmax(14rem,2fr)_5.5rem_7.5rem_6rem_6.5rem_8.5rem_minmax(9rem,1.5fr)]';
-const GRID_COLS_WITH_AFFECTED = 'grid-cols-[minmax(12rem,1.5fr)_minmax(11rem,1.5fr)_5.5rem_7.5rem_6rem_6.5rem_8.5rem_minmax(8rem,1fr)]';
+// The node column flexes; every other column shares one width (min 9rem), growing together.
+const GRID_COLS = 'grid-cols-[minmax(14rem,2fr)_repeat(6,minmax(9rem,1fr))]';
+const GRID_COLS_WITH_AFFECTED = 'grid-cols-[minmax(14rem,2fr)_repeat(7,minmax(9rem,1fr))]';
 
 const COLUMNS = ['Node', 'Type', 'Materialization', 'Status', 'Tests', 'Column coverage', 'Flags'];
 const COLUMNS_WITH_AFFECTED = ['Node', 'Affected columns', ...COLUMNS.slice(1)];
@@ -58,25 +61,10 @@ const COLUMNS_WITH_DATA = ['Node', 'Data', ...COLUMNS.slice(1)];
 /** Data column (Pro) tint: a dim, dark teal band so it stands out from the rest of the row. */
 const DATA_COLUMN_CLS = 'self-stretch -mx-2 px-2 flex items-center min-w-0 bg-brand-950/40 border-x border-brand-900/30';
 
-const DIFF_TONE: Record<DiffBadge['tone'], string> = {
-  ok: 'border-emerald-900/60 bg-emerald-950/40 text-emerald-300',
-  warn: 'border-amber-900/60 bg-amber-950/40 text-amber-300',
-  error: 'border-red-900/60 bg-red-950/40 text-red-300',
-  running: 'border-brand-900/60 bg-brand-950/40 text-brand-300 animate-pulse',
-  muted: 'border-gray-700 bg-gray-800/60 text-gray-400',
-};
-
 function DataCell({ uid, badge, diffable, onDataDiff }: {
   uid: string; badge?: DiffBadge; diffable: boolean; onDataDiff?: ImpactTableProps['onDataDiff'];
 }) {
-  if (badge) {
-    return (
-      <button onClick={() => onDataDiff?.(uid, true)} title={`${badge.title}\nClick for details`}
-        className={`justify-self-start max-w-full truncate px-1.5 py-0.5 rounded border text-[10px] font-mono ${DIFF_TONE[badge.tone]}`}>
-        {badge.text}
-      </button>
-    );
-  }
+  if (badge) return <DiffBadgePill badge={badge} onClick={() => onDataDiff?.(uid, true)} className="justify-self-start" />;
   if (!diffable || !onDataDiff) return <Muted />;
   return (
     <button onClick={() => onDataDiff(uid, false)} title="Compare this model in dev with prod"
@@ -175,8 +163,9 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
   const { node } = item;
   const rowFlags = item.flags.filter((f) => f !== 'exposure');
   return (
-    <div className={`${grid} h-8 text-xs border-b border-gray-800/40 transition-colors hover:bg-gray-800/40`}>
-      <span className="flex items-center gap-2 min-w-0">
+    <div className={`${grid} group h-8 text-xs border-b border-gray-800/40 transition-colors hover:bg-gray-700/30`}>
+      {/* indented so rows sit under their group header's label */}
+      <span className="flex items-center gap-2 min-w-0 pl-3">
         <span className="w-3 text-center text-gray-600 shrink-0">{typeIconFor(node.resource_type)}</span>
         <button
           onClick={(e) => onNodeClick(e, node.unique_id)}
@@ -194,7 +183,7 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
         )}
       </span>
       {data && (
-        <span className={DATA_COLUMN_CLS}>
+        <span className={`${DATA_COLUMN_CLS} transition-colors group-hover:bg-brand-900/40`}>
           <DataCell uid={node.unique_id} badge={data.badge} diffable={isDiffable(node)} onDataDiff={data.onDataDiff} />
         </span>
       )}
@@ -203,7 +192,7 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
           ? <span className={`truncate ${AFFECTED_TONE[affected.tone]}`} title={affected.title}>{affected.text}</span>
           : <Muted />
       )}
-      <span className={`truncate ${isExposure(item) ? 'text-purple-300' : 'text-gray-400'}`}>{node.resource_type}</span>
+      <span className={`truncate ${resourceColor(node.resource_type)}`}>{node.resource_type}</span>
       <span className="text-gray-400 truncate">{node.materialized ?? <Muted />}</span>
       {isExposure(item) ? <Muted /> : <StatusCell status={node.status} />}
       <TestsCell item={item} />
@@ -218,10 +207,10 @@ function ImpactRow({ item, coverage, onNodeClick, reason, grid, affected, monito
 }
 
 function MonitorBadge({ monitor }: { monitor: MetricMonitorState }) {
-  const style = statusStyle(monitor.status);
+  const chip = monitorChip(monitor);
   return (
-    <span title={`Monitored · ${monitor.headline}`} className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono ${style.pill}`}>
-      monitor: {style.label.toLowerCase()}
+    <span title={chip.title} className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono ${chip.pill}`}>
+      {chip.text}
     </span>
   );
 }
@@ -243,7 +232,7 @@ export function ImpactTable({ groups, coverage, onNodeClick, seedLabel, reasons,
   const grid = `${GRID_BASE} ${wide ? GRID_COLS_WITH_AFFECTED : GRID_COLS}`;
   const columns = affectedColumns ? COLUMNS_WITH_AFFECTED : dataDiff ? COLUMNS_WITH_DATA : COLUMNS;
   return (
-    <div className={wide ? 'min-w-[72rem]' : 'min-w-[60rem]'}>
+    <div className={wide ? 'min-w-[86rem]' : 'min-w-[76rem]'}>
       <div className={`${grid} sticky top-0 z-10 h-7 bg-surface-panel border-b border-gray-800 text-[10px] uppercase tracking-wider font-medium text-gray-500 select-none`}>
         {columns.map((c) => (
           c === 'Data' && dataDiff

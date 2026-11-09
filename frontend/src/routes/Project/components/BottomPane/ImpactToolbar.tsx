@@ -1,11 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Columns3, Copy, Database, FileCheck2, Hammer, Loader2 } from 'lucide-react';
+import { Check, Columns3, Copy, Database, FileCheck2 } from 'lucide-react';
 import { api } from '../../../../lib/api';
-import { formatImpactCounts, IMPACT_FLAGS, type Impact } from '../../lib/impact';
+import { summaryFlags, type Impact } from '../../lib/impact';
 import type { ImpactMode } from '../../lib/impactChanges';
-import { monitoredDownstream, type MetricMonitorState } from '../../Metrics/monitors/monitorView';
-import { FlagBadge } from '../impact/impactUi';
+import { FlagBadge, ImpactCounts } from '../impact/impactUi';
+import { ImpactBuildButton } from '../slim/ImpactBuildButton';
 
 const MODES: { id: ImpactMode; label: string; title: string }[] = [
   { id: 'selection', label: 'Selection', title: 'Impact of the node(s) selected in the DAG or Files' },
@@ -129,11 +129,6 @@ interface ImpactToolbarProps {
   /** Column-level is on because columns are selected on the DAG. */
   columnLevelForced: boolean;
   selector: string;
-  building: boolean;
-  buildError: string | null;
-  onBuild: () => void;
-  /** monitored metrics' latest status (Pro; empty otherwise) */
-  monitorStatuses: ReadonlyMap<string, MetricMonitorState>;
   /** Contract checks (Pro) in Uncommitted / Branch modes. */
   contracts: boolean;
   onContractsChange: (on: boolean) => void;
@@ -143,86 +138,82 @@ interface ImpactToolbarProps {
 }
 
 export function ImpactToolbar(props: ImpactToolbarProps) {
-  const { projectId, mode, onModeChange, impact, selector, building, buildError, onBuild } = props;
+  const { projectId, mode, onModeChange, impact, selector } = props;
   const [copied, copy] = useCopied();
   const summary = impact?.summary;
-  const flags = summary ? IMPACT_FLAGS.filter((f) => summary.flagCounts[f] > 0) : [];
+  const flags = summary ? summaryFlags(summary) : [];
   const hasSeeds = !!impact && impact.seeds.length > 0;
-  const monitored = impact
-    ? monitoredDownstream(
-      [...impact.seeds, ...impact.levels.flatMap((l) => l.nodes)].filter((n) => n.node.resource_type === 'metric').map((n) => n.node.name),
-      props.monitorStatuses,
-    )
-    : null;
 
+  const showSummary = hasSeeds && !!summary;
   return (
-    <div className="flex items-center gap-3 h-9 px-4 border-b border-gray-800 shrink-0 select-none">
-      <ModeSwitch mode={mode} onChange={onModeChange} />
-      {mode === 'branch' && (
-        <BasePicker projectId={projectId} base={props.base} resolved={props.resolvedBase} onChange={props.onBaseChange} />
-      )}
-      {mode === 'selection' && (
-        <ColumnLevelToggle on={props.columnLevel} onChange={props.onColumnLevelChange} forced={props.columnLevelForced} />
-      )}
-      {mode !== 'selection' && (
-        <>
-          <ProToggle on={props.contracts} onChange={props.onContractsChange} icon={<FileCheck2 size={12} />} label="Contracts"
-            title="Contract checks (Pro): columns your changes remove, rename or retype that models, tests, exposures or the semantic layer still use" />
-          <ProToggle on={props.dataDiff} onChange={props.onDataDiffChange} icon={<Database size={12} />} label="Data"
-            title="Data diff (Pro): build the changed models in dev and compare their rows with prod (DIFF_BASE_TARGET)" />
-        </>
-      )}
-      {hasSeeds && summary && (
-        <>
-          <span className="w-px h-4 bg-gray-800 shrink-0" />
-          {selector && (
-            <code className="px-2 py-0.5 rounded bg-gray-800/80 text-xs text-gray-200 truncate max-w-[22rem]" title={selector}>
-              {selector}
-            </code>
+    <div className="flex flex-col border-b border-gray-800 shrink-0 select-none">
+      {/* Row 1: what to analyse, and what to do about it */}
+      <div className="flex items-center gap-3 h-9 px-4">
+        <ModeSwitch mode={mode} onChange={onModeChange} />
+        {mode === 'branch' && (
+          <BasePicker projectId={projectId} base={props.base} resolved={props.resolvedBase} onChange={props.onBaseChange} />
+        )}
+        {mode === 'selection' && (
+          <ColumnLevelToggle on={props.columnLevel} onChange={props.onColumnLevelChange} forced={props.columnLevelForced} />
+        )}
+        {mode !== 'selection' && (
+          <>
+            <ProToggle on={props.contracts} onChange={props.onContractsChange} icon={<FileCheck2 size={12} />} label="Contracts"
+              title="Contract checks (Pro): columns your changes remove, rename or retype that models, tests, exposures or the semantic layer still use" />
+            <ProToggle on={props.dataDiff} onChange={props.onDataDiffChange} icon={<Database size={12} />} label="Data diff"
+              title="Data diff (Pro): build the changed models in dev and compare their rows with prod (DIFF_BASE_TARGET)" />
+          </>
+        )}
+        {(hasSeeds || mode !== 'selection') && (
+          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            {hasSeeds && (
+              <button
+                onClick={() => copy(selector)}
+                disabled={!selector}
+                title={selector ? 'Copy the --select value' : NOTHING_TO_BUILD}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                {copied ? 'Copied' : 'Copy selector'}
+              </button>
+            )}
+            <ImpactBuildButton
+              projectId={projectId}
+              mode={mode}
+              base={props.base ?? props.resolvedBase}
+              selector={selector}
+              impact={impact}
+              columnLevel={props.columnLevel}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Row 2: what the change reaches */}
+      {showSummary && (
+        <div className="flex items-center gap-3 h-8 px-4 border-t border-gray-800/60 min-w-0">
+          {showSummary && summary && (
+            <>
+              {selector && (
+                <code className="px-2 py-0.5 rounded bg-gray-800/80 text-xs text-gray-200 truncate max-w-[28rem]" title={selector}>
+                  {selector}
+                </code>
+              )}
+              {summary.downstreamCount === 0
+                ? <span className="text-xs text-gray-400 whitespace-nowrap">Nothing downstream</span>
+                : <ImpactCounts summary={summary} className="shrink-0 flex-nowrap" />}
+              {props.prunedCount !== null && props.prunedCount > 0 && (
+                <span className="text-xs text-emerald-400/80 whitespace-nowrap" title="Downstream of the selection, but no affected column reaches them">
+                  {props.prunedCount} node{props.prunedCount === 1 ? '' : 's'} unaffected
+                </span>
+              )}
+              {flags.length > 0 && (
+                <span className="flex items-center gap-1 shrink-0">
+                  {flags.map((f) => <FlagBadge key={f} flag={f} count={summary.flagCounts[f]} />)}
+                </span>
+              )}
+            </>
           )}
-          <span className="text-xs text-gray-400 whitespace-nowrap">
-            {summary.downstreamCount === 0 ? 'Nothing downstream' : formatImpactCounts(summary)}
-          </span>
-          {props.prunedCount !== null && props.prunedCount > 0 && (
-            <span className="text-xs text-emerald-400/80 whitespace-nowrap" title="Downstream of the selection, but no affected column reaches them">
-              {props.prunedCount} node{props.prunedCount === 1 ? '' : 's'} unaffected
-            </span>
-          )}
-          {flags.length > 0 && (
-            <span className="flex items-center gap-1 shrink-0">
-              {flags.map((f) => <FlagBadge key={f} flag={f} count={summary.flagCounts[f]} />)}
-            </span>
-          )}
-          {monitored && monitored.count > 0 && (
-            <span className={`text-xs whitespace-nowrap truncate ${monitored.alarming.length ? 'text-red-300' : 'text-gray-400'}`}
-              title={monitored.alarming.map((m) => `${m}: ${props.monitorStatuses.get(m)?.headline}`).join('\n') || undefined}>
-              {monitored.count} monitored metric{monitored.count === 1 ? '' : 's'}
-              {monitored.alarming.length > 0 && ` · ${monitored.alarming.slice(0, 2).join(', ')}${monitored.alarming.length > 2 ? '…' : ''} look${monitored.alarming.length === 1 ? 's' : ''} wrong`}
-            </span>
-          )}
-        </>
-      )}
-      {buildError && <span className="text-xs text-red-400 truncate">{buildError}</span>}
-      {hasSeeds && (
-        <div className="flex items-center gap-1.5 ml-auto shrink-0">
-          <button
-            onClick={() => copy(selector)}
-            disabled={!selector}
-            title={selector ? 'Copy the --select value' : NOTHING_TO_BUILD}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs rounded text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200 disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-            {copied ? 'Copied' : 'Copy selector'}
-          </button>
-          <button
-            onClick={onBuild}
-            disabled={building || !selector}
-            title={selector ? `dbt build --select ${selector}` : NOTHING_TO_BUILD}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border border-brand-800 bg-brand-900/40 text-brand-300 transition-colors hover:bg-brand-800/60 disabled:opacity-40 disabled:hover:bg-brand-900/40"
-          >
-            {building ? <Loader2 size={12} className="animate-spin" /> : <Hammer size={12} />}
-            Build impacted
-          </button>
         </div>
       )}
     </div>

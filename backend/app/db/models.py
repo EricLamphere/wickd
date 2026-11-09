@@ -353,6 +353,8 @@ class RunInvocation(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # JSON list of user-entered args for custom dbt commands (null for built-in runs); replayed on rerun
     custom_args: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # JSON: slim build settings (plan 18) — {kind, ref, folder, sha, target, state, defer, favor_state}; null otherwise
+    state_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # From run_results.json: --threads (or distinct thread ids) and dbt's own elapsed_time
     threads: Mapped[int | None] = mapped_column(Integer, nullable=True)
     elapsed_time: Mapped[float | None] = mapped_column(nullable=True)

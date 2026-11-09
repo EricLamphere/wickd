@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Edge, GraphDto, ModelNode } from '../../../lib/api';
-import { buildExactSelector, buildImpactSelector, computeImpact, formatImpactCounts, selectorFor } from './impact';
+import { buildExactSelector, buildImpactSelector, computeImpact, formatImpactCounts, impactCountParts, selectorFor, summaryFlags } from './impact';
 
 function node(uid: string, overrides: Partial<ModelNode> = {}): ModelNode {
   const [resource_type, , name] = uid.split('.');
@@ -248,5 +248,23 @@ describe('semantic layer nodes', () => {
     expect(buildImpactSelector([pick('model.p.fct'), pick('metric.p.revenue')])).toBe('fct+');
     expect(buildExactSelector([pick('semantic_model.p.orders'), pick('model.p.fct')])).toBe('fct');
     expect(selectorFor(pick('metric.p.revenue'))).toBe('metric:revenue');
+  });
+});
+
+describe('summaryFlags', () => {
+  it('leaves out flags that only restate a type the counts already show', () => {
+    const flagCounts = { untested: 2, exposure: 5, metric: 29, incremental: 0, failing: 1, stale: 0 };
+    expect(summaryFlags({ flagCounts })).toEqual(['untested', 'failing']);
+  });
+});
+
+describe('impactCountParts', () => {
+  it('lists types in display order, then tests, matching formatImpactCounts', () => {
+    const summary = {
+      downstreamCount: 4, byType: { metric: 2, model: 1, exposure: 1 }, testsOnSeeds: 3, testsDownstream: 1, unitTests: 0,
+      flagCounts: { untested: 0, exposure: 1, metric: 2, incremental: 0, failing: 0, stale: 0 },
+    };
+    expect(impactCountParts(summary).map((p) => [p.type, p.count])).toEqual([['model', 1], ['exposure', 1], ['metric', 2], ['test', 4]]);
+    expect(formatImpactCounts(summary)).toBe('1 model · 1 exposure · 2 metrics · 4 tests');
   });
 });

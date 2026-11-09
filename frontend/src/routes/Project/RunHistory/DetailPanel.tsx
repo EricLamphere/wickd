@@ -8,7 +8,7 @@ import { useOpenInFiles } from '../lib/openInFiles';
 import { FailedTestRow } from './FailedTestRow';
 import { RunTimeline } from './RunTimeline';
 import { TrendRow } from './TrendRow';
-import { RerunButton, StatusBadge, formatDuration, formatTime, type FailedRowsCache } from './shared';
+import { RerunButton, RetryButton, StatusBadge, formatDuration, formatTime, type FailedRowsCache } from './shared';
 
 const RUN_LOG_TONE_CLASS: Record<LogTone | 'none', string> = {
   error: 'text-red-400',
@@ -24,11 +24,12 @@ interface DetailPanelProps {
   projectId: number;
   invocation: RunInvocationDto;
   onRerun: (invocationId: number) => void;
+  onRetry: (invocationId: number) => void;
   failedRowsCache: FailedRowsCache;
   onFailedRowsCached: (uid: string, data: { columns: string[]; rows: unknown[][] }) => void;
 }
 
-export function DetailPanel({ projectId, invocation, onRerun, failedRowsCache, onFailedRowsCached }: DetailPanelProps) {
+export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRowsCache, onFailedRowsCached }: DetailPanelProps) {
   const fileNav = useOpenInFiles(projectId);
   const [nodeFilter, setNodeFilter] = useState('');
   const [kindFilter, setKindFilter] = useState<'all' | 'model' | 'test'>('all');
@@ -81,7 +82,10 @@ export function DetailPanel({ projectId, invocation, onRerun, failedRowsCache, o
           <span className="text-xs text-gray-400 truncate">{invocation.selector ?? 'all models'}</span>
           <StatusBadge status={invocation.status} />
         </div>
-        <RerunButton size="md" onClick={(e) => { e.stopPropagation(); onRerun(invocation.id); }} />
+        <div className="flex items-center gap-1.5">
+          {invocation.retryable && <RetryButton size="md" onClick={(e) => { e.stopPropagation(); onRetry(invocation.id); }} />}
+          <RerunButton size="md" onClick={(e) => { e.stopPropagation(); onRerun(invocation.id); }} />
+        </div>
       </div>
 
       {/* Meta row */}

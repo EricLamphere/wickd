@@ -43,11 +43,13 @@ from app.api import performance as performance_api
 from app.api import projects as projects_api
 from app.api import propagation as propagation_api
 from app.api import refactor as refactor_api
+from app.api import run_trend as run_trend_api
 from app.api import runs as runs_api
 from app.api import semantic as semantic_api
 from app.api import semantic_debug as semantic_debug_api
 from app.api import settings as settings_api
 from app.api import setup as setup_api
+from app.api import slim as slim_api
 from app.api import sql as sql_api
 from app.api import terminal as terminal_api
 from app.api import test_gaps as test_gaps_api
@@ -148,6 +150,8 @@ app.include_router(impact_api.router)
 app.include_router(contracts_api.router)
 app.include_router(data_diff_api.router)
 app.include_router(runs_api.router)
+app.include_router(run_trend_api.router)
+app.include_router(slim_api.router)
 app.include_router(performance_api.router)
 app.include_router(sql_api.router)
 app.include_router(init_api.router)

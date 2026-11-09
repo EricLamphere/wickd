@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ListTree } from 'lucide-react';
 import type { GraphDto } from '../../../../lib/api';
 import { buildExactSelector, buildImpactSelector, computeImpact } from '../../lib/impact';
@@ -7,7 +7,6 @@ import { picksFromColumnKeys } from '../../lib/columnImpact';
 import { useImpactChanges } from '../../lib/useImpactChanges';
 import { buildCoverageMap } from '../../lib/testCoverage';
 import { useOpenInFiles } from '../../lib/openInFiles';
-import { useBuildImpacted } from '../impact/impactUi';
 import { ImpactColumnBar } from './ImpactColumnBar';
 import { ImpactNotices } from './ImpactNotices';
 import { ImpactTable } from './ImpactTable';
@@ -18,11 +17,12 @@ import { useNavigate } from 'react-router-dom';
 import { compareUrl } from '../../Metrics/lib/compareView';
 import { useContractCheck } from '../../lib/useContractCheck';
 import { breakingBadges, checkMatchesBase } from '../../lib/contractChecks';
-import { ContractsBar } from './ContractsBar';
-import { ContractFindings } from './ContractFindings';
-import { DataDiffBar } from './DataDiffBar';
+import { ContractsSection } from './ContractsSection';
+import { DataDiffSection } from './DataDiffSection';
 import { DataDiffDrawer } from './DataDiffDrawer';
 import { useImpactDataDiff } from './useImpactDataDiff';
+import { useSlimSettings } from '../slim/useSlimSettings';
+import { useBuildNudge } from '../../lib/buildNudge';
 
 interface ImpactPanelProps {
   projectId: number;
@@ -46,6 +46,9 @@ interface ImpactPanelProps {
   /** Data diff (Pro) in Uncommitted / Branch modes. */
   dataDiff: boolean;
   onDataDiffChange: (on: boolean) => void;
+  /** A model whose data diff another page asked to open in the drawer. */
+  openDiff: string | null;
+  onOpenDiffConsumed: () => void;
 }
 
 function EmptyState({ message, tone = 'muted' }: { message: string; tone?: 'muted' | 'error' }) {
@@ -70,7 +73,6 @@ export function ImpactPanel(props: ImpactPanelProps) {
   const { handleClick: openInFilesClick } = useOpenInFiles(projectId);
   const navigate = useNavigate();
   const monitorStatuses = useMonitorStatuses(projectId);
-  const { buildSelector, building, error: buildError } = useBuildImpacted(projectId);
 
   const isChangeMode = mode !== 'selection';
   const changes = useImpactChanges(projectId, mode === 'branch' ? 'branch' : 'working', mode === 'branch' ? base : null, isChangeMode);
@@ -117,6 +119,23 @@ export function ImpactPanel(props: ImpactPanelProps) {
   const showDataDiff = isChangeMode && props.dataDiff && !!changes.data && changes.data.changed_files > 0;
   const scope = mode === 'branch' ? 'branch' : 'working';
   const dataDiff = useImpactDataDiff(projectId, graph, impact, showDataDiff, scope, base);
+  const { baseTarget } = useSlimSettings(projectId);
+  const { openDiff, onOpenDiffConsumed } = props;
+  const { openModel } = dataDiff;
+  useEffect(() => {
+    if (!openDiff) return;
+    openModel(openDiff);
+    onOpenDiffConsumed();
+  }, [openDiff, openModel, onOpenDiffConsumed]);
+  // a build from Build impacted… finished: show Data diff so its "Diff now" offer is seen
+  const nudge = useBuildNudge(projectId);
+  const { dataDiff: dataDiffOn, onDataDiffChange } = props;
+  const diffLocked = dataDiff.state.locked;
+  useEffect(() => {
+    if (nudge === 'built' && isChangeMode && !dataDiffOn && !diffLocked) onDataDiffChange(true);
+  }, [nudge, isChangeMode, dataDiffOn, diffLocked, onDataDiffChange]);
+  // the Data column only for Pro: locked, it would be a column of dashes
+  const dataColumn = showDataDiff && !dataDiff.state.locked;
 
   // Column-level builds exactly the affected nodes; node-level builds everything downstream.
   const selector = columnResult && impact
@@ -157,8 +176,8 @@ export function ImpactPanel(props: ImpactPanelProps) {
           affectedColumns={columnResult ? columns.labels : undefined}
           monitorStatuses={monitorStatuses}
           breaking={breaking}
-          dataDiff={showDataDiff ? dataDiff.badges : undefined}
-          onDataDiff={showDataDiff && !dataDiff.state.locked ? dataDiff.onDataDiff : undefined}
+          dataDiff={dataColumn ? dataDiff.badges : undefined}
+          onDataDiff={dataColumn ? dataDiff.onDataDiff : undefined}
           onCompareMetric={isChangeMode
             ? (metric) => navigate(compareUrl(projectId, metric, { mode: mode === 'branch' ? 'branch' : 'working', base: mode === 'branch' ? base ?? '' : '' }))
             : undefined}
@@ -185,11 +204,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
         onColumnLevelChange={props.onColumnLevelChange}
         columnLevelForced={columnLevelForced}
         selector={selector}
-        building={building}
-        buildError={buildError}
-        onBuild={() => buildSelector(selector)}
-        monitorStatuses={monitorStatuses}
-        contracts={props.contracts}
+                contracts={props.contracts}
         onContractsChange={props.onContractsChange}
         dataDiff={props.dataDiff}
         onDataDiffChange={props.onDataDiffChange}
@@ -209,16 +224,12 @@ export function ImpactPanel(props: ImpactPanelProps) {
         // one scroll area: the Pro checks, then the downstream table
         <div className="flex-1 overflow-y-auto">
           {showContracts && (
-            <section className="flex flex-col gap-2 mx-3 my-2 px-3 py-2 rounded-lg border border-brand-900/60 bg-brand-950/20">
-              <ContractsBar state={contracts} base={base} resolvedBase={resolvedBase} />
-              {contractResults && <ContractFindings projectId={projectId} results={contractResults} onNodeClick={openInFilesClick} />}
-            </section>
+            <ContractsSection projectId={projectId} state={contracts} base={base} resolvedBase={resolvedBase} onNodeClick={openInFilesClick} />
           )}
           {showDataDiff && (
-            <section className="flex flex-col gap-2 mx-3 my-2 px-3 py-2 rounded-lg border border-gray-800 bg-surface-elevated/40">
-              <DataDiffBar state={dataDiff.state} diffable={dataDiff.diffable} targets={dataDiff.targets}
-                onDiff={(uids, build) => dataDiff.start(uids, build)} />
-            </section>
+            <DataDiffSection projectId={projectId} state={dataDiff.state} diffable={dataDiff.diffable} diffableImpacted={dataDiff.diffableImpacted} summary={dataDiff.summary}
+              targets={dataDiff.targets} baseTarget={baseTarget} onDiff={(uids, build) => dataDiff.start(uids, build)}
+              onOpen={dataDiff.openModel} />
           )}
           <div className="flex items-center gap-1.5 px-4 pt-2 pb-1.5 border-t border-gray-800 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
             <ListTree size={13} />Downstream impact
@@ -226,7 +237,7 @@ export function ImpactPanel(props: ImpactPanelProps) {
           <div className="flex flex-col min-h-[12rem]">{body}</div>
         </div>
       ) : body}
-      {showDataDiff && dataDiff.open && (
+      {dataDiff.open && (
         <DataDiffDrawer
           projectId={projectId}
           diff={dataDiff.open}

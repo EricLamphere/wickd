@@ -99,5 +99,7 @@ than the active one says so.
   Health dot.
 - **DAG:** monitored metric nodes carry a status badge (show metrics with the Type
   filter).
-- **Impact:** the toolbar counts monitored metrics downstream of the selection or your
-  changes and names any that look wrong; each metric row shows its monitor's status.
+- **Impact:** each monitored metric row has a chip in the Flags column: a red
+  `monitor: anomaly` (or `monitor: refresh failed`), otherwise a green `monitor`. An anomaly
+  isn't necessarily caused by your SQL change, so it's shown per row rather than as a warning
+  about the change.

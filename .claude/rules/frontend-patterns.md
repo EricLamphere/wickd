@@ -85,7 +85,7 @@ When handling SSE events, invalidate the relevant query:
 | none (never `graph_changed`: a refetch would rerun failed checks; Rerun = `refresh: true`, a changed query is a new key) | `['metric-debug', projectId, query]` (Metrics → query view → Debug, `Metrics/explore/debug/useMetricDebug.ts`) |
 | `dashboards_changed` (never `graph_changed`: every `dbt show` rewrites manifest.json, and a preview refetch runs queries) | `['dashboard-preview', projectId, slug]` (Drill into… drafts, `Metrics/dashboards/widgets/useWidgetPreview.ts`) |
 | `contract_check_started`, `contract_check_finished` | `['contract-check', projectId]` (Impact tab Contracts, Git page Impact section; `routes/Project/lib/useContractCheck.ts`) |
-| `data_diff_started`, `data_diff_finished` (never `files_changed`: a diff is a deliberate check) | `['data-diff', projectId]` (Impact tab Data column + drawer, `routes/Project/lib/useDataDiff.ts`) |
+| `data_diff_started`, `data_diff_finished`, `statuses_changed` (flags results whose dev relation was rebuilt since; never `files_changed`: a diff is a deliberate check) | `['data-diff', projectId]` (Impact tab Data column + drawer, `routes/Project/lib/useDataDiff.ts`) |
 | `metric_monitor_started`, `metric_monitor_finished` | `['metric-monitors', projectId]` (Metrics → Monitors, DAG badges, Impact; `Metrics/monitors/useMonitors.ts`), `['health-summary', projectId]` |
 | `charts_changed`, `charts_build_started`, `charts_build_finished` | `['charts', projectId]` (Charts page + nav item, `routes/Project/Charts/useCharts.ts`); `charts_changed` also `['charts-validate', projectId]` |
 | `charts_env` (global stream) | `['charts']` once the dbt Charts sidecar is ready or failed |

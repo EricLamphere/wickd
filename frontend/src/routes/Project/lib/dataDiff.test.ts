@@ -3,7 +3,7 @@ import { ApiError } from '../../../lib/api';
 import type { DataDiffDto, DataDiffResult } from '../../../lib/dataDiffApi';
 import {
   countSegments, dataDiffStartError, diffBadge, formatDelta, formatPct, isDiffable, latestByModel,
-  parseKeyInput, phaseLabel, sampleTable,
+  parseKeyInput, phaseLabel, sampleTable, summarizeDiffs, diffSummaryText, diffRequest, staleReason,
 } from './dataDiff';
 
 const schema = { added: [], removed: [], retyped: [] };
@@ -31,6 +31,15 @@ describe('diffBadge', () => {
     expect(diffBadge(dto({}, { counts: { added: 0, removed: 0, changed: 0 }, schema: retyped })).text).toBe('schema changed');
     expect(diffBadge(dto({}, { counts: { dev_rows: 5, prod_rows: 4, added: null }, schema })).text).toBe('5 vs 4 rows');
     expect(diffBadge(dto({}, { counts: { dev_rows: 5, prod_rows: 5, added: null }, schema })).tone).toBe('ok');
+  });
+  it('flags a result whose dev relation was rebuilt since, keeping its text and tone', () => {
+    const rebuilt = { dev_rebuilt_at: '2026-11-09T12:05:00+00:00', dev_rebuilt_by: 'clone' };
+    const b = diffBadge(dto(rebuilt, { counts: { added: 0, removed: 0, changed: 0 }, schema, headline: 'h' }));
+    expect(b).toMatchObject({ text: 'no changes', tone: 'ok', stale: true });
+    expect(b.title).toBe('h\nThe dev relation was rebuilt by dbt clone after this diff. Diff again to compare the current data.');
+    expect(staleReason(dto({ ...rebuilt, status: 'running' }))).toBe('');
+    expect(staleReason(dto())).toBe('');
+    expect(diffBadge(dto({}, { counts: { added: 0, removed: 0, changed: 0 }, schema })).stale).toBeUndefined();
   });
   it('running and errors', () => {
     expect(diffBadge(dto({ status: 'running', phase: 'building' }))).toMatchObject({ tone: 'running', title: 'Building in dev…' });
@@ -93,5 +102,51 @@ describe('helpers', () => {
     expect(dataDiffStartError(new ApiError(409, 'x', null))).toBeNull();
     expect(dataDiffStartError(new ApiError(400, 'x', { error: 'no_base_target', message: 'Set DIFF_BASE_TARGET' }))).toBe('Set DIFF_BASE_TARGET');
     expect(dataDiffStartError(new ApiError(503, 'x', null))).toMatch(/unavailable/);
+  });
+});
+
+describe('summarizeDiffs', () => {
+  const differs = dto({ unique_id: 'model.p.a', name: 'a', finished_at: '2026-11-09T10:00:00Z' },
+    { counts: { added: 2, removed: 0, changed: 0 }, schema });
+  const same = dto({ unique_id: 'model.p.b', name: 'b', finished_at: '2026-11-09T11:00:00Z' },
+    { counts: { added: 0, removed: 0, changed: 0 }, schema });
+  const failed = dto({ unique_id: 'model.p.c', name: 'c', status: 'error', error_message: 'boom' }, null);
+  const running = dto({ unique_id: 'model.p.d', name: 'd', status: 'running', phase: 'comparing' }, null);
+  const byModel = latestByModel([same, differs, failed, running]);
+
+  it('counts outcomes for the given models only and sorts what needs attention first', () => {
+    const s = summarizeDiffs(byModel, ['model.p.a', 'model.p.b', 'model.p.c', 'model.p.d', 'model.p.none']);
+    expect(s.items.map((i) => i.name)).toEqual(['d', 'c', 'a', 'b']);
+    expect([s.running, s.failed, s.differ, s.same]).toEqual([1, 1, 1, 1]);
+    expect(s.finishedAt).toBe('2026-11-09T11:00:00Z');
+  });
+  it('ignores diffs of models outside the change set', () => {
+    const s = summarizeDiffs(byModel, ['model.p.b']);
+    expect(s.items.map((i) => i.uid)).toEqual(['model.p.b']);
+    expect(s.differ).toBe(0);
+  });
+  it('counts a model missing from prod as differing, not failed', () => {
+    const missing = dto({ unique_id: 'model.p.e', status: 'error' }, { error: { code: 'prod_missing', message: '' } });
+    const s = summarizeDiffs(latestByModel([missing]), ['model.p.e']);
+    expect([s.differ, s.failed]).toEqual([1, 0]);
+  });
+});
+
+describe('diffSummaryText', () => {
+  it('lists the non-zero outcomes', () => {
+    expect(diffSummaryText({ items: [], running: 0, failed: 1, differ: 2, same: 3, finishedAt: null }))
+      .toBe('2 differ · 1 failed · 3 unchanged');
+    expect(diffSummaryText({ items: [], running: 0, failed: 0, differ: 1, same: 0, finishedAt: null })).toBe('1 differs');
+    expect(diffSummaryText({ items: [], running: 0, failed: 0, differ: 0, same: 2, finishedAt: null })).toBe('no changes in 2 models');
+  });
+});
+
+describe('diffRequest', () => {
+  it('adds remembered keys for the requested models and drops the base outside branch scope', () => {
+    const remembered = { 'model.p.a': ['id'], 'model.p.z': ['k'] };
+    expect(diffRequest(remembered, ['model.p.a', 'model.p.b'], true, 'working', 'main')).toEqual({
+      unique_ids: ['model.p.a', 'model.p.b'], scope: 'working', base: null, keys: { 'model.p.a': ['id'] }, build: true,
+    });
+    expect(diffRequest(remembered, ['model.p.b'], false, 'branch', 'main').base).toBe('main');
   });
 });

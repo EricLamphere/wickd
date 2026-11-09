@@ -79,6 +79,11 @@ export interface RunOpts {
   debug?: boolean;
   empty?: boolean;
   vars?: Record<string, string> | null;
+  /** slim builds (plan 18): pass --state (for state: selectors) */
+  state?: boolean;
+  /** --defer to the state manifest; omitted = the project's sticky "Defer to prod" choice */
+  defer?: boolean;
+  favor_state?: boolean;
 }
 
 export interface RunResponseDto {
@@ -366,6 +371,21 @@ export interface RunInvocationDto {
   model_count: number;
   success_count: number;
   error_count: number;
+  /** slim build settings the run used (plan 18) */
+  state: RunStateRecord | null;
+  /** the project's latest run, failed: dbt retry can resume it */
+  retryable: boolean;
+}
+
+export interface RunStateRecord {
+  kind: 'git' | 'path';
+  ref: string | null;
+  folder: string | null;
+  sha: string | null;
+  target: string | null;
+  state: boolean;
+  defer: boolean;
+  favor_state: boolean;
 }
 
 export interface ModelTimingDto {

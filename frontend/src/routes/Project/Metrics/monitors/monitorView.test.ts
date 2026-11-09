@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MonitorDto, MonitorPointDto, MonitorStatus } from '../../../../lib/monitorsApi';
-import { clampBand, formatNumber, kindTone, monitoredDownstream, monitorTitle, sparkGeometry, statusStyle, statusesByMetric, vsExpected } from './monitorView';
+import { clampBand, formatNumber, kindTone, monitorChip, monitorTitle, sparkGeometry, statusStyle, statusesByMetric, vsExpected } from './monitorView';
 
 function point(value: number | null, extra: Partial<MonitorPointDto> = {}): MonitorPointDto {
   return { period: '2026-10-01', value, expected: null, low: null, high: null, kind: 'none', partial: false, ...extra };
@@ -50,11 +50,16 @@ describe('statusesByMetric', () => {
   });
 });
 
-describe('monitoredDownstream', () => {
-  it('counts monitored metrics once and lists the alarming ones', () => {
-    const map = statusesByMetric([monitor('revenue', 'anomaly'), monitor('orders', 'ok'), monitor('aov', null)]);
-    expect(monitoredDownstream(['revenue', 'orders', 'revenue', 'aov', 'other'], map)).toEqual({ count: 3, alarming: ['revenue'] });
-    expect(monitoredDownstream([], map)).toEqual({ count: 0, alarming: [] });
+describe('monitorChip', () => {
+  const state = (status: 'anomaly' | 'error' | 'warn' | 'ok' | 'not_enough_history' | null) => ({ status, headline: 'h', monitors: 1 });
+  it('is red with the status for an anomaly or a failed refresh', () => {
+    expect(monitorChip(state('anomaly'))).toMatchObject({ text: 'monitor: anomaly', pill: statusStyle('anomaly').pill, title: 'Monitored · h' });
+    expect(monitorChip(state('error')).text).toBe('monitor: refresh failed');
+  });
+  it('is a green "monitor" otherwise', () => {
+    for (const s of ['ok', 'warn', 'not_enough_history', null] as const) {
+      expect(monitorChip(state(s))).toMatchObject({ text: 'monitor', pill: statusStyle('ok').pill });
+    }
   });
 });
 

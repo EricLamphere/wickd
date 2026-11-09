@@ -2,32 +2,43 @@ import { useCallback, useMemo, useState } from 'react';
 import type { GraphDto } from '../../../../lib/api';
 import type { StartDataDiff } from '../../../../lib/dataDiffApi';
 import { computeImpact, type Impact } from '../../lib/impact';
-import { diffBadge, isDiffable, readBuildPreference, readKeys, rememberKey } from '../../lib/dataDiff';
+import { diffBadge, diffRequest, isDiffable, readBuildPreference, readKeys, rememberKey, summarizeDiffs } from '../../lib/dataDiff';
+import { dismissBuildNudge } from '../../lib/buildNudge';
 import { useDataDiff } from '../../lib/useDataDiff';
 import type { RerunOptions } from './DataDiffRerun';
 
-/** The Impact tab's data diff (Pro): state, badges per row, the open drawer and starting diffs. */
+/**
+ * The Impact tab's data diff (Pro): state, badges per row, a summary of the changed models'
+ * latest diffs, the open drawer and starting diffs. `inChangeMode` = Uncommitted / Branch with
+ * changes, where the Data diff section and column show; the drawer opens in any mode.
+ */
 export function useImpactDataDiff(projectId: number, graph: GraphDto | null, impact: Impact | null,
-  on: boolean, scope: 'working' | 'branch', base: string | null) {
-  const state = useDataDiff(projectId, on);
+  inChangeMode: boolean, scope: 'working' | 'branch', base: string | null) {
+  const state = useDataDiff(projectId, true);
   const [openUid, setOpenUid] = useState<string | null>(null);
 
   const badges = useMemo(
-    () => (on ? new Map([...state.byModel].map(([uid, d]) => [uid, diffBadge(d)])) : undefined),
-    [on, state.byModel],
+    () => (inChangeMode ? new Map([...state.byModel].map(([uid, d]) => [uid, diffBadge(d)])) : undefined),
+    [inChangeMode, state.byModel],
   );
   const diffable = useMemo(
     () => (impact?.seeds ?? []).filter((s) => isDiffable(s.node)).map((s) => s.node.unique_id),
     [impact],
   );
+  // the changed models plus every diffable model downstream of them
+  const diffableImpacted = useMemo(
+    () => [...(impact?.seeds ?? []), ...(impact?.levels ?? []).flatMap((l) => l.nodes)]
+      .filter((n) => isDiffable(n.node)).map((n) => n.node.unique_id),
+    [impact],
+  );
+  const summary = useMemo(() => summarizeDiffs(state.byModel, diffableImpacted), [state.byModel, diffableImpacted]);
   const latest = state.byModel.size > 0 ? [...state.byModel.values()].at(-1) : undefined;
   const targets = latest ? { dev: latest.dev_target, prod: latest.prod_target } : null;
 
   const start = useCallback((uids: string[], build: boolean, extra: Partial<StartDataDiff> = {}) => {
-    const remembered = readKeys(projectId);
-    const keys = Object.fromEntries(uids.filter((u) => remembered[u]).map((u) => [u, remembered[u]]));
-    void state.start({ unique_ids: uids, scope, base: scope === 'branch' ? base : null, keys, build, ...extra,
-      ...(extra.keys ? { keys: { ...keys, ...extra.keys } } : {}) });
+    dismissBuildNudge(projectId);
+    const req = diffRequest(readKeys(projectId), uids, build, scope, base);
+    void state.start({ ...req, ...extra, ...(extra.keys ? { keys: { ...req.keys, ...extra.keys } } : {}) });
   }, [projectId, scope, base, state]);
 
   const onDataDiff = useCallback((uid: string, existing: boolean) => {
@@ -50,8 +61,9 @@ export function useImpactDataDiff(projectId: number, graph: GraphDto | null, imp
   }, [graph]);
 
   return {
-    state, badges, diffable, targets, start, onDataDiff, rerun, metricsFor,
+    state, badges, diffable, diffableImpacted, summary, targets, start, onDataDiff, rerun, metricsFor,
     open: openUid ? state.byModel.get(openUid) ?? null : null,
+    openModel: setOpenUid,
     close: () => setOpenUid(null),
   };
 }

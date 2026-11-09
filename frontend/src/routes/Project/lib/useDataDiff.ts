@@ -8,7 +8,8 @@ import { dataDiffStartError, latestByModel } from './dataDiff';
 /**
  * The latest data diff (Pro) per model, plus start() / cancel(). Refetched on data_diff_started /
  * data_diff_finished; `phase` follows data_diff_progress while a job runs. `locked` = no Pro
- * entitlement. Results aren't invalidated on file changes: a diff is a deliberate check.
+ * entitlement. Results aren't invalidated on file changes: a diff is a deliberate check. statuses_changed
+ * refetches so a diff whose dev relation was rebuilt since shows as stale.
  */
 export function useDataDiff(projectId: number, enabled: boolean) {
   const qc = useQueryClient();
@@ -23,6 +24,8 @@ export function useDataDiff(projectId: number, enabled: boolean) {
       qc.invalidateQueries({ queryKey: ['data-diff', projectId] });
     }
     if (event.type === 'data_diff_progress') setPhase((event.data as { phase: string }).phase);
+    // a run, build or clone may have rebuilt a diffed model in dev: refetch so its result shows as stale
+    if (event.type === 'statuses_changed') qc.invalidateQueries({ queryKey: ['data-diff', projectId] });
   }, [projectId, qc]));
 
   const query = useQuery({

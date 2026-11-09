@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { api, type ModelNode } from '../../../../lib/api';
-import { buildImpactSelector, type ImpactFlag } from '../../lib/impact';
+import { buildImpactSelector, impactCountParts, type ImpactFlag, type ImpactSummary } from '../../lib/impact';
+import { resourcePill } from '../../lib/resourceTypeStyle';
 
 export const FLAG_META: Record<ImpactFlag, { label: string; title: string; cls: string }> = {
   untested: {
@@ -11,12 +12,12 @@ export const FLAG_META: Record<ImpactFlag, { label: string; title: string; cls: 
   exposure: {
     label: 'exposure',
     title: 'A dashboard, app or other consumer outside dbt',
-    cls: 'bg-purple-950/40 text-purple-300 border-purple-900/60',
+    cls: resourcePill('exposure'),
   },
   metric: {
     label: 'metric',
     title: 'A metric or saved query in the semantic layer — its numbers may change',
-    cls: 'bg-sky-950/40 text-sky-300 border-sky-900/60',
+    cls: resourcePill('metric'),
   },
   incremental: {
     label: 'incremental',
@@ -41,6 +42,20 @@ export function FlagBadge({ flag, count }: { flag: ImpactFlag; count?: number })
     <span title={meta.title} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono ${meta.cls}`}>
       {count !== undefined && <span className="font-semibold">{count}</span>}
       {meta.label}
+    </span>
+  );
+}
+
+/** The downstream counts as colored pills per node type ("12 models", "38 tests"). */
+export function ImpactCounts({ summary, className = '' }: { summary: ImpactSummary; className?: string }) {
+  return (
+    <span className={`inline-flex flex-wrap items-center gap-1 ${className}`} title={impactCountParts(summary).map((p) => p.label).join(' · ')}>
+      {impactCountParts(summary).filter((p) => p.count > 0).map((p) => (
+        <span key={p.type} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono whitespace-nowrap ${resourcePill(p.type)}`}>
+          <span className="font-semibold">{p.count}</span>
+          {p.label.slice(String(p.count).length + 1)}
+        </span>
+      ))}
     </span>
   );
 }

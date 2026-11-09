@@ -2,14 +2,15 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertOctagon, AlertTriangle, Hammer, ListTree, Loader2 } from 'lucide-react';
 import { api } from '../../../../lib/api';
-import { buildImpactSelector, computeImpact, formatImpactCounts, IMPACT_FLAGS } from '../../lib/impact';
+import { buildImpactSelector, computeImpact, summaryFlags } from '../../lib/impact';
 import { changeErrorMessage, seedIdsFrom } from '../../lib/impactChanges';
 import { useImpactChanges } from '../../lib/useImpactChanges';
 import { openBottomTab } from '../../lib/bottomPaneEvents';
-import { FlagBadge, useBuildImpacted } from '../../components/impact/impactUi';
+import { FlagBadge, ImpactCounts, useBuildImpacted } from '../../components/impact/impactUi';
 import { PaneSectionHeader, usePersistedOpen } from './PaneSection';
 import { useContractCheck } from '../../lib/useContractCheck';
 import { summarizeCheck, summaryLine } from '../../lib/contractChecks';
+import { DataDiffLine } from './DataDiffLine';
 
 const OPEN_KEY = 'wickd:git-impact-open';
 
@@ -47,6 +48,7 @@ export function ImpactSection({ projectId }: { projectId: number }) {
           )}
           {impact && <ImpactFlags impact={impact} />}
           {impact && <ContractsLine projectId={projectId} />}
+          {impact && <DataDiffLine projectId={projectId} changed={seedNodes} />}
           {impact && (
             <div className="grid grid-cols-2 gap-1.5">
               <button
@@ -80,14 +82,14 @@ function ImpactSummaryText({ impactCount, impact }: { impactCount: number; impac
     <p className="text-xs text-zinc-300 leading-relaxed">
       {impactCount} changed node{impactCount === 1 ? '' : 's'}
       {impact.summary.downstreamCount > 0
-        ? <> affect <span className="text-zinc-100">{formatImpactCounts(impact.summary)}</span></>
+        ? <> affect <ImpactCounts summary={impact.summary} className="align-middle" /></>
         : ', nothing downstream'}
     </p>
   );
 }
 
 function ImpactFlags({ impact }: { impact: ReturnType<typeof computeImpact> }) {
-  const flags = IMPACT_FLAGS.filter((f) => impact.summary.flagCounts[f] > 0);
+  const flags = summaryFlags(impact.summary);
   if (flags.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1">

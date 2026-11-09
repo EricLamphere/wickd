@@ -5,6 +5,9 @@ import NavRail from '../components/NavRail';
 import { api, type RunInvocationDto } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import { useUrlTab } from '../../../lib/useUrlTab';
+import { alertError } from '../../../lib/dialogs';
+import { slimApi } from '../../../lib/slimApi';
+import { apiErrorMessage } from '../../../lib/slimBuild';
 import { DetailPanel } from './DetailPanel';
 import { DetailPaneShell } from './DetailPaneShell';
 import { PerformanceTab } from './PerformanceTab';
@@ -62,6 +65,14 @@ export default function RunHistoryPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['run-history', id], exact: false });
     },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: (invocationId: number) => slimApi.retry(id, invocationId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['run-history', id], exact: false });
+    },
+    onError: (err) => alertError(new Error(apiErrorMessage(err, 'Retry failed'))),
   });
 
   const [selectedId, setSelectedId] = useState<number | null>(() => {
@@ -221,6 +232,7 @@ export default function RunHistoryPage() {
                 onRowClick={(inv) => { if (inv.id === selectedId) clearSelected(); else selectInvocation(inv); }}
                 onStop={() => cancelMutation.mutate()}
                 onRerun={(invId) => rerunMutation.mutate(invId)}
+                onRetry={(invId) => retryMutation.mutate(invId)}
               />
 
               {/* Pagination */}
@@ -253,7 +265,7 @@ export default function RunHistoryPage() {
         {tab === 'runs' && (
           <DetailPaneShell pane={pane}>
             {selected
-              ? <DetailPanel projectId={id} invocation={selected} onRerun={(invId) => rerunMutation.mutate(invId)} failedRowsCache={failedRowsCache} onFailedRowsCached={handleFailedRowsCached} />
+              ? <DetailPanel projectId={id} invocation={selected} onRerun={(invId) => rerunMutation.mutate(invId)} onRetry={(invId) => retryMutation.mutate(invId)} failedRowsCache={failedRowsCache} onFailedRowsCached={handleFailedRowsCached} />
               : (
                 <div className="flex items-center justify-center h-full text-gray-500 text-sm px-6 text-center">
                   Select a run to see node timings and logs.

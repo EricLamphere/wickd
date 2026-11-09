@@ -5,6 +5,7 @@ import type { BreakingChange, ContractFinding, ContractResult, ContractSeverity 
 import { OPEN_IN_FILES_HOVER_CLS, OPEN_IN_FILES_TITLE } from '../../lib/openInFiles';
 import { consumerGroups, findingDetail, findingLabel, type ConsumerChip } from '../../lib/contractChecks';
 import { metricPageUrl } from '../../Metrics/lib/exploreLink';
+import { resourcePill } from '../../lib/resourceTypeStyle';
 
 type NodeClick = (e: MouseEvent, uniqueId: string) => void;
 
@@ -30,8 +31,8 @@ const FINDING_PILL: Record<ContractFinding['kind'], string> = {
 };
 const CHIP_TONE: Record<ConsumerChip['kind'], string> = {
   node: 'border-gray-700 text-gray-300',
-  metric: 'border-purple-900/60 bg-purple-950/30 text-purple-300',
-  saved_query: 'border-purple-900/60 text-purple-300',
+  metric: resourcePill('metric'),
+  saved_query: resourcePill('saved_query'),
   dashboard: 'border-brand-800 bg-brand-900/30 text-brand-300',
   monitor: 'border-sky-900/60 bg-sky-950/30 text-sky-300',
 };

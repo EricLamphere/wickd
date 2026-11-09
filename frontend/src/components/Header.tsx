@@ -8,6 +8,7 @@ import { GlobalSettingsModal } from './GlobalSettingsModal';
 import { GlobalSetupModal } from './GlobalSetupModal';
 import { HomeProfileSelector } from './HomeProfileSelector';
 import { NavArrows } from './NavArrows';
+import { DeferChip } from '../routes/Project/components/slim/DeferChip';
 
 const PLATFORM_ICONS: Record<string, string> = {
   postgres: '🐘', bigquery: '☁️', snowflake: '❄️', redshift: '🔴',
@@ -98,6 +99,7 @@ function ProjectSelectors({ projectId }: { projectId: number }) {
           </select>
         </div>
       )}
+      <DeferChip projectId={projectId} />
     </div>
   );
 }

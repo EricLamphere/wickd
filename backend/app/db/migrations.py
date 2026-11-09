@@ -756,6 +756,10 @@ async def run_migrations() -> None:
             ))
             await session.commit()
 
+        # plan 18: slim build settings a run used (state source, sha, target, defer), replayed on rerun
+        if not await _column_exists(session, "run_invocations", "state_json"):
+            await session.execute(text("ALTER TABLE run_invocations ADD COLUMN state_json TEXT"))
+            await session.commit()
 
 async def init_db() -> None:
     await ensure_db_initialized()

@@ -14,6 +14,7 @@ Step-by-step guides for using wickd.
 | [Use the integrated terminal](use-terminal.md) | Open terminal sessions, manage multiple tabs, and use the terminal during development |
 | [Use source control (Git)](use-git.md) | Stage, commit, push/pull, switch branches, and view diffs in the built-in SCM panel |
 | [Use the SQL workspace](use-sql-workspace.md) | Write and run ad-hoc SQL queries, inspect compiled SQL, and manage workspace files |
+| [Build only what changed (slim builds)](slim-builds.md) | Build changed vs a prod manifest (git ref or artifacts folder) with a preview, defer to prod, clone from prod, retry failed runs, and (Pro) the smallest safe set from column lineage |
 | [View run history](view-run-history.md) | Browse past invocations, inspect per-node timings and logs, and track execution trends |
 | [Analyze run performance](analyze-run-performance.md) | Run timeline per thread, DAG durations overlay, and (Pro) critical path, regressions and recommendations |
 | [Inherit docs and trace tagged columns (Pro)](inherit-docs-and-trace-tags.md) | Fill empty column descriptions from upstream columns, and follow tagged (e.g. `pii`) columns to every model and exposure they reach |

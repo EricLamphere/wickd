@@ -8,6 +8,7 @@ import { GlobalEnvVarsReadOnly } from './components/GlobalEnvVarsReadOnly';
 import { EnvPrecedenceNote } from '../../components/GlobalEnvVarsSection';
 import { alertError, confirmDialog } from '../../lib/dialogs';
 import { monitorsApi } from '../../lib/monitorsApi';
+import { StateSourceTest } from './components/slim/StateSourceTest';
 
 // ---- Collapsible tile wrapper ----
 
@@ -173,9 +174,11 @@ interface ProjectSettingRowProps {
   onSave: (val: string) => Promise<void>;
   labelWidth: number;
   onResizeLabel: (dx: number) => void;
+  /** e.g. a Test link, shown after the value */
+  action?: React.ReactNode;
 }
 
-function ProjectSettingRow({ label, value, placeholder, kind = 'example', onSave, labelWidth, onResizeLabel }: ProjectSettingRowProps) {
+function ProjectSettingRow({ label, value, placeholder, kind = 'example', onSave, labelWidth, onResizeLabel, action }: ProjectSettingRowProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
@@ -234,6 +237,7 @@ function ProjectSettingRow({ label, value, placeholder, kind = 'example', onSave
           {value || <span className="text-gray-600 italic">{placeholder ? (kind === 'default' ? `default: ${placeholder}` : `e.g. ${placeholder}`) : 'click to set'}</span>}
         </span>
       )}
+      {!editing && action}
     </div>
   );
 }
@@ -264,6 +268,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
   const monitorSchedule = envVars.find((v) => v.key === 'MONITOR_SCHEDULE')?.value ?? '';
   const diffBaseTarget = envVars.find((v) => v.key === 'DIFF_BASE_TARGET')?.value ?? '';
+  const stateSource = envVars.find((v) => v.key === 'STATE_SOURCE')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
@@ -364,6 +369,17 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['compare-options', projectId] });
   };
 
+  // Slim builds' production manifest: git:<ref> or path:<folder>; empty = git, the base branch
+  const handleSaveStateSource = async (val: string) => {
+    const source = val.trim();
+    if (source && !/^(git:|path:.+)/.test(source)) {
+      throw new Error('STATE_SOURCE must look like git:main or path:/folder/of/prod-artifacts');
+    }
+    if (source) await api.init.setEnvVar(projectId, 'STATE_SOURCE', source);
+    else await api.init.deleteEnvVar(projectId, 'STATE_SOURCE');
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+  };
+
   return (
     <div>
       <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Project</h3>
@@ -453,6 +469,16 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />
+            <ProjectSettingRow
+              label="STATE_SOURCE"
+              value={stateSource}
+              placeholder="git:main (production manifest for the Impact tab's Build, defer and clone; or path:/folder of prod artifacts; empty = the base branch)"
+              kind="example"
+              onSave={handleSaveStateSource}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+              action={<StateSourceTest projectId={projectId} />}
+            />
           </>
         )}
       </div>
@@ -461,7 +487,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'state_defer', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

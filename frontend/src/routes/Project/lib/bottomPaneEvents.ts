@@ -15,8 +15,12 @@ export interface OpenBottomTabDetail {
   impactMode?: ImpactMode;
   /** For the Impact tab: turn contract checks on. */
   contracts?: boolean;
+  /** For the Impact tab: turn data diff (Pro) on. */
+  dataDiff?: boolean;
+  /** For the Impact tab: open this model's data diff (Pro) in the drawer. */
+  openDiff?: string;
 }
 
-export function openBottomTab(tab: BottomTabRequest, options: { impactMode?: ImpactMode; contracts?: boolean } = {}): void {
+export function openBottomTab(tab: BottomTabRequest, options: Omit<OpenBottomTabDetail, 'tab'> = {}): void {
   window.dispatchEvent(new CustomEvent<OpenBottomTabDetail>(OPEN_BOTTOM_TAB_EVENT, { detail: { tab, ...options } }));
 }

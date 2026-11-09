@@ -1,4 +1,4 @@
-import { RotateCw } from 'lucide-react';
+import { RotateCw, Undo2 } from 'lucide-react';
 import type { useOpenInFiles } from '../lib/openInFiles';
 
 export type FileNav = ReturnType<typeof useOpenInFiles>;
@@ -61,6 +61,19 @@ export function RerunButton({ onClick, size = 'sm' }: { onClick: (e: React.Mouse
     <button onClick={onClick} title="Rerun" className={cls}>
       <RotateCw className="w-3.5 h-3.5" />
       {size === 'md' && 'Rerun'}
+    </button>
+  );
+}
+
+/** `dbt retry`: only on the project's latest failed run (dbt reads its run_results.json). */
+export function RetryButton({ onClick, size = 'sm' }: { onClick: (e: React.MouseEvent) => void; size?: 'sm' | 'md' }) {
+  const cls = size === 'md'
+    ? 'flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-red-950/40 hover:bg-red-900/50 text-red-300 border border-red-900/60 transition-colors'
+    : 'p-1 rounded text-red-400/80 hover:text-red-300 hover:bg-red-900/20 transition-colors';
+  return (
+    <button onClick={onClick} title="Retry: dbt retry re-runs only what failed or was skipped" className={cls}>
+      <Undo2 className="w-3.5 h-3.5" />
+      {size === 'md' && 'Retry'}
     </button>
   );
 }

@@ -6,9 +6,10 @@ import type { ComparePeriod, CurrentPeriod } from '../../../../lib/dashboardsApi
 import { PeriodPicker } from '../dashboards/builder/PeriodPicker';
 import { COMPARE_PRESETS, CURRENT_PRESETS, resolveCompare, resolveCurrent } from '../dashboards/periods';
 import { chipLabel, type Chip } from '../lib/composer';
+import { resourcePill } from '../../lib/resourceTypeStyle';
 
 const KIND_CLS: Record<Chip['kind'], string> = {
-  metric: 'border-brand-800 bg-brand-950/40 text-brand-200',
+  metric: resourcePill('metric'),
   time: 'border-gray-700 bg-gray-800/60 text-gray-200',
   dimension: 'border-gray-700 bg-gray-800/60 text-gray-200',
   filter: 'border-amber-900/60 bg-amber-950/30 text-amber-200 font-mono',

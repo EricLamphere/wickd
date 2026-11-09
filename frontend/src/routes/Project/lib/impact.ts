@@ -9,6 +9,14 @@ import type { GraphDto, ModelNode } from '../../../lib/api';
 export const IMPACT_FLAGS = ['untested', 'exposure', 'metric', 'incremental', 'failing', 'stale'] as const;
 export type ImpactFlag = (typeof IMPACT_FLAGS)[number];
 
+/** Flags that only restate a node's type; summaries already count types, so they're per-row only. */
+const TYPE_FLAGS: ReadonlySet<ImpactFlag> = new Set(['exposure', 'metric']);
+
+/** Risk flags worth a badge next to a summary's type counts (untested, incremental, failing, stale). */
+export function summaryFlags(summary: Pick<ImpactSummary, 'flagCounts'>): ImpactFlag[] {
+  return IMPACT_FLAGS.filter((f) => !TYPE_FLAGS.has(f) && summary.flagCounts[f] > 0);
+}
+
 export interface ImpactNode {
   node: ModelNode;
   /** 0 for seeds, otherwise the shortest number of hops from any seed. */
@@ -239,9 +247,25 @@ export function totalImpactTests(summary: ImpactSummary): number {
   return summary.testsOnSeeds + summary.testsDownstream + summary.unitTests;
 }
 
+export interface ImpactCountPart {
+  /** resource type, or 'test' */
+  type: string;
+  count: number;
+  /** e.g. "12 models" */
+  label: string;
+}
+
+/** Downstream counts per node type in display order, then tests (badges and text share this). */
+export function impactCountParts(summary: ImpactSummary): ImpactCountPart[] {
+  const types = Object.keys(summary.byType).sort((a, b) => typeRank(a) - typeRank(b) || a.localeCompare(b));
+  const tests = totalImpactTests(summary);
+  return [
+    ...types.map((t) => ({ type: t, count: summary.byType[t], label: plural(summary.byType[t], t) })),
+    { type: 'test', count: tests, label: plural(tests, 'test') },
+  ];
+}
+
 /** e.g. "12 models · 2 exposures · 38 tests" — node types in display order. */
 export function formatImpactCounts(summary: ImpactSummary): string {
-  const types = Object.keys(summary.byType).sort((a, b) => typeRank(a) - typeRank(b) || a.localeCompare(b));
-  const parts = types.map((t) => plural(summary.byType[t], t));
-  return [...parts, plural(totalImpactTests(summary), 'test')].join(' · ');
+  return impactCountParts(summary).map((p) => p.label).join(' · ');
 }

@@ -16,6 +16,7 @@ import ModelNodeComponent from '../ModelNode';
 import { computeLayout } from '../../lib/layout';
 import { drawsNodes, finishedStatus, initStepOperation, isWarningLine, type OperationStatus } from '../../lib/operationRun';
 import { OperationNode } from './OperationNode';
+import { RetryLastRunButton } from '../slim/RetryLastRunButton';
 
 interface ProjectRunButtonsProps {
   projectId: number;
@@ -379,7 +380,8 @@ function RunPanelInner({ projectId, projectName, graph }: RunPanelProps) {
         ) : (
           <span className="text-xs text-gray-600">{elapsed}</span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <RetryLastRunButton projectId={projectId} disabled={running} />
           <ProjectRunButtons projectId={projectId} disabled={running} />
         </div>
       </div>

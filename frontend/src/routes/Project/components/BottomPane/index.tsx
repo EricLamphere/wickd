@@ -9,6 +9,7 @@ import { NodeSqlPanel } from './NodeSqlPanel';
 import { ImpactPanel } from './ImpactPanel';
 import { OPEN_BOTTOM_TAB_EVENT, type OpenBottomTabDetail } from '../../lib/bottomPaneEvents';
 import type { ImpactMode } from '../../lib/impactChanges';
+import { useBuildNudgeTracker } from '../../lib/buildNudge';
 
 export type PaneTabId = 'run' | 'node-dag' | 'node-sql' | 'impact' | 'project-logs' | 'api-logs' | 'terminal';
 
@@ -71,6 +72,9 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
   const [impactColumnLevel, setImpactColumnLevel] = useState(false);
   const [impactContracts, setImpactContracts] = useState(false);
   const [impactDataDiff, setImpactDataDiff] = useState(false);
+  // a model whose data diff another page asked to open (consumed by the Impact tab)
+  const [impactOpenDiff, setImpactOpenDiff] = useState<string | null>(null);
+  useBuildNudgeTracker(projectId);
   const [height, setHeight] = useState(readStoredHeight);
   const resizing = useRef(false);
   const startY = useRef(0);
@@ -140,10 +144,12 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
   // Other components (e.g. the SidePane impact card) can ask for a tab
   useEffect(() => {
     const onOpenTab = (e: Event) => {
-      const { tab, impactMode: mode, contracts } = (e as CustomEvent<OpenBottomTabDetail>).detail;
+      const { tab, impactMode: mode, contracts, dataDiff, openDiff } = (e as CustomEvent<OpenBottomTabDetail>).detail;
       setActiveTab(tab);
       if (mode) setImpactMode(mode);
       if (contracts) setImpactContracts(true);
+      if (dataDiff) setImpactDataDiff(true);
+      if (openDiff) setImpactOpenDiff(openDiff);
       setOpen(true);
     };
     window.addEventListener(OPEN_BOTTOM_TAB_EVENT, onOpenTab);
@@ -287,6 +293,8 @@ export function BottomPane({ projectId, graph, projectPath, projectName, selecte
             onContractsChange={setImpactContracts}
             dataDiff={impactDataDiff}
             onDataDiffChange={setImpactDataDiff}
+            openDiff={impactOpenDiff}
+            onOpenDiffConsumed={() => setImpactOpenDiff(null)}
           />
         </div>
       )}

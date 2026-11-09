@@ -1,7 +1,7 @@
 // Pure helpers for data diff (Pro, plan 06): the Impact table's Data badge, the drawer's
 // count bar and sample tables, labels, and the per-model remembered key.
 import { ApiError } from '../../../lib/api';
-import type { DataDiffCounts, DataDiffDto, DataDiffResult, DataDiffStatus } from '../../../lib/dataDiffApi';
+import type { DataDiffCounts, DataDiffDto, DataDiffResult, DataDiffStatus, StartDataDiff } from '../../../lib/dataDiffApi';
 
 export type BadgeTone = 'muted' | 'ok' | 'warn' | 'error' | 'running';
 
@@ -9,6 +9,8 @@ export interface DiffBadge {
   text: string;
   tone: BadgeTone;
   title: string;
+  /** dev was rebuilt after this diff, so the result may be out of date */
+  stale?: boolean;
 }
 
 const DIFFABLE_TYPES = new Set(['model', 'seed', 'snapshot']);
@@ -57,8 +59,21 @@ function schemaChanged(result: DataDiffResult | null): boolean {
   return !!s && (s.added.length + s.removed.length + s.retyped.length) > 0;
 }
 
+/** Why a finished diff may be out of date ('' when dev wasn't rebuilt since). */
+export function staleReason(dto: Pick<DataDiffDto, 'status' | 'dev_rebuilt_at' | 'dev_rebuilt_by'>): string {
+  if (dto.status === 'running' || !dto.dev_rebuilt_at) return '';
+  const by = dto.dev_rebuilt_by ? `dbt ${dto.dev_rebuilt_by}` : 'a dbt command';
+  return `The dev relation was rebuilt by ${by} after this diff. Diff again to compare the current data.`;
+}
+
 /** The Data column's short summary of a model's latest diff. */
 export function diffBadge(dto: DataDiffDto): DiffBadge {
+  const badge = baseBadge(dto);
+  const reason = staleReason(dto);
+  return reason ? { ...badge, stale: true, title: [badge.title, reason].filter(Boolean).join('\n') } : badge;
+}
+
+function baseBadge(dto: DataDiffDto): DiffBadge {
   if (dto.status === 'running') return { text: 'diffing…', tone: 'running', title: phaseLabel(dto.phase) };
   const result = dto.result;
   if (dto.status === 'error') {
@@ -86,6 +101,54 @@ export function diffBadge(dto: DataDiffDto): DiffBadge {
 
 export function latestByModel(diffs: readonly DataDiffDto[] | undefined): Map<string, DataDiffDto> {
   return new Map((diffs ?? []).map((d) => [d.unique_id, d]));
+}
+
+export interface DiffSummaryItem { uid: string; name: string; badge: DiffBadge }
+
+/** The latest diffs of a set of models, in words: what the Data diff section, Git page and side pane show. */
+export interface DiffSummary {
+  /** running, failed, differing, then unchanged */
+  items: DiffSummaryItem[];
+  running: number;
+  failed: number;
+  differ: number;
+  same: number;
+  /** when the newest finished diff among them finished */
+  finishedAt: string | null;
+}
+
+const TONE_ORDER: Record<BadgeTone, number> = { running: 0, error: 1, warn: 2, muted: 3, ok: 4 };
+
+export function summarizeDiffs(byModel: ReadonlyMap<string, DataDiffDto>, uniqueIds: readonly string[]): DiffSummary {
+  const diffs = uniqueIds.map((uid) => byModel.get(uid)).filter((d): d is DataDiffDto => !!d);
+  const items = diffs
+    .map((d) => ({ uid: d.unique_id, name: d.name, badge: diffBadge(d) }))
+    .sort((a, b) => TONE_ORDER[a.badge.tone] - TONE_ORDER[b.badge.tone] || a.name.localeCompare(b.name));
+  const count = (tones: BadgeTone[]) => items.filter((i) => tones.includes(i.badge.tone)).length;
+  const finished = diffs.map((d) => d.finished_at).filter((f): f is string => !!f).sort();
+  return {
+    items, running: count(['running']), failed: count(['error']), differ: count(['warn']), same: count(['ok', 'muted']),
+    finishedAt: finished.at(-1) ?? null,
+  };
+}
+
+/** e.g. "2 differ · 1 failed · 3 unchanged" ('' when nothing finished). */
+export function diffSummaryText(s: DiffSummary): string {
+  if (s.differ === 0 && s.failed === 0) {
+    return s.same > 0 ? `no changes in ${s.same} model${s.same === 1 ? '' : 's'}` : '';
+  }
+  return [
+    s.differ ? `${s.differ} differ${s.differ === 1 ? 's' : ''}` : '',
+    s.failed ? `${s.failed} failed` : '',
+    s.same ? `${s.same} unchanged` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/** A start request for these models, with the key the user picked for any of them before. */
+export function diffRequest(remembered: Record<string, string[]>, uniqueIds: string[], build: boolean,
+  scope: 'working' | 'branch', base: string | null): StartDataDiff {
+  const keys = Object.fromEntries(uniqueIds.filter((u) => remembered[u]).map((u) => [u, remembered[u]]));
+  return { unique_ids: uniqueIds, scope, base: scope === 'branch' ? base : null, keys, build };
 }
 
 export interface BarSegment { status: DataDiffStatus | 'unchanged'; count: number; pct: number }

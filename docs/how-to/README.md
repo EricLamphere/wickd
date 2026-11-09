@@ -27,6 +27,7 @@ Step-by-step guides for using wickd.
 | [View dbt Charts boards](dbt-charts.md) | Browse a project's dbt Charts boards (`charts/*.yml`), build them, view them live with `dct serve`, validate them, and export a metric dashboard as a board |
 | [Monitor metrics for anomalies (Pro)](metric-monitors.md) | Watch metrics for spikes, drops, level shifts, missing periods and restatements; checked after builds, on Check now, or on an interval while wickd is open |
 | [Find and fill test gaps (Pro)](find-test-gaps.md) | See the untested columns that matter most (join keys and each model's grain), with evidence, and add tests for many models in one reviewed change |
+| [Write and debug unit tests](unit-tests.md) | See each model's dbt unit tests and their results, read a failure's expected-vs-actual rows, accept the actual rows as the new expectation, and (Pro) generate a unit test from real rows that hit each branch |
 | [Refactor models and columns (Pro)](refactor.md) | Rename a model or a column across the project, or extract a CTE into its own model; review every edit, then apply, check with dbt parse, and undo |
 | [Use Wicky, the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |
 | [Use the AI assistant (Pro)](use-ai.md) | Download a local model, generate model/column docs and review them as a diff, and ask questions about your project |

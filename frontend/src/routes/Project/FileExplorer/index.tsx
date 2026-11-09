@@ -52,6 +52,7 @@ export default function FileExplorerPage() {
   const [selectedTestNode, setSelectedTestNode] = useState<ModelNode | null>(null);
   /** test node to scroll the editor to on open (from deep-link) */
   const [targetTestNode, setTargetTestNode] = useState<ModelNode | null>(null);
+  const [targetUnitTest, setTargetUnitTest] = useState<string | null>(null);
   const PREVIEW_CACHE_KEY = `preview-cache-${id}`;
   const FAILED_ROWS_KEY = `failed-rows-cache-${id}`;
 
@@ -139,12 +140,13 @@ export default function FileExplorerPage() {
     }
   }, []));
 
-  const loadFile = useCallback(async (path: string, testNode: ModelNode | null) => {
+  const loadFile = useCallback(async (path: string, testNode: ModelNode | null, unitTest: string | null = null) => {
     const seq = ++loadSeqRef.current;
     setLoadingPath(path);
     setEdited(undefined);
     setSaveStatus('idle');
     setTargetTestNode(testNode);
+    setTargetUnitTest(unitTest);
     try {
       const file = await api.files.getContent(id, path);
       if (seq !== loadSeqRef.current) return;
@@ -245,7 +247,8 @@ export default function FileExplorerPage() {
     loadedKeyRef.current = key;
     // For test deep-links, scroll the editor to that test
     const testNode = graph.nodes.find((n) => n.unique_id === modelParam && n.resource_type === 'test') ?? null;
-    loadFile(pathParam, testNode);
+    const unitTest = graph.unit_tests?.find((u) => u.unique_id === modelParam)?.name ?? null;
+    loadFile(pathParam, testNode, unitTest);
   }, [graph, pathParam, modelParam, SESSION_KEY, setSearchParams, loadFile]);
 
   useEffect(() => {
@@ -362,6 +365,7 @@ export default function FileExplorerPage() {
             graph={graph ?? null}
             onNavigateToFile={openFileNode}
             targetTestNode={targetTestNode}
+            targetUnitTest={targetUnitTest}
             onTestSelected={(testNode) => setSelectedTestNode(testNode)}
           />
         ) : (

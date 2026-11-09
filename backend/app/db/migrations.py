@@ -761,6 +761,14 @@ async def run_migrations() -> None:
             await session.execute(text("ALTER TABLE run_invocations ADD COLUMN state_json TEXT"))
             await session.commit()
 
+        # plan 19: unit test results were stored as kind "model" with no parent
+        for table in ("model_statuses", "invocation_model_results"):
+            await session.execute(text(
+                f"UPDATE {table} SET kind = 'unit_test' "
+                "WHERE unique_id LIKE 'unit_test.%' AND kind != 'unit_test'"
+            ))
+            await session.commit()
+
 async def init_db() -> None:
     await ensure_db_initialized()
     await run_migrations()

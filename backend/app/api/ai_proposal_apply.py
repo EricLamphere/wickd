@@ -27,6 +27,7 @@ from app.db.engine import get_session
 from app.db.models import AiProposal, AiProposalFile, Project
 from app.logging_setup import get_logger
 from app.refactor.verify import start_verify
+from app.unit_tests.verify import UNIT_TEST_KINDS, run_after_accept
 
 log = get_logger(__name__)
 
@@ -107,6 +108,10 @@ async def accept_all(
         start_verify(proposal.id, project_id, root)
     elif proposal.kind == SEMANTIC_KIND and proposal.status == "applied":
         ai_proposals.start_semantic_verify(proposal.id, project_id, root, json.loads(proposal.result_json or "{}"))
+    elif proposal.kind in UNIT_TEST_KINDS:
+        project = await session.get(Project, project_id)
+        if project is not None:
+            await run_after_accept(project, json.loads(proposal.result_json or "{}"))
     elif names := _applied_nodes(proposal, pending):
         # refresh the manifest so docs / side pane pick it up (as accepting one file does)
         asyncio.create_task(ai_proposals._compile_model(project_id, str(root), " ".join(names)))

@@ -53,6 +53,7 @@ from app.api import slim as slim_api
 from app.api import sql as sql_api
 from app.api import terminal as terminal_api
 from app.api import test_gaps as test_gaps_api
+from app.api import unit_tests as unit_tests_api
 from app.api import workspace as workspace_api
 from app.api import workspace_ai as workspace_ai_api
 from app.api import workspace_docs as workspace_docs_api
@@ -133,6 +134,7 @@ app.include_router(freshness_api.router)
 app.include_router(column_lineage_api.router)
 app.include_router(propagation_api.router)
 app.include_router(test_gaps_api.router)
+app.include_router(unit_tests_api.router)
 app.include_router(semantic_api.router)
 app.include_router(semantic_debug_api.router)
 app.include_router(metric_monitors_api.router)

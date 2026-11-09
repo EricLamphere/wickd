@@ -4,12 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai import pro
 from app.licensing.gating import require_pro
 from app.refactor import pro as refactor_pro
+from app.unit_tests import pro as unit_tests_pro
 
 REFACTOR_KIND = "refactor"
+UNIT_TEST_KIND = "unit_test"
 # semantic_status() reason codes that mean MetricFlow can't run here at all
 BLOCKING_SEMANTIC_REASONS = frozenset({"off", "too_old", "latest_spec_needs_1_12", "no_cli_release", "unknown_version"})
 # proposals made by Base features (no AI, no Pro engine): reviewing them is free
-BASE_KINDS = frozenset({"document_stub", "exposure", "saved_query", "charts_board"})
+BASE_KINDS = frozenset({"document_stub", "exposure", "saved_query", "charts_board", "unit_test_rebaseline"})
 
 
 async def require_ai(session: AsyncSession) -> None:
@@ -26,13 +28,20 @@ async def require_refactor(session: AsyncSession) -> None:
     await require_pro(session, available=refactor_pro.is_available, unavailable_detail=refactor_pro.UNAVAILABLE)
 
 
+async def require_unit_tests(session: AsyncSession) -> None:
+    """Unit test generation is Pro; it needs the engine, not the local model."""
+    await require_pro(session, available=unit_tests_pro.is_available, unavailable_detail=unit_tests_pro.UNAVAILABLE)
+
+
 async def require_proposal_access(session: AsyncSession, kind: str) -> None:
     """Reviewing a proposal needs what made it: nothing for Base kinds, the refactor
-    engine, or the AI features."""
+    or unit test engine, or the AI features."""
     if kind in BASE_KINDS:
         return
     if kind == REFACTOR_KIND:
         await require_refactor(session)
+    elif kind == UNIT_TEST_KIND:
+        await require_unit_tests(session)
     else:
         await require_ai(session)
 

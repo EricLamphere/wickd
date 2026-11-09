@@ -7,6 +7,7 @@ import { DeferToggle } from '../slim/DeferToggle';
 import { DocumentModelButton, canDocument } from './DocumentModelButton';
 import { ImpactSummary } from './ImpactSummary';
 import { DataDiffCard } from './DataDiffCard';
+import { UnitTestsSection } from './UnitTestsSection';
 import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
 import { childrenOfType, isSemanticType } from '../../lib/semantic';
 import { SemanticDetails } from './SemanticDetails';
@@ -488,6 +489,7 @@ export function PropertiesTab({
             </>
           );
         })()}
+        <UnitTestsSection projectId={projectId} model={model} graph={graph} />
       </div>
 
       {isSemantic && (

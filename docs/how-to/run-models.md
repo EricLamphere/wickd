@@ -23,6 +23,8 @@ All three support the same selection modes and use the active dbt target.
 - **only** (`model`) — runs just the selected model
 - **downstream** (`model+`) — runs the model and all its descendants
 
+**Unit tests:** the SidePane's **Unit tests** section lists the model's dbt unit tests with their last result; **Run all** runs `dbt test --select <model>,test_type:unit`, and ▶ on a row runs one. See [Write and debug unit tests](unit-tests.md).
+
 ## Running from the File Explorer
 
 1. Navigate to **Files** in the project nav.

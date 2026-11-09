@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { ModelNode } from '../../../lib/api';
 import { useColumnLineage } from '../lib/columnLineageContext';
 import { bucketFor, badgeClassesFor, COVERAGE_CLASS, type NodeCoverageData } from '../lib/testCoverage';
+import type { UnitTestBadge } from '../lib/unitTests';
 import { typeIconFor } from '../lib/nodeTypeIcon';
 import { DURATION_CLASS, durationLabel, durationTitle, type NodeDurationData } from '../lib/durationOverlay';
 import { statusStyle, type MetricMonitorState } from '../Metrics/monitors/monitorView';
@@ -33,6 +34,8 @@ interface Props extends NodeProps {
     dimmed?: boolean;
     expanded?: boolean;
     coverage?: NodeCoverageData;
+    /** with the coverage overlay: the model's dbt unit tests and how many failed */
+    unitTests?: UnitTestBadge;
     duration?: NodeDurationData;
     /** metric nodes with a monitor (Pro): worst latest status */
     monitor?: MetricMonitorState;
@@ -40,7 +43,7 @@ interface Props extends NodeProps {
 }
 
 function ModelNodeComponent({ data, selected }: Props) {
-  const { model, dimmed, expanded, coverage, duration, monitor } = data;
+  const { model, dimmed, expanded, coverage, unitTests, duration, monitor } = data;
   const { activeColumnSels, relatedColumnsMap, onColumnClick, onToggleExpand } = useColumnLineage();
 
   const ring = STATUS_RING[model.status] ?? STATUS_RING.idle;
@@ -81,6 +84,14 @@ function ModelNodeComponent({ data, selected }: Props) {
               </span>
             );
           })()}
+          {unitTests && (
+            <span
+              className={`text-[9px] px-1 rounded font-mono shrink-0 ${unitTests.failed ? 'bg-red-950/60 text-red-300' : 'bg-surface-elevated text-gray-400'}`}
+              title={`${unitTests.count} unit test${unitTests.count === 1 ? '' : 's'}${unitTests.failed ? `, ${unitTests.failed} failing` : ''}`}
+            >
+              UT {unitTests.failed ? `${unitTests.failed}/${unitTests.count}` : unitTests.count}
+            </span>
+          )}
           {duration && (
             <span
               className={`text-[9px] px-1 rounded font-mono shrink-0 ${DURATION_CLASS[duration.bucket].badge}`}
@@ -196,6 +207,8 @@ export default memo(ModelNodeComponent, (prev, next) => {
     prev.data.expanded === next.data.expanded &&
     prev.data.model === next.data.model &&
     prev.data.coverage === next.data.coverage &&
+    prev.data.unitTests?.count === next.data.unitTests?.count &&
+    prev.data.unitTests?.failed === next.data.unitTests?.failed &&
     prev.data.duration === next.data.duration
   );
 });

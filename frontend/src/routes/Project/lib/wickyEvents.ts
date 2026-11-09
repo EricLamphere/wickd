@@ -21,10 +21,20 @@ export interface OpenWickyDetail {
   mode?: AskMode;
   /** Start a quick action on `uniqueId` (e.g. from the side pane or the Metrics page). */
   action?: WickyAction;
+  /** action 'unit_test': SQL the user selected in Files, to preselect the logic to cover. */
+  focusHint?: FocusHint;
 }
 
-/** Quick actions other pages can start; results show in the chat like any other. */
-export type WickyAction = 'semantic_draft';
+/** A Files selection: the selected text and the file's text before it (to find the CTE
+ *  the selection sits in). */
+export interface FocusHint {
+  selection: string;
+  before: string;
+}
+
+/** Quick actions other pages can start; results show in the chat like any other.
+ *  'unit_test' opens the unit test options (focus, masking) rather than starting at once. */
+export type WickyAction = 'semantic_draft' | 'unit_test';
 
 export function openWicky(detail: OpenWickyDetail = {}): void {
   window.dispatchEvent(new CustomEvent<OpenWickyDetail>(OPEN_WICKY_EVENT, { detail }));

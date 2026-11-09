@@ -237,6 +237,8 @@ async def test_document_from_chat_stays_in_history(client, db_session, entitled,
         "batch": False, "note": None, "selected": None, "accepted": [], "items": [], "conflicts": [], "skipped": [],
         "summary": {}, "manual": [], "notes": [], "verify": None,
         "spec": None, "model": None, "semantic_model": None, "warnings": [],
+        "unit_test": None, "fixtures": [], "expected": None, "actual": None, "branches": [],
+        "focus": None, "masked": False, "incremental": False, "rebaseline": False,
     }
     fid = proposal["files"][0]["id"]
     await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/files/{fid}/accept")

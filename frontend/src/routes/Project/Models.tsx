@@ -31,6 +31,7 @@ import { type FilterState, defaultFilter, applyFilter, serializeFilter, deserial
 import { isSemanticType } from './lib/semantic';
 import { ColumnLineageContext, type ColumnLineageContextValue } from './lib/columnLineageContext';
 import { buildCoverageMap, getModelCoverageStats } from './lib/testCoverage';
+import { unitTestBadges } from './lib/unitTests';
 import CoverageLegend from './components/CoverageLegend';
 import DurationLegend from './components/DurationLegend';
 import { useDurationOverlay } from './lib/useDurationOverlay';
@@ -294,6 +295,7 @@ export default function ModelsPage() {
   // Derived from raw graph (not filtered) so coverage reflects all tests.
   // Recomputes automatically when graph_changed SSE fires and invalidates ['models', id].
   const coverageMap = useMemo(() => (graph ? buildCoverageMap(graph) : null), [graph]);
+  const unitTestCounts = useMemo(() => unitTestBadges(graph), [graph]);
   // monitored metric nodes get a status badge (Pro; empty otherwise)
   const monitorStatuses = useMonitorStatuses(id);
 
@@ -518,13 +520,14 @@ export default function ModelsPage() {
                 }
               : undefined,
             duration: durationOverlay.durations?.get(uid),
+            unitTests: coverageOverlay ? unitTestCounts.get(uid) : undefined,
             monitor: model?.resource_type === 'metric' ? monitorStatuses.get(model.name) : undefined,
           },
         };
       });
     });
     setEdges(layoutEdges);
-  }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, durationOverlay.durations, monitorStatuses, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layoutNodes, layoutEdges, connectedUids, columnConnectedUids, expandedNodes, coverageOverlay, coverageMap, unitTestCounts, durationOverlay.durations, monitorStatuses, setNodes, setEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back/forward changed ?model= — move React Flow's selection highlight to match.
   // Otherwise React Flow owns `selected` (clicks, modifier-clicks); nothing else may force it,
@@ -777,7 +780,10 @@ export default function ModelsPage() {
           onNavigateToFiles={() => selectedModel && navigate(`/projects/${id}/files?model=${encodeURIComponent(selectedModel.unique_id)}`)}
           onNavigateToFile={(path) => {
             const node = graph?.nodes.find((n) => n.original_file_path === path);
-            if (node) navigate(`/projects/${id}/files?model=${encodeURIComponent(node.unique_id)}`);
+            // files that aren't a DAG node's (e.g. a unit test's YAML) open by path
+            navigate(node
+              ? `/projects/${id}/files?model=${encodeURIComponent(node.unique_id)}`
+              : `/projects/${id}/files?path=${encodeURIComponent(path)}`);
           }}
           onViewDocs={() => selectedModel && navigate(`/projects/${id}/docs?node=${encodeURIComponent(selectedModel.unique_id)}`)}
           onDelete={() => selectedModel && handleDeleteModel(selectedModel)}

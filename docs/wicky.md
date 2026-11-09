@@ -49,6 +49,7 @@ multi-file diff. See [Refactor models and columns](how-to/refactor.md).
 | **Explain failure** | Shown when the node or one of its tests failed in the latest run. Wicky reads the error, the test's SQL and a few failing rows, then explains what failed, the likely cause and how to fix it. |
 | **Document** | Writes the model and column descriptions that are missing (or rewrites all of them, if you choose *Rewrite all*). |
 | **Add tests** | Suggests generic tests (`unique`, `not_null`, `accepted_values`, `relationships`), checks each one against the warehouse, and shows which pass today. With a column lineage scan, tests backed by the project's structure come first: `relationships` and `not_null` on join keys, `unique` (or `unique_combination_of_columns` with dbt_utils) on the model's grain, each with its evidence ("joined to `dim_customers.customer_id` in 4 models"). These don't need the AI model. |
+| **Add unit test…** | Picks a few real rows per input that hit each branch of the model (or of one CTE or CASE column), runs the model on them and proposes a dbt unit test with what it produces today; optionally masks text values. Doesn't need the AI model — see [Write and debug unit tests](how-to/unit-tests.md#generate-a-unit-test-pro). |
 | **Refactor…** | Switches the chat to Refactor mode for the selected model. |
 
 Document and Add tests produce a **proposal**: a diff of your schema YAML. In the review window

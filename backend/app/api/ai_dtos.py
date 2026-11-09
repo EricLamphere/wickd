@@ -61,6 +61,18 @@ class AiProposalResultDto(BaseModel):
     model: str | None = None
     semantic_model: str | None = None
     warnings: list[str] = []
+    # unit_test (generated, Pro) / unit_test_rebaseline (Base): the test {name, model, file,
+    # format?}; generated: input rows per input [{input, columns, rows}], the branches they
+    # aim at, focus, masked, incremental; both: expected {columns, rows}; rebaseline: actual
+    unit_test: dict | None = None
+    fixtures: list[dict] = []
+    expected: dict | None = None
+    actual: dict | None = None
+    branches: list[str] = []
+    focus: str | None = None
+    masked: bool = False
+    incremental: bool = False
+    rebaseline: bool = False
 
 
 class AiProposalDto(BaseModel):

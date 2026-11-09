@@ -150,6 +150,15 @@ async def _trim_node_history(session: AsyncSession, project_id: int, unique_id: 
         )
 
 
+def result_kind(unique_id: str) -> str:
+    """model_statuses / run history kind of a run_results entry: test, unit_test or model."""
+    if unique_id.startswith("test."):
+        return "test"
+    if unique_id.startswith("unit_test."):
+        return "unit_test"
+    return "model"
+
+
 async def _persist_results_after_run(project: Project, invocation_id: int | None = None) -> None:
     run_file = load_run_results_file(Path(project.path) / "target" / "run_results.json")
     results = run_file.results
@@ -167,6 +176,8 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
                     None,
                 )
                 parent_model_by_test[node.unique_id] = model_parent
+        for unit in manifest.unit_tests:
+            parent_model_by_test[unit.unique_id] = unit.model_unique_id
 
     async with SessionLocal() as session:
         # Update model_statuses (current snapshot — unchanged behaviour)
@@ -177,7 +188,7 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
         now = datetime.now(UTC)
         for r in results:
             row = by_uid.get(r.unique_id)
-            kind = "test" if r.unique_id.startswith("test.") else "model"
+            kind = result_kind(r.unique_id)
             if row is None:
                 row = ModelStatus(
                     project_id=project.id,
@@ -186,6 +197,10 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
                     parent_model_id=parent_model_by_test.get(r.unique_id),
                 )
                 session.add(row)
+            # rows written before unit tests had their own kind (stored as parentless models)
+            row.kind = kind
+            if kind != "model" and parent_model_by_test.get(r.unique_id):
+                row.parent_model_id = parent_model_by_test[r.unique_id]
             row.status = r.status
             row.message = r.message
             row.execution_time = r.execution_time
@@ -196,10 +211,10 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
         # Write to history table and trim to _MAX_HISTORY_PER_NODE per node
         if invocation_id is not None:
             for r in results:
-                kind = "test" if r.unique_id.startswith("test.") else "model"
+                kind = result_kind(r.unique_id)
                 parts = r.unique_id.split(".")
                 # test unique IDs: test.<project>.<test_name>.<hash> — use index 2
-                # model unique IDs: model.<project>.<name> — use last segment
+                # model / unit test unique IDs: <type>.<project>[.<model>].<name> — use last segment
                 name = parts[2] if kind == "test" and len(parts) >= 4 else parts[-1]
                 session.add(InvocationModelResult(
                     invocation_id=invocation_id,
@@ -236,7 +251,7 @@ async def _persist_results_after_run(project: Project, invocation_id: int | None
     )
 
     for r in results:
-        if r.unique_id.startswith("test.") and r.status in ("fail", "error"):
+        if result_kind(r.unique_id) in ("test", "unit_test") and r.status in ("fail", "error"):
             model_uid = parent_model_by_test.get(r.unique_id)
             await bus.publish(
                 Event(

@@ -89,6 +89,7 @@ When handling SSE events, invalidate the relevant query:
 | `metric_monitor_started`, `metric_monitor_finished` | `['metric-monitors', projectId]` (Metrics → Monitors, DAG badges, Impact; `Metrics/monitors/useMonitors.ts`), `['health-summary', projectId]` |
 | `charts_changed`, `charts_build_started`, `charts_build_finished` | `['charts', projectId]` (Charts page + nav item, `routes/Project/Charts/useCharts.ts`); `charts_changed` also `['charts-validate', projectId]` |
 | `charts_env` (global stream) | `['charts']` once the dbt Charts sidecar is ready or failed |
+| none (staleTime 30 s; the options come from the manifest's compiled SQL, read when the Add unit test panel opens) | `['unit-test-focus', projectId, uniqueId]` (Wicky → Add unit test…, `Wicky/UnitTestOptions.tsx`) |
 
 When adding a new event type that signals stale data, add an entry here.
 

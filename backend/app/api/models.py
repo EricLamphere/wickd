@@ -12,9 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_session
 from app.db.models import ModelStatus, Project
-from app.dbt.manifest import Manifest, ModelNode, load_manifest
+from app.dbt.manifest import Manifest, ModelNode, UnitTestRef, load_manifest
 from app.dbt.runner import RunRequest, runner
 from app.dbt.show_parser import parse_show_json
+from app.dbt.unit_test_diff import parse_unit_test_diff
 from app.logs.project_logger import append_project_log
 
 router = APIRouter(prefix="/api/projects", tags=["models"])
@@ -81,6 +82,15 @@ class UnitTestDto(BaseModel):
     name: str
     model: str | None = None
     original_file_path: str | None = None
+    model_unique_id: str | None = None
+    description: str = ""
+    inputs: list[str] = []  # given[].input, e.g. "ref('stg_orders')"
+    expect_rows: int | None = None  # rows in `expect:` (None: csv / sql fixture)
+    has_overrides: bool = False
+    status: str = "idle"
+    message: str | None = None
+    # parsed actual-vs-expected table when the last run failed (app/dbt/unit_test_diff.py)
+    diff: dict[str, Any] | None = None
 
 
 class GraphDto(BaseModel):
@@ -121,6 +131,26 @@ def _node_to_dto(node: ModelNode, status: ModelStatus | None) -> ModelDto:
     )
 
 
+def unit_test_dto(unit: UnitTestRef, status: ModelStatus | None) -> UnitTestDto:
+    rows = unit.expect.get("rows") if unit.expect else None
+    failed = status is not None and status.status in ("fail", "error")
+    diff = parse_unit_test_diff(status.message) if failed and status is not None else None
+    return UnitTestDto(
+        unique_id=unit.unique_id,
+        name=unit.name,
+        model=unit.model,
+        original_file_path=unit.original_file_path,
+        model_unique_id=unit.model_unique_id,
+        description=unit.description,
+        inputs=list(unit.inputs),
+        expect_rows=len(rows) if isinstance(rows, list) else None,
+        has_overrides=bool(unit.overrides),
+        status=status.status if status else "idle",
+        message=status.message if status else None,
+        diff=diff.to_dict() if diff else None,
+    )
+
+
 async def _load_statuses(session: AsyncSession, project_id: int) -> dict[str, ModelStatus]:
     result = await session.execute(
         select(ModelStatus).where(ModelStatus.project_id == project_id)
@@ -156,15 +186,7 @@ async def get_models(
     statuses = await _load_statuses(session, project_id)
     nodes = [_node_to_dto(n, statuses.get(n.unique_id)) for n in manifest.nodes]
     edges = [EdgeDto(source=s, target=t) for s, t in manifest.edges()]
-    unit_tests = [
-        UnitTestDto(
-            unique_id=u.unique_id,
-            name=u.name,
-            model=u.model,
-            original_file_path=u.original_file_path,
-        )
-        for u in manifest.unit_tests
-    ]
+    unit_tests = [unit_test_dto(u, statuses.get(u.unique_id)) for u in manifest.unit_tests]
     return GraphDto(nodes=nodes, edges=edges, unit_tests=unit_tests)
 
 

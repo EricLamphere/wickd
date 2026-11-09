@@ -89,6 +89,14 @@ class UnitTestRef:
     name: str
     model: str | None  # name of the model under test
     original_file_path: str | None
+    model_unique_id: str | None = None  # the model under test's unique_id (depends_on)
+    description: str = ""
+    # `given[].input` in order, e.g. "ref('stg_orders')", "source('shop', 'orders')", "this"
+    inputs: tuple[str, ...] = ()
+    # raw `given` / `expect` / `overrides` from the manifest (plain JSON)
+    given: tuple[dict[str, Any], ...] = field(default=(), hash=False, compare=False)
+    expect: dict[str, Any] | None = field(default=None, hash=False, compare=False)
+    overrides: dict[str, Any] | None = field(default=None, hash=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -180,11 +188,22 @@ def _extract_unit_tests(raw_unit_tests: Any) -> tuple[UnitTestRef, ...]:
     for unique_id, raw in raw_unit_tests.items():
         if not isinstance(raw, dict):
             continue
+        given = tuple(g for g in raw.get("given") or () if isinstance(g, dict))
+        depends = (raw.get("depends_on") or {}).get("nodes") if isinstance(raw.get("depends_on"), dict) else None
+        model_uid = next(
+            (n for n in depends or () if isinstance(n, str) and n.startswith(("model.", "snapshot."))), None
+        )
         refs.append(UnitTestRef(
             unique_id=unique_id,
             name=raw.get("name") or unique_id.split(".")[-1],
             model=raw.get("model"),
             original_file_path=raw.get("original_file_path"),
+            model_unique_id=model_uid,
+            description=raw.get("description") or "",
+            inputs=tuple(str(g.get("input")) for g in given if g.get("input")),
+            given=given,
+            expect=raw.get("expect") if isinstance(raw.get("expect"), dict) else None,
+            overrides=raw.get("overrides") if isinstance(raw.get("overrides"), dict) else None,
         ))
     return tuple(refs)
 

@@ -108,7 +108,9 @@
     "Live sync with disk": "Behaviour over time; a still can't show it.",
     "Back / forward navigation": "The arrows are in every shot's header; it never needs framing.",
     "Slim builds": "No shot yet (plan 18, 2026-11-08): retake with the screenshots skill — Build impacted dialog with What changed compared with production.",
-    "Smallest safe build": "No shot yet (plan 18, 2026-11-08): retake with the screenshots skill — the Build impacted dialog with the smallest safe set on."
+    "Smallest safe build": "No shot yet (plan 18, 2026-11-08): retake with the screenshots skill — the Build impacted dialog with the smallest safe set on.",
+    "Unit tests": "No shot yet (plan 19, 2026-11-09): retake with the screenshots skill — the side pane's Unit tests section with a failing test's expected-vs-actual rows.",
+    "Unit test generation": "No shot yet (plan 19, 2026-11-09): retake with the screenshots skill — a generated unit test in the review window, given / expect tables above the YAML diff."
   },
   "preview": [
     "metric_dashboard",

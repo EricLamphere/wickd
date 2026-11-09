@@ -584,6 +584,28 @@ export interface UnitTestDto {
   name: string;
   model: string | null;
   original_file_path: string | null;
+  model_unique_id?: string | null;
+  description?: string;
+  /** given[].input, e.g. "ref('stg_orders')" */
+  inputs?: string[];
+  /** rows in expect: (null: csv / sql fixture) */
+  expect_rows?: number | null;
+  has_overrides?: boolean;
+  status?: string;
+  message?: string | null;
+  /** parsed actual-vs-expected table when the last run failed */
+  diff?: UnitTestDiffDto | null;
+}
+
+export type UnitTestDiffRowStatus = 'same' | 'changed' | 'added' | 'removed';
+
+/** dbt's diff of a failed unit test: `added` rows are only in actual, `removed` only in expected. */
+export interface UnitTestDiffDto {
+  columns: string[];
+  rows: { status: UnitTestDiffRowStatus; expected: (string | null)[] | null; actual: (string | null)[] | null }[];
+  schema_changed: boolean;
+  /** dbt left unchanged rows out of the table */
+  elided?: boolean;
 }
 
 export interface GraphDto {

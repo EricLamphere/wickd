@@ -50,7 +50,7 @@ Shows every model and test that executed in the selected run, with:
 - **Status** — per-node result (`success`, `error`, `warn`, etc.)
 - **Message** — the dbt result message (e.g. `Created relation …`)
 
-**Filtering nodes:** Use the search box and the *All kinds* / *All statuses* dropdowns to narrow the node list within a run.
+**Filtering nodes:** Use the search box and the *All kinds* / *All statuses* dropdowns to narrow the node list within a run (*Unit tests* shows only dbt unit tests, counted separately in the summary).
 
 **Per-node trend:** Click any row to expand a sparkline showing that node's execution time across its last 20 runs. Red dots mark errored runs. The panel also shows the min, max, and average execution time across those runs.
 

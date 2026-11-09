@@ -10,6 +10,7 @@ import { InlineCode } from './InlineCode';
 import { FILE_STATUS_STYLES, OpBadge, ProposalFileList } from './ProposalFileList';
 import { diffTexts, fileForItem, fileTitle, languageFor, showsFileList } from './proposalFiles';
 import { findItemLine, itemsInFile, proposalItems, selectedKeys, type ProposalItem } from './proposalItems';
+import { UNIT_TEST_KINDS, UnitTestReviewPanel } from './UnitTestSummary';
 
 interface ProposalReviewModalProps {
   projectId: number;
@@ -22,6 +23,8 @@ type DiffEditorInstance = Parameters<DiffOnMount>[0];
 const REVEAL_DELAY_MS = 50;
 const SECONDARY = 'bg-surface-elevated border border-gray-700 text-gray-300 hover:bg-gray-700';
 const FOOTER_BUTTON = 'flex items-center gap-1 px-3 py-1.5 text-xs rounded disabled:opacity-40';
+const MIN_DIFF_HEIGHT = 200;
+const FLOW_REVEAL_MARGIN = 80;
 
 /**
  * Review AI-proposed changes. Proposals made of separate items (tests,
@@ -44,6 +47,10 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const editorRef = useRef<DiffEditorInstance | null>(null);
+  // unit tests: one scroll for the sample rows and the whole diff (the editor takes its full height)
+  const flowing = UNIT_TEST_KINDS.has(initial.kind);
+  const flowRef = useRef<HTMLDivElement | null>(null);
+  const [diffHeight, setDiffHeight] = useState(MIN_DIFF_HEIGHT);
   // for the diff's first-change reveal (read inside Monaco's callback)
   const activeIdRef = useRef<number | null>(null);
   const focusedRef = useRef<string | null>(null);
@@ -244,13 +251,14 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
               onDecide={decideItem}
             />
           )}
-          <div className="flex flex-col flex-1 min-w-0">
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-xs shrink-0">
+          <div ref={flowRef} className={`flex flex-col flex-1 min-w-0 ${flowing ? 'overflow-y-auto' : ''}`}>
+            {flowing && <UnitTestReviewPanel p={proposal} />}
+            <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 text-xs shrink-0 ${flowing ? 'sticky top-0 z-10 bg-surface-panel' : ''}`}>
               <span className="font-mono text-gray-400 truncate">{fileTitle(active)}</span>
               <OpBadge file={active} />
               {!pending && <span className={`ml-auto ${FILE_STATUS_STYLES[active.status]}`}>{active.status}</span>}
             </div>
-            <div className="flex-1 min-h-0">
+            <div className={flowing ? 'shrink-0' : 'flex-1 min-h-0'} style={flowing ? { height: diffHeight } : undefined}>
               <DiffEditor
                 original={diff.original}
                 modified={diff.modified}
@@ -258,6 +266,13 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
                 theme={theme === 'light' ? 'vs-light' : 'vs-dark'}
                 onMount={(editor) => {
                   editorRef.current = editor;
+                  if (flowing) {
+                    // the diff takes its full height and the modal scrolls instead (one scrollbar)
+                    const sides = [editor.getOriginalEditor(), editor.getModifiedEditor()];
+                    const fit = () => setDiffHeight(Math.max(MIN_DIFF_HEIGHT, ...sides.map((s) => s.getContentHeight())));
+                    sides.forEach((s) => s.onDidContentSizeChange(fit));
+                    fit();
+                  }
                   // each file opens on its first change (a long file's appended entry would be off-screen),
                   // unless a change was picked in the list
                   editor.onDidUpdateDiff(() => {
@@ -266,7 +281,19 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
                     const first = editor.getLineChanges()?.[0];
                     if (!first) return;
                     revealedFor.current = file;
-                    editor.getModifiedEditor().revealLineInCenter(Math.max(1, first.modifiedStartLineNumber || first.originalStartLineNumber));
+                    const line = Math.max(1, first.modifiedStartLineNumber || first.originalStartLineNumber);
+                    if (flowing) {
+                      // scroll the modal (not the editor) to the first change, a little above it
+                      const box = flowRef.current;
+                      if (box) {
+                        const top = editor.getModifiedEditor().getTopForLineNumber(line);
+                        const offset = editor.getContainerDomNode().getBoundingClientRect().top
+                          - box.getBoundingClientRect().top + box.scrollTop;
+                        box.scrollTop = Math.max(0, offset + top - FLOW_REVEAL_MARGIN);
+                      }
+                    } else {
+                      editor.getModifiedEditor().revealLineInCenter(line);
+                    }
                   });
                 }}
                 options={{
@@ -276,6 +303,18 @@ export function ProposalReviewModal({ projectId, proposal: initial, onClose }: P
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,
                   wordWrap: 'on',
+                  ...(flowing ? {
+                    // no inner scrolling, so no scrollbar space, shadows or overview rulers (they
+                    // render as blank white strips once the vertical scrollbar is hidden)
+                    scrollbar: {
+                      vertical: 'hidden' as const, verticalScrollbarSize: 0, useShadows: false, alwaysConsumeMouseWheel: false,
+                    },
+                    renderOverviewRuler: false,
+                    overviewRulerLanes: 0,
+                    overviewRulerBorder: false,
+                    stickyScroll: { enabled: false },
+                    hideUnchangedRegions: { enabled: false },
+                  } : {}),
                 }}
               />
             </div>

@@ -76,7 +76,7 @@ class ModelStatus(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     unique_id: Mapped[str] = mapped_column(String(512), index=True)
-    kind: Mapped[str] = mapped_column(String(32))  # "model" or "test"
+    kind: Mapped[str] = mapped_column(String(32))  # "model", "test" or "unit_test"
     parent_model_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="idle")
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -376,7 +376,7 @@ class InvocationModelResult(Base):
     )
     unique_id: Mapped[str] = mapped_column(String(512))
     name: Mapped[str] = mapped_column(String(255))
-    kind: Mapped[str] = mapped_column(String(32))  # "model" or "test"
+    kind: Mapped[str] = mapped_column(String(32))  # "model", "test" or "unit_test"
     status: Mapped[str] = mapped_column(String(32))
     execution_time: Mapped[float | None] = mapped_column(nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -487,7 +487,7 @@ class AiProposal(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
-    kind: Mapped[str] = mapped_column(String(32))  # document | tests | propagate | refactor
+    kind: Mapped[str] = mapped_column(String(32))  # document | tests | unit_test | propagate | refactor
     unique_id: Mapped[str | None] = mapped_column(String(512), nullable=True)
     title: Mapped[str] = mapped_column(String(255), default="")
     # generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing) | undone

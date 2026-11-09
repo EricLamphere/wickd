@@ -160,7 +160,7 @@ export type AiProposalStatus =
 export interface AiProposalProgress {
   proposal_id: number;
   unique_id: string | null;
-  phase: 'columns' | 'sampling' | 'writing' | 'checking' | '';
+  phase: 'columns' | 'sampling' | 'expecting' | 'writing' | 'checking' | '';
   text: string;
   /** Batch test proposals: models pre-checked so far, of how many, and the current one. */
   done?: number;
@@ -206,8 +206,55 @@ export interface AiProposalDto {
     model?: string | null;
     semantic_model?: string | null;
     warnings?: string[];
+    /** kind "unit_test" (generated, Pro) / "unit_test_rebaseline" (Base). */
+    unit_test?: { name: string; model: string | null; file: string; format?: string } | null;
+    /** unit_test: the rows given per input, and the branches they aim at */
+    fixtures?: UnitTestFixture[];
+    expected?: RowsTable | null;
+    /** unit_test_rebaseline: what the model produced (the new expectation) */
+    actual?: RowsTable | null;
+    branches?: string[];
+    focus?: string | null;
+    masked?: boolean;
+    incremental?: boolean;
+    rebaseline?: boolean;
   };
   files: AiProposalFileDto[];
+}
+
+export interface RowsTable {
+  columns: string[];
+  rows: unknown[][];
+}
+
+export interface UnitTestFixture extends RowsTable {
+  input: string;
+}
+
+export interface UnitTestFocusOption {
+  /** "cte:<name>" | "case:<output column>" */
+  id: string;
+  label: string;
+  kind: 'cte' | 'case';
+}
+
+export interface UnitTestRequest {
+  focus?: string | null;
+  /** replace text values with deterministic fakes before they're written */
+  mask?: boolean;
+  /** YAML file to write to: an existing one, or a new name (bare names go in the model's
+   *  folder); null = the default (beside its other unit tests, else its schema YAML) */
+  file?: string | null;
+}
+
+/** Where a new unit test can go (GET …/unit-tests/file-options). */
+export interface UnitTestFileOptions {
+  default: string;
+  /** files already holding this model's unit tests */
+  existing: string[];
+  /** YAML files under the model paths */
+  files: string[];
+  model_dir: string;
 }
 
 /** One acceptable piece of an "Add to semantic layer" proposal. */
@@ -372,6 +419,21 @@ export const aiApi = {
   /** Add to semantic layer: Wicky drafts a semantic model + metrics (409 {status} when MetricFlow can't run). */
   semanticDraft: (projectId: number, uniqueId: string, conversationId: number | null) =>
     post<AiProposalDto>(`/projects/${projectId}/ai/semantic-draft`, { unique_id: uniqueId, conversation_id: conversationId }),
+  /** Unit test (Pro): sample rows hitting the model's branches, run it on them, propose the YAML. */
+  addUnitTest: (projectId: number, uniqueId: string, conversationId: number | null, options: UnitTestRequest = {}) =>
+    post<AiProposalDto>(`/projects/${projectId}/ai/unit-tests`, {
+      unique_id: uniqueId, conversation_id: conversationId,
+      focus: options.focus ?? null, mask: options.mask ?? false, file: options.file ?? null,
+    }),
+  unitTestFileOptions: (projectId: number, uniqueId: string) =>
+    get<UnitTestFileOptions>(`/projects/${projectId}/unit-tests/file-options?unique_id=${encodeURIComponent(uniqueId)}`),
+  unitTestFocusOptions: (projectId: number, uniqueId: string) =>
+    get<{ options: UnitTestFocusOption[]; compiled: boolean }>(
+      `/projects/${projectId}/unit-tests/focus-options?unique_id=${encodeURIComponent(uniqueId)}`,
+    ),
+  /** Base: a proposal making a failing unit test's actual rows its expectation. */
+  rebaselineUnitTest: (projectId: number, unitTestId: string) =>
+    post<AiProposalDto>(`/projects/${projectId}/unit-tests/${encodeURIComponent(unitTestId)}/rebaseline`),
   proposals: (projectId: number, uniqueId?: string) =>
     get<AiProposalDto[]>(
       `/projects/${projectId}/ai/proposals${uniqueId ? `?unique_id=${encodeURIComponent(uniqueId)}` : ''}`,

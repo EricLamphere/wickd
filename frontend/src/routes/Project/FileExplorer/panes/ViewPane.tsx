@@ -7,6 +7,8 @@ import { api, type FileContentDto, type GraphDto, type ModelNode } from '../../.
 import { readStored, writeStored } from '../../../../lib/stickyTab';
 import { useTheme } from '../../../../lib/useTheme';
 import { registerExtractCteAction } from './extractCteAction';
+import { registerUnitTestAction } from './unitTestAction';
+import { findUnitTestLine } from './unitTestLine';
 
 type ViewTab = 'code' | 'compiled';
 
@@ -29,6 +31,8 @@ interface ViewPaneProps {
   onNavigateToFile: (path: string) => void;
   /** YAML: test node to scroll the editor to when the file opens */
   targetTestNode?: ModelNode | null;
+  /** unit test deep-link: reveal this unit test's `- name:` line */
+  targetUnitTest?: string | null;
   /** YAML: called when the cursor moves into a test block; null if not in a test */
   onTestSelected?: (testNode: ModelNode | null) => void;
 }
@@ -160,7 +164,7 @@ function findTestLineInYaml(
 export function ViewPane({
   projectId, openFile, edited, onEdit, onSave, onDelete,
   saving, saveStatus, saveError, isDirty, modelUid, graph, onNavigateToFile,
-  targetTestNode, onTestSelected,
+  targetTestNode, targetUnitTest, onTestSelected,
 }: ViewPaneProps) {
   const theme = useTheme();
   const monacoTheme = theme === 'light' ? 'vs-light' : 'vs-dark';
@@ -176,6 +180,15 @@ export function ViewPane({
 
   const targetTestNodeRef = useRef(targetTestNode);
   useEffect(() => { targetTestNodeRef.current = targetTestNode; }, [targetTestNode]);
+  const targetUnitTestRef = useRef(targetUnitTest);
+  useEffect(() => { targetUnitTestRef.current = targetUnitTest; }, [targetUnitTest]);
+
+  /** The line a deep-link points at: a data test's, or a unit test's entry. */
+  const targetLine = (content: string): number | null => {
+    const test = targetTestNodeRef.current;
+    if (test) return findTestLineInYaml(content, test.test_metadata_name, test.column_name, test.attached_node);
+    return targetUnitTestRef.current ? findUnitTestLine(content, targetUnitTestRef.current) : null;
+  };
 
   const modelUidRef = useRef(modelUid);
   useEffect(() => { modelUidRef.current = modelUid; }, [modelUid]);
@@ -214,20 +227,14 @@ export function ViewPane({
 
   // Scroll editor to targetTestNode's line when it changes (e.g. DAG deep-link)
   useEffect(() => {
-    if (!targetTestNode) return;
-    const content = edited ?? openFile.content;
-    const lineNumber = findTestLineInYaml(
-      content,
-      targetTestNode.test_metadata_name,
-      targetTestNode.column_name,
-      targetTestNode.attached_node,
-    );
+    if (!targetTestNode && !targetUnitTest) return;
+    const lineNumber = targetLine(edited ?? openFile.content);
     if (lineNumber && editorRef.current) {
       editorRef.current.revealLineInCenter(lineNumber);
       editorRef.current.setPosition({ lineNumber, column: 1 });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetTestNode]);
+  }, [targetTestNode, targetUnitTest]);
 
   const fetchCompiledSql = async () => {
     if (!canCompile || !modelUid) return;
@@ -372,16 +379,9 @@ export function ViewPane({
               // Store editor ref for imperative scroll
               editorRef.current = editor;
 
-              // Scroll to targetTestNode if set (e.g. navigated from DAG for a test node)
-              const initialTarget = targetTestNodeRef.current;
-              if (initialTarget) {
-                const content = editor.getModel()?.getValue() ?? '';
-                const lineNumber = findTestLineInYaml(
-                  content,
-                  initialTarget.test_metadata_name,
-                  initialTarget.column_name,
-                  initialTarget.attached_node,
-                );
+              // Scroll to the deep-linked data test or unit test, if any
+              {
+                const lineNumber = targetLine(editor.getModel()?.getValue() ?? '');
                 if (lineNumber) {
                   setTimeout(() => {
                     editor.revealLineInCenter(lineNumber);
@@ -396,6 +396,13 @@ export function ViewPane({
                   const node = graphRef.current?.nodes.find((n) => n.unique_id === modelUidRef.current);
                   return node && node.resource_type === 'model' ? { uniqueId: node.unique_id, model: node.name } : null;
                 }, () => isDirtyRef.current)
+                : null;
+              // "Unit test this logic…" (Pro, via Wicky) for SQL model files
+              const unitTestAction = isSqlFile(openFile.path)
+                ? registerUnitTestAction(editor, () => {
+                  const node = graphRef.current?.nodes.find((n) => n.unique_id === modelUidRef.current);
+                  return node && node.resource_type === 'model' ? { uniqueId: node.unique_id } : null;
+                })
                 : null;
 
               // YAML cursor tracking: when cursor moves, find which test block it's in
@@ -746,6 +753,7 @@ export function ViewPane({
                 onMouseDown.dispose();
                 cursorDisposable.dispose();
                 extractAction?.dispose();
+                unitTestAction?.dispose();
                 decorations.clear();
                 editorRef.current = null;
               };

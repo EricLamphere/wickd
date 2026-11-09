@@ -61,8 +61,8 @@ export function TrendRow({ projectId, node, fileNav }: { projectId: number; node
       ? `⚠ ${node.execution_time.toFixed(2)}`
       : node.execution_time.toFixed(2);
 
-  const kindBadge = node.kind === 'test'
-    ? <span className="text-[10px] px-1 py-0.5 rounded cmd-badge-test font-mono">test</span>
+  const kindBadge = node.kind === 'test' || node.kind === 'unit_test'
+    ? <span className="text-[10px] px-1 py-0.5 rounded cmd-badge-test font-mono">{node.kind === 'unit_test' ? 'unit test' : 'test'}</span>
     : null;
 
   return (

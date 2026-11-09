@@ -126,7 +126,7 @@ export function RunTimeline({ projectId, detail, fileNav }: RunTimelineProps) {
                     title={barTitle(bar, canOpen)}
                     className={`absolute top-1 bottom-1 rounded-sm border overflow-hidden px-1 text-left text-[9px] leading-[12px] text-white/90 font-mono truncate transition-opacity
                       ${BAR_COLOR[bar.status] ?? BAR_COLOR_DEFAULT}
-                      ${bar.kind === 'test' ? 'opacity-60' : ''}
+                      ${bar.kind === 'test' || bar.kind === 'unit_test' ? 'opacity-60' : ''}
                       ${dim ? 'opacity-35' : ''}
                       ${onPath ? 'ring-2 ring-amber-400 z-10' : ''}`}
                     style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Boxes, FlaskConical, Loader2, Sparkles, Stethoscope, Wand2 } from 'lucide-react';
+import { Boxes, FlaskConical, FlaskRound, Loader2, Sparkles, Stethoscope, Wand2 } from 'lucide-react';
 import type { ModelNode } from '../../../../lib/api';
-import { aiApi, aiErrorMessage, type AiProposalDto } from '../../../../lib/aiApi';
+import { aiApi, aiErrorMessage, type AiProposalDto, type UnitTestRequest } from '../../../../lib/aiApi';
 import { semanticErrorBody, type SemanticStatusDto } from '../../../../lib/semanticApi';
-import type { WickyAction } from '../../lib/wickyEvents';
+import type { FocusHint, WickyAction } from '../../lib/wickyEvents';
 import { canDocument } from '../SidePane/DocumentModelButton';
 import { MetricflowBlockedNotice } from '../semantic/MetricflowBlockedNotice';
+import { UnitTestOptions } from './UnitTestOptions';
 
 interface QuickActionsProps {
   projectId: number;
@@ -23,10 +24,10 @@ interface QuickActionsProps {
   /** The model already has a semantic model (no "Add to semantic layer"). */
   inSemanticLayer: boolean;
   /** An action another page asked for (openWicky({ action })); started once per nonce. */
-  autoStart: { nonce: number; action: WickyAction } | null;
+  autoStart: { nonce: number; action: WickyAction; focusHint?: FocusHint } | null;
 }
 
-type ProposalKind = 'document' | 'tests' | 'semantic';
+type ProposalKind = 'document' | 'tests' | 'semantic' | 'unit_test';
 
 const DOCUMENT_OPTIONS = [
   {
@@ -49,6 +50,7 @@ export function QuickActions({
 }: QuickActionsProps) {
   const qc = useQueryClient();
   const [choosing, setChoosing] = useState(false);
+  const [unitTest, setUnitTest] = useState<{ focusHint?: FocusHint } | null>(null);
   const [starting, setStarting] = useState<ProposalKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<SemanticStatusDto | null>(null);
@@ -58,8 +60,9 @@ export function QuickActions({
     (p) => p.kind === kind && p.unique_id === model.unique_id && p.status === 'generating',
   );
 
-  const run = async (kind: ProposalKind, overwrite = false) => {
+  const run = async (kind: ProposalKind, overwrite = false, unitTestOptions: UnitTestRequest = {}) => {
     setChoosing(false);
+    setUnitTest(null);
     setStarting(kind);
     setError(null);
     setBlocked(null);
@@ -67,6 +70,7 @@ export function QuickActions({
       const conversationId = await ensureConversation();
       if (kind === 'document') await aiApi.document(projectId, model.unique_id, overwrite, conversationId);
       else if (kind === 'semantic') await aiApi.semanticDraft(projectId, model.unique_id, conversationId);
+      else if (kind === 'unit_test') await aiApi.addUnitTest(projectId, model.unique_id, conversationId, unitTestOptions);
       else await aiApi.addTests(projectId, model.unique_id, conversationId);
       qc.invalidateQueries({ queryKey: ['ai-proposals', projectId] });
       qc.invalidateQueries({ queryKey: ['ai-conversation', projectId, conversationId] });
@@ -84,6 +88,10 @@ export function QuickActions({
     if (!autoStart || started.current === autoStart.nonce) return;
     started.current = autoStart.nonce;
     if (autoStart.action === 'semantic_draft') void run('semantic');
+    if (autoStart.action === 'unit_test' && model.resource_type === 'model') {
+      setChoosing(false);
+      setUnitTest({ focusHint: autoStart.focusHint });
+    }
   }, [autoStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const editable = canDocument(model);
@@ -106,7 +114,7 @@ export function QuickActions({
         {editable && (
           <>
             <button
-              onClick={() => setChoosing((v) => !v)}
+              onClick={() => { setUnitTest(null); setChoosing((v) => !v); }}
               disabled={busy('document')}
               title="Write descriptions for this node and its columns; review them before anything is saved"
               className={BUTTON}
@@ -132,6 +140,17 @@ export function QuickActions({
               >
                 {busy('semantic') ? <Loader2 size={12} className="animate-spin text-brand-300" /> : <Boxes size={12} className="text-brand-300" />}
                 {busy('semantic') ? 'Drafting metrics…' : 'Add to semantic layer'}
+              </button>
+            )}
+            {model.resource_type === 'model' && (
+              <button
+                onClick={() => { setChoosing(false); setUnitTest((v) => (v ? null : {})); }}
+                disabled={busy('unit_test')}
+                title="Sample real rows that hit each branch, run the model on them, and propose a dbt unit test; review it before anything is saved"
+                className={BUTTON}
+              >
+                {busy('unit_test') ? <Loader2 size={12} className="animate-spin text-brand-300" /> : <FlaskRound size={12} className="text-brand-300" />}
+                {busy('unit_test') ? 'Writing unit test…' : 'Add unit test…'}
               </button>
             )}
             {model.resource_type === 'model' && (
@@ -167,6 +186,15 @@ export function QuickActions({
             Cancel
           </button>
         </div>
+      )}
+      {unitTest && (
+        <UnitTestOptions
+          projectId={projectId}
+          uniqueId={model.unique_id}
+          focusHint={unitTest.focusHint}
+          onStart={(options) => run('unit_test', false, options)}
+          onCancel={() => setUnitTest(null)}
+        />
       )}
       {error && <span className="text-red-400 break-words">{error}</span>}
       {blocked && <MetricflowBlockedNotice projectId={projectId} status={blocked} onResolved={() => setBlocked(null)} />}

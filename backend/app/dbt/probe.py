@@ -74,11 +74,25 @@ def build_batch_probe_sql(node_names: tuple[str, ...]) -> str:
     ref() runs unguarded so dbt records each dependency at parse time (a ref the
     parser never saw fails at compile); the metadata lookups only run at execute.
     """
-    return (
+    return _probe_sql(
         f"{{%- set wickd_names = {json.dumps(list(node_names))} -%}}\n"
         "{%- set wickd_rels = {} -%}\n"
         "{%- for n in wickd_names -%}{%- do wickd_rels.update({n: ref(n)}) -%}{%- endfor -%}\n"
-        "{% if execute %}\n"
+    )
+
+
+def build_relations_probe_sql(relations: dict[str, str]) -> str:
+    """build_batch_probe_sql() for any relations: {name: Jinja relation expression},
+    e.g. {"orders": "ref('orders')", "raw": "source('shop', 'raw')"}."""
+    lines = [f"{{%- set wickd_names = {json.dumps(list(relations))} -%}}\n", "{%- set wickd_rels = {} -%}\n"]
+    lines += [f"{{%- do wickd_rels.update({{{json.dumps(name)}: {expr}}}) -%}}\n" for name, expr in relations.items()]
+    return _probe_sql("".join(lines))
+
+
+def _probe_sql(setup: str) -> str:
+    return (
+        setup
+        + "{% if execute %}\n"
         "{%- set wickd_cols = {} -%}\n"
         "{%- for n in wickd_names -%}\n"
         "{%- set rel = load_relation(wickd_rels[n]) -%}\n"
@@ -121,6 +135,18 @@ def parse_batch_probe_output(text: str) -> dict[str, tuple[tuple[str, str], ...]
     return None
 
 
+async def probe_relations(
+    project_id: int, project_path: Path, relations: dict[str, str], env: dict[str, str], target: str | None
+) -> dict[str, ProbeResult] | None:
+    """Columns + types of any relations ({name: Jinja relation expression}) in one dbt call;
+    None when the batch failed."""
+    if not relations:
+        return {}
+    return await _run_probe(
+        project_id, project_path, tuple(relations), build_relations_probe_sql(relations), env, target, None
+    )
+
+
 async def probe_many_warehouse_columns(
     project_id: int,
     project_path: Path,
@@ -138,6 +164,20 @@ async def probe_many_warehouse_columns(
     """
     if not node_names:
         return {}
+    return await _run_probe(
+        project_id, project_path, node_names, build_batch_probe_sql(node_names), env, target, target_path
+    )
+
+
+async def _run_probe(
+    project_id: int,
+    project_path: Path,
+    node_names: tuple[str, ...],
+    inline_sql: str,
+    env: dict[str, str],
+    target: str | None,
+    target_path: Path | None,
+) -> dict[str, ProbeResult] | None:
     target_args: tuple[str, ...] = ("--target", target) if target else ()
     if target_path is not None:
         target_args += ("--target-path", str(target_path))
@@ -145,10 +185,7 @@ async def probe_many_warehouse_columns(
         project_id=project_id,
         project_path=project_path,
         command="show",
-        extra=(
-            "--inline", build_batch_probe_sql(node_names),
-            "--limit", "1", "--output", "json",
-        ) + target_args,
+        extra=("--inline", inline_sql, "--limit", "1", "--output", "json") + target_args,
         env=env,
     )
 

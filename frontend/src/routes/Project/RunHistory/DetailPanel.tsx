@@ -32,7 +32,7 @@ interface DetailPanelProps {
 export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRowsCache, onFailedRowsCached }: DetailPanelProps) {
   const fileNav = useOpenInFiles(projectId);
   const [nodeFilter, setNodeFilter] = useState('');
-  const [kindFilter, setKindFilter] = useState<'all' | 'model' | 'test'>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'model' | 'test' | 'unit_test'>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   const { data, isLoading } = useQuery<RunInvocationDetailDto>({
@@ -57,6 +57,7 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRow
 
   const modelCount = data?.nodes.filter((n) => n.kind === 'model').length ?? 0;
   const testCount = data?.nodes.filter((n) => n.kind === 'test').length ?? 0;
+  const unitTestCount = data?.nodes.filter((n) => n.kind === 'unit_test').length ?? 0;
   const failedTests = useMemo(
     () => (data?.nodes ?? []).filter((n) => n.kind === 'test' && (n.status === 'error' || n.status === 'fail')),
     [data?.nodes],
@@ -94,6 +95,7 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRow
         <span>Duration: <span className="text-gray-300">{formatDuration(invocation.duration_seconds)}</span></span>
         <span>Models: <span className="text-gray-300">{modelCount}</span></span>
         {testCount > 0 && <span>Tests: <span className="text-gray-300">{testCount}</span></span>}
+        {unitTestCount > 0 && <span>Unit tests: <span className="text-gray-300">{unitTestCount}</span></span>}
       </div>
 
       {/* Tab bar */}
@@ -127,12 +129,13 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRow
             />
             <select
               value={kindFilter}
-              onChange={(e) => setKindFilter(e.target.value as 'all' | 'model' | 'test')}
+              onChange={(e) => setKindFilter(e.target.value as 'all' | 'model' | 'test' | 'unit_test')}
               className="form-select border rounded px-2 py-1 text-xs"
             >
               <option value="all">All kinds</option>
               <option value="model">Models</option>
               <option value="test">Tests</option>
+              <option value="unit_test">Unit tests</option>
             </select>
             <select
               value={statusFilter}

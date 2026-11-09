@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { Database, Loader2, MessageCircle, Plus, Send, Square, Trash2, Wand2 } from 'lucide-react';
@@ -11,7 +11,7 @@ import { refactorApi } from '../../../../lib/refactorApi';
 import { ActionEntry } from './ActionEntry';
 import { QueryEntry } from './QueryEntry';
 import { RefactorCard } from './RefactorCard';
-import type { WickyAction, WickyChatMode } from '../../lib/wickyEvents';
+import type { FocusHint, WickyAction, WickyChatMode } from '../../lib/wickyEvents';
 
 interface AiChatProps {
   projectId: number;
@@ -25,6 +25,8 @@ interface AiChatProps {
   ensureConversation: () => Promise<number>;
   /** Send a message on someone else's behalf (e.g. Explain failure); a new nonce sends again. */
   request: ChatRequest | null;
+  /** Shown under the chat bar (Quick actions), so the bar stays at the top of the pane. */
+  actions?: ReactNode;
 }
 
 export interface ChatRequest {
@@ -36,6 +38,8 @@ export interface ChatRequest {
   chatMode?: ChatMode;
   /** Start this quick action instead of sending text (QuickActions runs it). */
   action?: WickyAction;
+  /** action 'unit_test': selected SQL to preselect the focus from */
+  focusHint?: FocusHint;
 }
 
 interface Pending {
@@ -79,7 +83,7 @@ export function Bubble({ role, children }: { role: AiMessageDto['role']; childre
 
 /** Ask mode: chat about the project, with the selected node's context sent along. */
 export function AiChat({
-  projectId, model, progress, conversations, activeId, onSelect, ensureConversation, request,
+  projectId, model, progress, conversations, activeId, onSelect, ensureConversation, request, actions,
 }: AiChatProps) {
   const qc = useQueryClient();
   const [input, setInput] = useState('');
@@ -232,6 +236,7 @@ export function AiChat({
           <Trash2 size={13} />
         </button>
       </div>
+      {actions && <div className="shrink-0 max-h-[60%] overflow-y-auto">{actions}</div>}
 
       <div ref={scrollRef} className="flex flex-col flex-1 gap-3 px-3 py-3 overflow-auto">
         {messages.length === 0 && !pending && (

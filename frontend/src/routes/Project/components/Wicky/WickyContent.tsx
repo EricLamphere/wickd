@@ -87,24 +87,6 @@ function WickyReady({ projectId, model, graph, request: external, onRequestTaken
   }, [external]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="flex flex-col h-full">
-      {model && (
-        <QuickActions
-          key={model.unique_id}
-          projectId={projectId}
-          model={model}
-          proposals={proposals}
-          ensureConversation={chat.ensure}
-          failing={isFailing(model, graph)}
-          inSemanticLayer={!!semanticModelOf(graph, model)}
-          autoStart={request?.action ? { nonce: request.nonce, action: request.action } : null}
-          onExplainFailure={() => setRequest({
-            nonce: Date.now(),
-            text: `Explain why ${model.name} is failing`,
-            mode: 'explain_failure',
-          })}
-          onRefactor={() => setRequest({ nonce: Date.now(), text: '', mode: 'ask', chatMode: 'refactor' })}
-        />
-      )}
       <AiChat
         projectId={projectId}
         model={model}
@@ -114,6 +96,24 @@ function WickyReady({ projectId, model, graph, request: external, onRequestTaken
         onSelect={chat.select}
         ensureConversation={chat.ensure}
         request={request}
+        actions={model && (
+          <QuickActions
+            key={model.unique_id}
+            projectId={projectId}
+            model={model}
+            proposals={proposals}
+            ensureConversation={chat.ensure}
+            failing={isFailing(model, graph)}
+            inSemanticLayer={!!semanticModelOf(graph, model)}
+            autoStart={request?.action ? { nonce: request.nonce, action: request.action, focusHint: request.focusHint } : null}
+            onExplainFailure={() => setRequest({
+              nonce: Date.now(),
+              text: `Explain why ${model.name} is failing`,
+              mode: 'explain_failure',
+            })}
+            onRefactor={() => setRequest({ nonce: Date.now(), text: '', mode: 'ask', chatMode: 'refactor' })}
+          />
+        )}
       />
     </div>
   );

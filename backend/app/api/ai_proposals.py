@@ -30,7 +30,14 @@ from app.ai.client import LlmError
 from app.ai.config import load_ai_config
 from app.ai.documentation import generate_documentation
 from app.ai.errors import NothingToPropose, ProposalError
-from app.ai.gating import REFACTOR_KIND, require_ai, require_proposal_access, require_semantic_draft
+from app.ai.gating import (
+    REFACTOR_KIND,
+    UNIT_TEST_KIND,
+    require_ai,
+    require_proposal_access,
+    require_semantic_draft,
+    require_unit_tests,
+)
 from app.ai.pro import AiUnavailable
 from app.ai.runtime import RuntimeUnavailable
 from app.ai.selection import SelectionError, item_keys, rebuild
@@ -51,6 +58,8 @@ from app.semantic.pro import SemanticDraftUnavailable
 from app.semantic.runtime import RuntimeUnavailable as SemanticRuntimeUnavailable
 from app.semantic.service import SemanticError
 from app.test_targets.service import targets_for_model
+from app.unit_tests.generation import generate_unit_test
+from app.unit_tests.verify import UNIT_TEST_KINDS, run_after_accept
 
 log = get_logger(__name__)
 
@@ -150,7 +159,7 @@ async def _start(
     options: dict,
 ) -> AiProposalDto:
     """Create the proposal (+ the chat entry recording it) and generate in the background."""
-    await require_ai(session)
+    await (require_unit_tests if kind == UNIT_TEST_KIND else require_ai)(session)
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
@@ -238,6 +247,7 @@ async def _generate(
         # looked up per call (not a module-level dict) so tests can patch either generator
         generator = {
             "document": generate_documentation, "tests": generate_tests, SEMANTIC_KIND: generate_semantic_draft,
+            UNIT_TEST_KIND: generate_unit_test,
         }[kind]
         result = await generator(
             project_id=project_id,
@@ -400,6 +410,8 @@ async def _decide(
         start_verify(proposal.id, project_id, Path(project.path))
     if proposal.kind == SEMANTIC_KIND and proposal.status == "applied":
         start_semantic_verify(proposal.id, project_id, Path(project.path), result)
+    if proposal.kind in UNIT_TEST_KINDS and accept:
+        await run_after_accept(project, result)
 
     selector = _compile_selector(proposal, result, file.path) if accept else None
     if selector:  # refresh the manifest so docs / side pane pick it up
@@ -432,6 +444,8 @@ def _compile_selector(proposal: AiProposal, result: dict, path: str) -> str | No
     """The nodes an accepted file documents: the proposal's node, or (lineage
     propagation) every node with items in that file. Refactors run `dbt parse` instead."""
     if proposal.kind in (REFACTOR_KIND, SEMANTIC_KIND):  # both run `dbt parse` once applied
+        return None
+    if proposal.kind in UNIT_TEST_KINDS:  # the unit test runs once applied (app/unit_tests/verify.py)
         return None
     multi_file_items = (
         result.get("items") if proposal.kind == propagation.KIND

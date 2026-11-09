@@ -227,7 +227,7 @@ model_statuses
   id            INTEGER PK
   project_id    INTEGER FK→projects
   unique_id     TEXT(512)        -- dbt unique_id (model.project.name)
-  kind          TEXT(32)         -- "model" or "test"
+  kind          TEXT(32)         -- "model", "test" or "unit_test" (parent_model_id = the model under test)
   status        TEXT(32)         -- idle | pending | running | success | error | warn | stale
   message       TEXT             -- error message if applicable
   started_at    DATETIME
@@ -254,7 +254,7 @@ invocation_model_results         -- per-node history per invocation (last 20 row
   project_id            INTEGER FK→projects
   unique_id             TEXT(512)
   name                  TEXT(255)
-  kind                  TEXT(32)     -- "model" or "test"
+  kind                  TEXT(32)     -- "model", "test" or "unit_test"
   status                TEXT(32)
   execution_time        REAL
   message               TEXT
@@ -457,7 +457,7 @@ ai_messages
 ai_proposals                         -- AI-generated file changes awaiting review
   id              INTEGER PK
   project_id      INTEGER FK→projects (CASCADE)
-  kind            TEXT(32)   -- document | tests | propagate | refactor
+  kind            TEXT(32)   -- document | tests | unit_test | unit_test_rebaseline | propagate | refactor
   unique_id       TEXT(512) (nullable)
   title           TEXT(255)
   status          TEXT(16)   -- generating | ready | applied | rejected | dismissed | error | empty (nothing needed changing) | undone
@@ -502,7 +502,7 @@ PATCH  /api/projects/{id}/settings
 
 GET    /api/projects/{id}/events                         SSE
 
-GET    /api/projects/{id}/models                         graph: nodes, edges, unit_tests (dbt 1.8+ unit tests, kept out of nodes)
+GET    /api/projects/{id}/models                         graph: nodes, edges, unit_tests (dbt 1.8+ unit tests, kept out of nodes; each with model_unique_id, description, inputs, expect_rows, has_overrides, status, message and — when its last run failed — `diff` {columns, rows [{status, expected, actual}], schema_changed, elided})
 POST   /api/projects/{id}/models
 GET    /api/projects/{id}/models/{unique_id}
 DELETE /api/projects/{id}/models/{unique_id}
@@ -556,6 +556,10 @@ GET    /api/projects/{id}/test-gaps/ignored               Pro: ignored rows, new
 POST   /api/projects/{id}/test-gaps/ignore                Pro: body {keys}; hide these rows from /test-gaps until unignored; `{changed}`; 422 when none is a current gap
 POST   /api/projects/{id}/test-gaps/unignore              Pro: body {keys}; `{changed}`
 POST   /api/projects/{id}/ai/semantic-draft               Pro: body {unique_id, conversation_id?}; 202 AiProposal kind semantic — Wicky drafts a semantic model + metrics (wickd_pro via app/semantic/pro.py), validated in the MetricFlow sidecar against the real semantic manifest (`validate_draft`), a LIMIT 5 smoke query per metric in one `dbt show`; YAML in the project's spec (dbt/schema_semantic.py) + a time spine when missing; `ai_proposal_progress` phases facts / writing / validating; 409 {status} when MetricFlow is off or incompatible; after applying, `dbt parse` + MetricFlow validation → result.verify
+POST   /api/projects/{id}/ai/unit-tests                   Pro (plan 19): body {unique_id, focus? ("cte:<name>" | "case:<column>"), mask?, file? (existing or new YAML path; a bare name goes in the model's folder; must be inside model-paths, else 422), conversation_id?}; 202 AiProposal kind unit_test — compiles the model, samples up to 5 branch-hitting rows per input through `dbt show`, runs the model on them for `expect:`, writes the YAML (`ai_proposal_progress` phases columns / sampling / expecting / writing); accepting runs the new test; no AI model needed
+GET    /api/projects/{id}/unit-tests/file-options?unique_id=   Pro: `{default, existing, files, model_dir}` — the default file for a new unit test, files already holding this model's unit tests, YAML files under the model paths (capped at 500)
+GET    /api/projects/{id}/unit-tests/focus-options?unique_id=  Pro: `{options: [{id, label, kind: cte | case}], compiled}` from the model's compiled SQL — the manifest's `compiled_code`, else the file dbt last compiled under target/compiled/ (`compiled_on_disk()`: commands that only parse drop `compiled_code`), else a `dbt compile` of the model (compiled false only if that fails); 422 for non-models
+POST   /api/projects/{id}/unit-tests/{unique_id}/rebaseline    Base: a ready AiProposal kind unit_test_rebaseline replacing the failing unit test's `expect.rows` with what its last run produced (current rows + the failure diff); 409 when the last run has no diff, 422 for csv / fixture expectations or a changed schema; accepting runs the test
 POST   /api/projects/{id}/ai/tests/batch                  Pro: body {keys} (row keys from /test-gaps); 202 AiProposal kind tests with `result.batch` — one file per schema YAML, each model pre-checked through the runner (`ai_proposal_progress` with done/total/current per model); no AI model needed
 GET    /api/projects/{id}/ai/proposals?unique_id=         proposals needing attention (generating | ready | error | empty)
 GET    /api/projects/{id}/ai/proposals/{pid}              one proposal with its files
@@ -818,7 +822,7 @@ Each SSE client gets its own queue. `publish` is non-blocking (`put_nowait`); ev
 | `data_diff_started` | `data_diff/job.py` | A data diff started (`snapshot_ids`, `count`); invalidates `['data-diff', id]` |
 | `data_diff_progress` | `data_diff/job.py` | `snapshot_ids`, `phase` (building / resolving / probing / comparing), `round` / `pending` while comparing |
 | `data_diff_finished` | `data_diff/job.py` | `snapshot_ids`, `ok`, `counts` (done / error / different) or `cancelled`; invalidates `['data-diff', id]` |
-| `ai_proposal_progress` | `ai_proposals.py` | Wicky chat renders descriptions / suggested tests as they stream (`phase`: columns, sampling, writing, checking; partial JSON `text`, throttled to ~4/s) |
+| `ai_proposal_progress` | `ai_proposals.py` | Wicky chat renders descriptions / suggested tests as they stream (`phase`: columns, sampling, writing, checking — unit tests: columns, sampling, expecting, writing; partial JSON `text`, throttled to ~4/s) |
 
 ### Init Session Event Types
 
@@ -1035,6 +1039,13 @@ Builds on column lineage (section 10). Since `lineage_version` 4 the scan also r
 - **Add tests:** `ai/test_generation.py` gets the model's ranking (`targets_for_model()`), adds the evidence-backed tests directly (`app/test_targets/items.py` `structural_tests()`), then prompts the AI model with the ranked columns and those tests as already present. Without an AI model (`llm_ready()`), or if it fails, only the lineage-backed tests are proposed. Everything is pre-checked in one `dbt show`; YAML via `render_tests()` (`add_column_tests()` + model-level `add_model_tests()`).
 - **Test gaps:** `api/test_gaps.py`; the batch proposal (`app/test_targets/batch.py`) is kind `tests` with `batch: true` and file/node on each item, so partial accept rebuilds one file (`app/ai/selection.py`).
 - **UI:** a Test Gaps card on the Health overview (count + top 3, Refresh lineage; it doesn't fetch the lineage snapshot and isn't part of Run all), and Health → **Test Gaps** tab (`?tab=test-gaps`, `TestGapsPanel`; its label carries the gap count as a badge, a dot while lineage is computing; Gaps / Ignored sub-tabs in `?gaps=`, Ignore selected / Unignore selected, and a Refresh button that re-traces lineage (a no-op when the manifest is unchanged) and re-ranks): a `RichTable` (search, a Test dropdown, checkboxes with shift-click ranges, per-row Ignore / Generate, expand for the evidence and the models that join on it, ⌘-click a model to open it), "Generate tests" → `ProposalReviewModal`, which shows each test's evidence ("From lineage: …"). `['test-gaps', id]` is invalidated on `column_lineage_finished`, `graph_changed`, `files_changed` and `ai_proposal_updated`.
+
+### 10d-3. Unit tests (results Base, generation Pro; plan 19)
+
+- **Results (Base):** `api/runs.py` `result_kind()` stores `unit_test.*` results as kind `unit_test` with `parent_model_id` from the manifest's `depends_on` (a startup migration fixes rows stored as parentless models before). `GET /models` returns each unit test's status and, when it failed, dbt's actual-vs-expected table parsed by `app/dbt/unit_test_diff.py` (daff output: `→` changed cells `expected→actual`, `+++` only in actual, `---` only in expected, `...` unchanged rows left out). The side pane's Unit tests section lists them with Run all / run one (`--select <name>,test_type:unit`) and the diff; Run History counts and filters them; the DAG shows a `UT n` badge with the coverage overlay.
+- **Accept actual (Base):** `app/unit_tests/rebaseline.py` takes the test's current `expect.rows` and applies the diff (removed rows dropped, changed rows replaced, added rows appended; elided rows are unchanged so they stay), coercing cells back to numbers / booleans by the values they replace, then `schema_unit_tests.replace_expect_rows()` writes a proposal. Accepting runs the test.
+- **Generation (Pro):** `app/unit_tests/generation.py` compiles the model (`--full-refresh` for incremental models: unit tests default to `is_incremental()` false), reads each ref/source's columns and types (`probe_relations()`), and asks `wickd_pro.unit_tests` for a plan: the columns the model reads per input (walked on demand from the final SELECT, so an import CTE's `select *` doesn't pull every column), join links, and simple predicates (WHERE / JOIN / HAVING / CASE WHEN) rewritten against one input's own columns. Inputs are sampled in rounds — driving tables first (one row per predicate, a NULL in a filter column, an unmatched join key, plain rows), joined tables for the keys already picked — each round one read-only `dbt show --inline` per input, capped at 5 rows. Optional masking swaps text for stable fakes (same value → same fake, so join keys still match; columns compared with literals kept). wickd_pro then points the compiled SQL at a typed CTE of each input's rows (all warehouse columns, NULL where unset — what dbt does with `given`) by editing its text, never re-generating it through sqlglot (round-tripping loses dialect syntax, e.g. duckdb's `mode() within group`): each input's `relation_name` is swapped for its CTE, string literals and comments untouched, and the CTEs are merged into the model's WITH. One `dbt show` runs it and the output becomes `expect:` (never claimed to be correct). Output columns built from the clock or randomness (`current_date`, `now()`, `random()`, …, followed through CTEs) are left out of `expect:` with a note, since they'd change daily; a clock-based filter or join gets a warning. Query failures report the warehouse's own message (`query_error()`), not dbt's "Runtime Error" header. `schema_unit_tests.add_unit_test()` splices the entry beside the model's other unit tests, else into its schema YAML, or a file the user picked or named (`app/unit_tests/files.py`); `format: csv` only when the project's unit tests mostly use it. Refused with a reason: non-models, dbt < 1.8, ephemeral models or inputs, SQL reading the model's own relation (`{{ this }}`), inputs not built; hard-coded relations are noted. Accepting runs the new test (`app/unit_tests/verify.py`).
+- **UI:** Wicky's Add unit test… (`UnitTestOptions`: whole model, a CTE or a CASE column from `GET …/unit-tests/focus-options`; mask; Write to: the default, a file with this model's unit tests, the last-used file (remembered per model in localStorage) or any other YAML file / a new name), the side pane button (opens Wicky; ProFeatureButton without Pro) and Files' "Unit test this logic…" (the selection preselects the focus). The review modal shows the given / expect rows as tables above the YAML diff, with a warning that sampled rows will be committed.
 
 ### 10e. Refactors (wickd Pro)
 

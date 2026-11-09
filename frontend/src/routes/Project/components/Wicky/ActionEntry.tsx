@@ -11,6 +11,7 @@ import { proposalItems, selectedKeys } from './proposalItems';
 import { RefactorOutcome } from './RefactorOutcome';
 import { InlineCode } from './InlineCode';
 import { SmokeRows } from './SmokeRows';
+import { UNIT_TEST_KINDS, UnitTestResultLine } from './UnitTestSummary';
 
 interface ActionEntryProps {
   projectId: number;
@@ -30,6 +31,12 @@ const PHASE_COPY: Record<string, Record<string, string>> = {
     writing: 'Choosing tests…',
     checking: 'Running the tests against the warehouse…',
   },
+  unit_test: {
+    columns: 'Compiling the model and reading its inputs’ columns…',
+    sampling: 'Picking input rows that hit each branch…',
+    expecting: 'Running the model on those rows…',
+    writing: 'Writing the unit test…',
+  },
   semantic: {
     facts: 'Reading columns, tests and a sample of the data…',
     writing: 'Designing the semantic model and metrics…',
@@ -43,6 +50,8 @@ const COPY: Record<string, [string, string, string]> = {
   tests: ['Adding tests to', 'Tests for', 'Couldn’t add tests to'],
   refactor: ['Preparing the refactor of', 'The refactor of', 'Couldn’t refactor'],
   semantic: ['Drafting the semantic layer for', 'The semantic layer draft for', 'Couldn’t draft the semantic layer for'],
+  unit_test: ['Writing a unit test for', 'The unit test for', 'Couldn’t write a unit test for'],
+  unit_test_rebaseline: ['Updating', 'The new expectation for', 'Couldn’t update'],
 };
 
 const SKIPPED = 'line-through opacity-60';
@@ -111,6 +120,7 @@ function Result({ projectId, p }: { projectId: number; p: AiProposalDto }) {
     ? new Set(proposalItems(p).map((i) => i.key).filter((k) => !keep.has(k)))
     : undefined;
   if (p.kind === 'semantic') return <SemanticResult p={p} skipped={skipped} />;
+  if (UNIT_TEST_KINDS.has(p.kind)) return <UnitTestResultLine p={p} />;
   if (p.kind === 'tests') {
     return (
       <>
@@ -191,7 +201,7 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
             <Loader2 size={12} className="animate-spin text-brand-300" /> {doing} {nodeName(p)}
           </span>
           <span className="text-gray-500">{PHASE_COPY[p.kind]?.[progress?.phase ?? ''] ?? 'Starting…'}</span>
-          {progress?.text && p.kind !== 'semantic' && (p.kind === 'tests'
+          {progress?.text && p.kind !== 'semantic' && !UNIT_TEST_KINDS.has(p.kind) && (p.kind === 'tests'
             ? <TestList tests={parsePartialTests(progress.text)} live={progress.phase === 'writing'} />
             : <Docs docs={parsePartialDocs(progress.text)} />)}
         </>
@@ -201,7 +211,7 @@ export function ActionEntry({ projectId, proposal: p, progress }: ActionEntryPro
         <>
           <div className="flex items-center gap-2">
             {p.status === 'ready'
-              ? <><CheckCircle2 size={12} className="text-brand-300 shrink-0" /><span>{p.kind === 'refactor' ? <><InlineCode text={p.title} /> is ready to review.</> : <>{ready} {nodeName(p)} {p.kind === 'semantic' ? 'is' : 'are'} ready to review.</>}</span></>
+              ? <><CheckCircle2 size={12} className="text-brand-300 shrink-0" /><span>{p.kind === 'refactor' ? <><InlineCode text={p.title} /> is ready to review.</> : <>{ready} {nodeName(p)} {p.kind === 'semantic' || UNIT_TEST_KINDS.has(p.kind) ? 'is' : 'are'} ready to review.</>}</span></>
               : <>{outcome!.icon}<span>{outcomeText}{paths && <span className="text-gray-500"> · {paths}</span>}</span></>}
             {p.status === 'ready' && (
               <>

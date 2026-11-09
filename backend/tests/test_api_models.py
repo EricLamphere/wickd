@@ -103,6 +103,14 @@ async def test_models_endpoint_returns_graph(
         "name": "test_orders_totals",
         "model": "orders",
         "original_file_path": "models/_unit_tests.yml",
+        "model_unique_id": None,
+        "description": "",
+        "inputs": [],
+        "expect_rows": None,
+        "has_overrides": False,
+        "status": "idle",
+        "message": None,
+        "diff": None,
     }]
 
 

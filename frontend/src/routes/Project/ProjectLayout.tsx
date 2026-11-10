@@ -7,6 +7,7 @@ import { useModifierKeyClass } from '../../lib/useModifierKeyClass';
 import { BottomPane } from './components/BottomPane';
 import { CommandPalette } from './components/CommandPalette';
 import { RefactorHost } from './components/refactor/RefactorHost';
+import { ScheduleFailureToast } from '../../components/schedule/ScheduleFailureToast';
 import { WickyPane } from './components/Wicky/WickyPane';
 import { useStatePreviewCache } from './components/slim/useStatePreviewCache';
 import { CommandPaletteContext } from './lib/commandPaletteContext';
@@ -103,6 +104,7 @@ export default function ProjectLayout() {
       </div>
       <WickyPane projectId={id} graph={graph ?? null} selectedNodeId={selectedNodeId} />
       <RefactorHost projectId={id} />
+      <ScheduleFailureToast projectId={id} />
         {paletteOpen && (
           <CommandPalette
             projectId={id}

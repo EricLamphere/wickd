@@ -26,7 +26,7 @@ Nothing is ever built on prod. wickd only reads it.
    shows the last result and the Diff buttons. Without `DIFF_BASE_TARGET` it links to Environment.
 2. Click **Diff changed (N)** to diff just the changed models, or **Diff all impacted (N)** to also
    diff every built model downstream of them (to see how a change ripples through). With **Build in
-   dev first** on (the default; remembered), wickd runs `dbt run --select <models>` on your active target first; the run shows in Run History.
+   dev first** on (the default; remembered), wickd runs `dbt run --select <models>` on your active target first; the run shows on the Runs page.
    Turn it off to compare what's already built in dev.
 3. The section's header sums up the result (`1 differs · 3 unchanged · 2 min ago`) and lists each
    diffed model (changed or downstream) with its result, what needs attention first. The **Data** column in the impact

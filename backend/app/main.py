@@ -43,8 +43,11 @@ from app.api import performance as performance_api
 from app.api import projects as projects_api
 from app.api import propagation as propagation_api
 from app.api import refactor as refactor_api
+from app.api import run_history as run_history_api
+from app.api import run_schedules as run_schedules_api
 from app.api import run_trend as run_trend_api
 from app.api import runs as runs_api
+from app.api import scheduling as scheduling_api
 from app.api import semantic as semantic_api
 from app.api import semantic_debug as semantic_debug_api
 from app.api import settings as settings_api
@@ -65,7 +68,8 @@ from app.dbt.python_env import load_python_setting
 from app.logging_setup import configure_logging, get_logger
 from app.logs.api_logger import append_api_log, configure_api_log
 from app.projects.service import begin_startup_scan, rescan_projects
-from app.semantic import monitors as metric_monitors
+from app.scheduling import loop as scheduler_loop
+from app.semantic import monitors as metric_monitors  # noqa: F401 — registers its scheduler tick
 from app.semantic.runtime import metricflow_runtime
 from app.watcher.service import watcher_manager
 
@@ -99,11 +103,11 @@ async def lifespan(app: FastAPI):
     )
     await watcher_manager.start()
     begin_startup_scan(_startup_scan())
-    metric_monitors.start_scheduler()
+    scheduler_loop.start()
     try:
         yield
     finally:
-        await metric_monitors.stop_scheduler()
+        await scheduler_loop.stop()
         await watcher_manager.stop()
         await llama_server.stop()
         await metricflow_runtime.stop()
@@ -123,6 +127,7 @@ app.add_middleware(
 
 app.include_router(health_api.router)
 app.include_router(settings_api.router)
+app.include_router(scheduling_api.router)
 app.include_router(setup_api.router)
 app.include_router(projects_api.router)
 app.include_router(models_api.router)
@@ -152,6 +157,8 @@ app.include_router(impact_api.router)
 app.include_router(contracts_api.router)
 app.include_router(data_diff_api.router)
 app.include_router(runs_api.router)
+app.include_router(run_history_api.router)
+app.include_router(run_schedules_api.router)
 app.include_router(run_trend_api.router)
 app.include_router(slim_api.router)
 app.include_router(performance_api.router)

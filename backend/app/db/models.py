@@ -41,6 +41,8 @@ class Project(Base):
     last_init_failed_step: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # MetricFlow for this project: '' = the global default (app_settings metricflow_mode), auto, off
     metricflow_mode: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    # Runs → Schedule's "Pause all schedules" (plan 27): no scheduled run fires while set
+    schedules_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     init_steps: Mapped[list["InitStep"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="InitStep.order"
@@ -363,6 +365,11 @@ class RunInvocation(Base):
     # From run_results.json: --threads (or distinct thread ids) and dbt's own elapsed_time
     threads: Mapped[int | None] = mapped_column(Integer, nullable=True)
     elapsed_time: Mapped[float | None] = mapped_column(nullable=True)
+    # who started it (plan 27): manual | schedule | rerun; schedule_id links a scheduled (or Run now) run
+    trigger: Mapped[str] = mapped_column(String(16), default="manual", server_default="manual")
+    schedule_id: Mapped[int | None] = mapped_column(
+        ForeignKey("run_schedules.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     node_results: Mapped[list["InvocationModelResult"]] = relationship(
         back_populates="invocation", cascade="all, delete-orphan"
@@ -600,3 +607,55 @@ class MetricMonitorRun(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RunSchedule(Base):
+    """A dbt command run on a schedule while wickd is open (plan 27, app/runs/scheduler.py).
+
+    `command` is the raw text, re-parsed (custom_command.py) on save and on every fire.
+    When: `interval_hours` or `cron` (at most one; both NULL = off). `target` NULL = the
+    active target at fire time. `armed_at` is when the schedule was created, its timing
+    changed or it was re-enabled: due-ness counts from max(last_fired_at, armed_at), so
+    turning a schedule on never fires (or misses) a run straight away.
+    """
+
+    __tablename__ = "run_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(255))
+    command: Mapped[str] = mapped_column(Text)
+    interval_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cron: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    catch_up: Mapped[bool] = mapped_column(Boolean, default=False)
+    busy_wait_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    armed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_fired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # pending | running | success | error | cancelled | missed | skipped_busy | invalid
+    last_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    last_invocation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_event_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RunScheduleEvent(Base):
+    """One fire of a schedule (scheduled or Run now), including ones that never became a
+    run: `outcome` pending → running → success | error | cancelled, or missed |
+    skipped_busy | invalid. Last 50 kept per schedule."""
+
+    __tablename__ = "run_schedule_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    schedule_id: Mapped[int] = mapped_column(
+        ForeignKey("run_schedules.id", ondelete="CASCADE"), index=True
+    )
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    trigger: Mapped[str] = mapped_column(String(16), default="schedule")  # schedule | manual
+    outcome: Mapped[str] = mapped_column(String(32))
+    invocation_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    message: Mapped[str] = mapped_column(Text, default="")

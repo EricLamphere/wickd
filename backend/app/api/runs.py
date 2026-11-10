@@ -1,11 +1,12 @@
 import asyncio
 import json
 import shlex
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy import select as sa_select
@@ -13,6 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.env import _read_profiles_yml
 from app.api.init import load_project_env
+from app.api.run_history import (  # noqa: F401 — re-exported (api/slim.py imports them from here)
+    _as_utc,
+    _state_record,
+    latest_invocation_id,
+)
 from app.db.engine import SessionLocal, get_session
 from app.db.models import (
     GlobalProfile,
@@ -64,55 +70,6 @@ class RunResponseDto(BaseModel):
     accepted: bool
     command: str
     select: str | None
-
-
-class RunInvocationDto(BaseModel):
-    id: int
-    command: str
-    selector: str | None
-    cli_command: str | None
-    profile: str | None
-    target: str | None
-    status: str
-    started_at: datetime | None
-    finished_at: datetime | None
-    duration_seconds: float | None
-    model_count: int
-    success_count: int
-    error_count: int
-    # slim build settings the run used ({kind, ref, folder, sha, target, state, defer, favor_state})
-    state: dict | None = None
-    # the project's latest invocation, failed: `dbt retry` can pick up where it stopped
-    retryable: bool = False
-
-
-class ModelTimingDto(BaseModel):
-    unique_id: str
-    name: str
-    kind: str
-    status: str
-    execution_time: float | None
-    message: str | None
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    thread_id: str | None = None
-    rows_affected: int | None = None
-    bytes_processed: int | None = None
-
-
-class RunInvocationDetailDto(RunInvocationDto):
-    nodes: list[ModelTimingDto]
-    threads: int | None = None
-    elapsed_time: float | None = None
-    # False for runs recorded before timing capture (or by dbt versions that don't write it)
-    has_timing: bool = False
-
-
-class RunHistoryPageDto(BaseModel):
-    items: list[RunInvocationDto]
-    total: int
-    offset: int
-    limit: int
 
 
 def _resolve_selector(dto: RunRequestDto) -> str | None:
@@ -308,6 +265,8 @@ class _InvocationSpec:
     inject_profiles_dir: bool = True
     custom_args: tuple[str, ...] | None = None
     state_record: dict | None = None
+    trigger: str = "manual"  # manual | schedule | rerun
+    schedule_id: int | None = None
 
 
 def _profiles_default_target(project: Project) -> str | None:
@@ -336,6 +295,8 @@ async def _create_invocation(project: Project, spec: _InvocationSpec) -> tuple[i
             started_at=datetime.now(UTC),
             custom_args=json.dumps(list(spec.custom_args)) if spec.custom_args is not None else None,
             state_json=json.dumps(spec.state_record) if spec.state_record is not None else None,
+            trigger=spec.trigger,
+            schedule_id=spec.schedule_id,
         )
         session.add(inv)
         await session.commit()
@@ -377,10 +338,18 @@ async def _finalize_invocation(project: Project, invocation_id: int, status: str
     ))
 
 
-async def _run_invocation(project: Project, spec: _InvocationSpec, env: dict[str, str]) -> None:
-    """Record a RunInvocation, stream dbt through the runner, then persist results and status."""
+OnStart = Callable[[int], Awaitable[None]]
+
+
+async def _run_invocation(
+    project: Project, spec: _InvocationSpec, env: dict[str, str], on_start: OnStart | None = None,
+) -> tuple[int, str]:
+    """Record a RunInvocation, stream dbt through the runner, then persist results and status.
+    Returns (invocation id, final status); `on_start` gets the id once the row exists."""
     project_path = Path(project.path)
     invocation_id, log_path = await _create_invocation(project, spec)
+    if on_start is not None:
+        await on_start(invocation_id)
     req = RunRequest(
         project_id=project.id,
         project_path=project_path,
@@ -389,6 +358,8 @@ async def _run_invocation(project: Project, spec: _InvocationSpec, env: dict[str
         extra=spec.extra,
         env=env,
         inject_profiles_dir=spec.inject_profiles_dir,
+        trigger=spec.trigger,
+        schedule_id=spec.schedule_id,
     )
     results_mtime_before = _run_results_mtime(project_path)
     run_error = False
@@ -413,6 +384,7 @@ async def _run_invocation(project: Project, spec: _InvocationSpec, env: dict[str
                 log.exception("persist_results_failed", project_id=project.id, invocation_id=invocation_id)
         status = _invocation_status(cancelled, run_error, results_fresh, return_code, project_path)
         await _finalize_invocation(project, invocation_id, status)
+    return invocation_id, status
 
 
 async def _run_dbt_and_persist(
@@ -425,6 +397,7 @@ async def _run_dbt_and_persist(
     empty: bool = False,
     vars: dict[str, str] | None = None,
     run_state: RunState | None = None,
+    trigger: str = "manual",
 ) -> None:
     env = await load_project_env(project.id)
     active_target = await _load_active_target(project.id)
@@ -453,22 +426,32 @@ async def _run_dbt_and_persist(
         target=active_target or _profiles_default_target(project),
         profile_name=profile_name,
         state_record=run_state.record if run_state is not None else None,
+        trigger=trigger,
     )
     await _run_invocation(project, spec, env)
 
 
-async def _run_custom_and_persist(project: Project, parsed: ParsedCommand) -> None:
-    """Run a user-entered dbt command, injecting the active target unless the user passed one."""
+async def _run_custom_and_persist(
+    project: Project,
+    parsed: ParsedCommand,
+    *,
+    target: str | None = None,
+    trigger: str = "manual",
+    schedule_id: int | None = None,
+    on_start: OnStart | None = None,
+) -> tuple[int, str]:
+    """Run a user-entered dbt command. The command's own --target wins, then `target`
+    (a schedule's pinned one), then the active target."""
     env = await load_project_env(project.id)
     profile_name = await _load_active_profile_name(project.id)
     extra = parsed.rest
     if parsed.has_target:
         target = parsed.target
     else:
-        active_target = await _load_active_target(project.id)
-        if active_target:
-            extra += ("--target", active_target)
-        target = active_target or _profiles_default_target(project)
+        chosen = target or await _load_active_target(project.id)
+        if chosen:
+            extra += ("--target", chosen)
+        target = chosen or _profiles_default_target(project)
     spec = _InvocationSpec(
         command=parsed.subcommand,
         select=parsed.selector,
@@ -478,12 +461,14 @@ async def _run_custom_and_persist(project: Project, parsed: ParsedCommand) -> No
         profile_name=profile_name,
         inject_profiles_dir=not parsed.has_profiles_dir,
         custom_args=parsed.args,
+        trigger=trigger,
+        schedule_id=schedule_id,
     )
-    await _run_invocation(project, spec, env)
+    return await _run_invocation(project, spec, env, on_start)
 
 
 async def _launch(
-    project: Project, command: str, dto: RunRequestDto
+    project: Project, command: str, dto: RunRequestDto, trigger: str = "manual",
 ) -> RunResponseDto:
     select = _resolve_selector(dto)
     env = await load_project_env(project.id)
@@ -496,14 +481,14 @@ async def _launch(
     asyncio.create_task(
         _run_dbt_and_persist(
             project, command, select,
-            dto.full_refresh, dto.threads, dto.debug, dto.empty, dto.vars, run_state,
+            dto.full_refresh, dto.threads, dto.debug, dto.empty, dto.vars, run_state, trigger=trigger,
         )
     )
     return RunResponseDto(accepted=True, command=command, select=select)
 
 
-def _launch_custom(project: Project, parsed: ParsedCommand) -> RunResponseDto:
-    asyncio.create_task(_run_custom_and_persist(project, parsed))
+def _launch_custom(project: Project, parsed: ParsedCommand, trigger: str = "manual") -> RunResponseDto:
+    asyncio.create_task(_run_custom_and_persist(project, parsed, trigger=trigger))
     return RunResponseDto(accepted=True, command=parsed.subcommand, select=parsed.selector)
 
 
@@ -571,192 +556,6 @@ async def post_custom_command(
     return _launch_custom(project, parsed)
 
 
-def _as_utc(value: datetime | None) -> datetime | None:
-    """SQLite hands back naive datetimes; they were stored as UTC."""
-    if value is None or value.tzinfo is not None:
-        return value
-    return value.replace(tzinfo=UTC)
-
-
-def _state_record(inv: RunInvocation) -> dict | None:
-    try:
-        value = json.loads(inv.state_json) if inv.state_json else None
-    except ValueError:
-        return None
-    return value if isinstance(value, dict) else None
-
-
-def _invocation_to_dto(
-    inv: RunInvocation,
-    model_count: int,
-    success_count: int = 0,
-    error_count: int = 0,
-    latest_id: int | None = None,
-) -> RunInvocationDto:
-    duration: float | None = None
-    if inv.started_at and inv.finished_at:
-        duration = (inv.finished_at - inv.started_at).total_seconds()
-    return RunInvocationDto(
-        id=inv.id,
-        command=inv.command,
-        selector=inv.selector,
-        cli_command=inv.cli_command,
-        profile=inv.profile,
-        target=inv.target,
-        status=inv.status,
-        started_at=inv.started_at,
-        finished_at=inv.finished_at,
-        duration_seconds=duration,
-        model_count=model_count,
-        success_count=success_count,
-        error_count=error_count,
-        state=_state_record(inv),
-        retryable=inv.id == latest_id and inv.status == "error" and inv.command in RETRYABLE_COMMANDS,
-    )
-
-
-RETRYABLE_COMMANDS = frozenset({"run", "build", "test", "seed", "snapshot", "retry", "clone"})
-
-
-async def latest_invocation_id(session: AsyncSession, project_id: int) -> int | None:
-    result = await session.execute(
-        select(RunInvocation.id).where(RunInvocation.project_id == project_id)
-        .order_by(RunInvocation.id.desc()).limit(1)
-    )
-    return result.scalar_one_or_none()
-
-
-@router.get("/{project_id}/run-history", response_model=RunHistoryPageDto)
-async def get_run_history(
-    project_id: int,
-    limit: int = Query(default=50, le=1000),
-    offset: int = Query(default=0, ge=0),
-    command: str | None = Query(default=None),
-    status: str | None = Query(default=None),
-    q: str | None = Query(default=None),
-    session: AsyncSession = Depends(get_session),
-) -> RunHistoryPageDto:
-    from sqlalchemy import func as sa_func
-    project = await session.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
-
-    base_q = select(RunInvocation).where(RunInvocation.project_id == project_id)
-    if command:
-        base_q = base_q.where(RunInvocation.command == command)
-    if status:
-        base_q = base_q.where(RunInvocation.status == status)
-    if q:
-        base_q = base_q.where(RunInvocation.selector.contains(q))
-
-    count_result = await session.execute(
-        select(sa_func.count()).select_from(base_q.subquery())
-    )
-    total = count_result.scalar_one()
-
-    invocations_result = await session.execute(
-        base_q.order_by(RunInvocation.started_at.desc()).offset(offset).limit(limit)
-    )
-    invocations = invocations_result.scalars().all()
-    if not invocations:
-        return RunHistoryPageDto(items=[], total=total, offset=offset, limit=limit)
-
-    inv_ids = [inv.id for inv in invocations]
-    from sqlalchemy import case
-    counts_result = await session.execute(
-        select(
-            InvocationModelResult.invocation_id,
-            sa_func.count(InvocationModelResult.id),
-            sa_func.sum(case((InvocationModelResult.status == "success", 1), else_=0)),
-            sa_func.sum(case((InvocationModelResult.status == "error", 1), else_=0)),
-        )
-        .where(InvocationModelResult.invocation_id.in_(inv_ids))
-        .group_by(InvocationModelResult.invocation_id)
-    )
-    count_by_id: dict[int, tuple[int, int, int]] = {
-        row[0]: (row[1], int(row[2] or 0), int(row[3] or 0))
-        for row in counts_result.fetchall()
-    }
-
-    latest_id = await latest_invocation_id(session, project_id)
-    items = [
-        _invocation_to_dto(inv, *count_by_id.get(inv.id, (0, 0, 0)), latest_id=latest_id)
-        for inv in invocations
-    ]
-    return RunHistoryPageDto(items=items, total=total, offset=offset, limit=limit)
-
-
-@router.get("/{project_id}/run-history/{invocation_id}", response_model=RunInvocationDetailDto)
-async def get_run_invocation_detail(
-    project_id: int,
-    invocation_id: int,
-    session: AsyncSession = Depends(get_session),
-) -> RunInvocationDetailDto:
-    inv = await session.get(RunInvocation, invocation_id)
-    if inv is None or inv.project_id != project_id:
-        raise HTTPException(status_code=404, detail="invocation not found")
-
-    results_q = await session.execute(
-        select(InvocationModelResult)
-        .where(InvocationModelResult.invocation_id == invocation_id)
-        .order_by(
-            InvocationModelResult.execution_time.desc().nulls_last(),
-            InvocationModelResult.unique_id,
-        )
-    )
-    results = results_q.scalars().all()
-
-    nodes = [
-        ModelTimingDto(
-            unique_id=r.unique_id,
-            name=r.name,
-            kind=r.kind,
-            status=r.status,
-            execution_time=r.execution_time,
-            message=r.message,
-            started_at=_as_utc(r.started_at),
-            completed_at=_as_utc(r.completed_at),
-            thread_id=r.thread_id,
-            rows_affected=r.rows_affected,
-            bytes_processed=r.bytes_processed,
-        )
-        for r in results
-    ]
-
-    success_count = sum(1 for r in results if r.status == "success")
-    error_count = sum(1 for r in results if r.status == "error")
-    base = _invocation_to_dto(inv, len(nodes), success_count, error_count,
-                              latest_id=await latest_invocation_id(session, project_id))
-    return RunInvocationDetailDto(
-        **base.model_dump(),
-        nodes=nodes,
-        threads=inv.threads,
-        elapsed_time=inv.elapsed_time,
-        has_timing=any(n.started_at is not None and n.completed_at is not None for n in nodes),
-    )
-
-
-@router.get("/{project_id}/run-history/{invocation_id}/log", response_model=None)
-async def get_invocation_log(
-    project_id: int,
-    invocation_id: int,
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    inv = await session.get(RunInvocation, invocation_id)
-    if inv is None or inv.project_id != project_id:
-        raise HTTPException(status_code=404, detail="invocation not found")
-    if not inv.log_path:
-        return {"lines": []}
-    log_file = Path(inv.log_path)
-    if not log_file.exists():
-        return {"lines": []}
-    try:
-        text = log_file.read_text(encoding="utf-8", errors="replace")
-        return {"lines": text.splitlines()}
-    except OSError:
-        return {"lines": []}
-
-
 @router.post("/{project_id}/runs/cancel")
 async def post_cancel_run(
     project_id: int,
@@ -786,10 +585,10 @@ async def post_rerun_invocation(
             parsed = ParsedCommand.from_args(json.loads(inv.custom_args))
         except (CustomCommandError, json.JSONDecodeError, TypeError) as exc:
             raise HTTPException(status_code=400, detail=f"cannot rerun this command: {exc}") from exc
-        return _launch_custom(project, parsed)
+        return _launch_custom(project, parsed, "rerun")
     record = _state_record(inv) or {}
     dto = RunRequestDto(
         select=inv.selector, state=bool(record.get("state")),
         defer=bool(record.get("defer")), favor_state=bool(record.get("favor_state")),
     )
-    return await _launch(project, inv.command, dto)
+    return await _launch(project, inv.command, dto, "rerun")

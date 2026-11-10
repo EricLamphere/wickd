@@ -75,9 +75,28 @@ For anything the buttons don't cover (`ls`, `parse`, `source freshness`, `run-op
 - **Command palette** — press ⌘K, choose **Run custom dbt command…**, type the command (the `dbt` prefix is optional) and press Enter. You can also type `dbt ls -s +orders` straight into the palette search and pick **Run: dbt …**. Recent commands are listed below the input; arrow keys recall them.
 - **Project homepage** — the **dbt Command** row at the bottom of the Quick Run card. Press ↑/↓ in the input to recall recent commands.
 
-The command runs in the project directory with the active env profile, and `--target` is added from the target dropdown unless you pass `--target`/`-t` yourself. Output streams to the Run panel, and the invocation is recorded in Run History, where **Rerun** replays the exact command. Commands that don't write `run_results.json` (e.g. `ls`, `parse`) are marked success/error from dbt's exit code and don't change model statuses.
+The command runs in the project directory with the active env profile, and `--target` is added from the target dropdown unless you pass `--target`/`-t` yourself. Output streams to the Run panel, and the invocation is recorded on the Runs page, where **Rerun** replays the exact command. Commands that don't write `run_results.json` (e.g. `ls`, `parse`) are marked success/error from dbt's exit code and don't change model statuses.
 
 `dbt init` (interactive; use **New Project**) and `dbt docs serve` (never exits; use the **Docs** page) are rejected. Commands run without a shell, so pipes and `&&` are passed to dbt as literal arguments.
+
+## Scheduling runs
+
+Runs → **Schedule** runs any dbt command on a schedule, for example `build -s tag:nightly` on weekdays at 7:00.
+
+> Schedules run **only while wickd is open**. wickd isn't a cron daemon: if it is closed (or the Mac is asleep) at a scheduled time, that run doesn't happen.
+
+1. Click **New schedule**, or start from a past run's **Schedule this…**, or type a command in the command palette's custom command mode and press **Schedule** (⌘↵).
+2. Give it a name and the dbt command (anything the custom command box accepts).
+3. Choose **When**: every 1, 3, 6, 12 or 24 hours, or **Custom schedule…** for a cron expression (`minute hour day-of-month month day-of-week`, local time, presets included). The next three run times are shown as you type. Schedules can run at most every 15 minutes.
+4. Pick a **Target**: the active target when it runs (default) or a fixed one such as `prod`. A `--target` in the command wins, and the picker is disabled.
+5. **Wait if busy** (default 30 min): if another dbt command is running when the schedule is due, wickd waits up to this long, then records the run as *skipped (busy)*. `0` skips right away. A schedule never has more than one run waiting.
+6. **Catch up missed run** (off by default): when on, a run missed while wickd was closed starts once when wickd next opens. When off, it's recorded as *missed*.
+
+Scheduled runs are ordinary runs: they wait for the project's run lock, stream into the Execution DAG, appear on the Runs tab (with a clock and the schedule's name) and update model statuses.
+
+Each row shows the schedule, its next run and its last outcome (click it to open that run). Hover for **Run now**, **Edit**, **Duplicate** and **Delete**; the checkbox enables or disables it; drag to reorder. Click a row for its settings and history, including missed and skipped runs. **Pause all schedules** stops every schedule in the project; when you resume, they count from then, so the paused time isn't reported as missed.
+
+When a scheduled run fails, is skipped or its command is no longer valid, a red dot appears on **Runs** in the nav and on the Schedule tab until you look, and a toast appears if wickd is in front.
 
 ## Viewing model status after a run
 
@@ -95,7 +114,7 @@ When tests fail, the SidePane shows a **Test Failures** section listing each fai
 
 ## Reviewing past runs
 
-Every invocation is recorded in **Run History** (clock icon in the left nav). From there you can browse past runs, inspect per-node execution times and trends, and view the raw dbt log. See [View run history](view-run-history.md) for details.
+Every invocation is recorded on the **Runs** page (clock icon in the left nav). From there you can browse past runs, inspect per-node execution times and trends, and view the raw dbt log. See [View run history](view-run-history.md) for details.
 
 ## Troubleshooting
 

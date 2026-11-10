@@ -22,6 +22,7 @@ const PROJECT_EVENT_TYPES = [
   'contract_check_started', 'contract_check_progress', 'contract_check_finished',
   'data_diff_started', 'data_diff_progress', 'data_diff_finished',
   'charts_changed', 'charts_build_started', 'charts_build_finished',
+  'run_schedules_changed',
 ];
 
 /** Events on the `global` topic (not tied to a project). */

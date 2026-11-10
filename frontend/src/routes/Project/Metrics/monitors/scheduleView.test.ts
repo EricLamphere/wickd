@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  describeProjectSchedule, formatCheckTime, monitorChoice, presetLabel, projectChoice, projectSettingsFor,
+  describeProjectSchedule, monitorChoice, presetLabel, projectChoice, projectSettingsFor,
 } from './scheduleView';
 
 describe('project schedule', () => {
@@ -28,16 +28,5 @@ describe('monitor override', () => {
     expect(monitorChoice({ schedule: '0 7 * * *' })).toBe('cron');
     expect(presetLabel('0 7 * * *')).toBe('Every day at 7:00');
     expect(presetLabel('1 2 3 4 5')).toBeNull();
-  });
-});
-
-describe('formatCheckTime', () => {
-  const now = new Date(2026, 10, 1, 10, 0);
-  it('is relative to today', () => {
-    expect(formatCheckTime(new Date(2026, 10, 1, 10, 0, 30).toISOString(), now)).toBe('now');
-    expect(formatCheckTime(new Date(2026, 10, 1, 9, 0).toISOString(), now)).toBe('now');
-    expect(formatCheckTime(new Date(2026, 10, 1, 17, 5).toISOString(), now)).toBe('today 17:05');
-    expect(formatCheckTime(new Date(2026, 10, 2, 9, 0).toISOString(), now)).toBe('tomorrow 09:00');
-    expect(formatCheckTime(new Date(2026, 10, 9, 9, 0).toISOString(), now)).toMatch(/9.*09:00$/);
   });
 });

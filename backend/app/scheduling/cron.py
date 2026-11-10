@@ -1,4 +1,4 @@
-"""Five-field cron expressions for metric monitor schedules (pure, no dependencies).
+"""Five-field cron expressions for schedules (metric monitors, scheduled runs; pure, no dependencies).
 
 `minute hour day-of-month month day-of-week`, with `*`, values, ranges `a-b`, steps
 `*/n` / `a-b/n` / `a/n`, lists, month and weekday names (jan, mon, …; 0 and 7 are
@@ -7,7 +7,7 @@ Like Vixie cron, when both day fields are restricted a day matches either of the
 
 Times are naive wall-clock times (wickd passes the machine's local time, so a
 schedule follows daylight saving). Schedules that fire more often than every
-MIN_GAP_MINUTES are refused: every check queries the warehouse.
+MIN_GAP_MINUTES are refused: every check queries the warehouse or runs dbt.
 """
 
 from dataclasses import dataclass
@@ -118,7 +118,7 @@ def parse(expr: str) -> Cron:
     minutes, hours, days, months, weekdays = parsed
     weekdays = frozenset(d % 7 for d in weekdays)
     if _too_frequent(minutes, hours):
-        raise CronError(f"checks can run at most every {MIN_GAP_MINUTES} minutes")
+        raise CronError(f"a schedule can run at most every {MIN_GAP_MINUTES} minutes")
     cron = Cron(minutes, hours, days, months, weekdays, parts[2] == "*", parts[4] == "*")
     if next_fire(cron, datetime(2000, 1, 1)) is None:
         raise CronError("this schedule never runs")

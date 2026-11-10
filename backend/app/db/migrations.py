@@ -782,6 +782,75 @@ async def run_migrations() -> None:
             await session.commit()
 
 
+        # plan 27: scheduled runs
+        if not await _table_exists(session, "run_schedules"):
+            await session.execute(text(
+                "CREATE TABLE run_schedules ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE, "
+                "name VARCHAR(255) NOT NULL, "
+                "command TEXT NOT NULL, "
+                "interval_hours INTEGER, "
+                "cron TEXT, "
+                "target VARCHAR(255), "
+                "catch_up BOOLEAN NOT NULL DEFAULT 0, "
+                "busy_wait_minutes INTEGER NOT NULL DEFAULT 30, "
+                "enabled BOOLEAN NOT NULL DEFAULT 1, "
+                "position INTEGER NOT NULL DEFAULT 0, "
+                "armed_at DATETIME, "
+                "last_fired_at DATETIME, "
+                "last_status VARCHAR(32), "
+                "last_invocation_id INTEGER, "
+                "last_event_id INTEGER, "
+                "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            ))
+            await session.execute(text("CREATE INDEX ix_run_schedules_project_id ON run_schedules (project_id)"))
+            await session.commit()
+        if not await _table_exists(session, "run_schedule_events"):
+            await session.execute(text(
+                "CREATE TABLE run_schedule_events ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "schedule_id INTEGER NOT NULL REFERENCES run_schedules(id) ON DELETE CASCADE, "
+                "at DATETIME NOT NULL, "
+                "trigger VARCHAR(16) NOT NULL DEFAULT 'schedule', "
+                "outcome VARCHAR(32) NOT NULL, "
+                "invocation_id INTEGER, "
+                "message TEXT NOT NULL DEFAULT '')"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_run_schedule_events_schedule_id ON run_schedule_events (schedule_id)"
+            ))
+            await session.commit()
+        if not await _column_exists(session, "run_invocations", "trigger"):
+            await session.execute(text(
+                "ALTER TABLE run_invocations ADD COLUMN trigger VARCHAR(16) NOT NULL DEFAULT 'manual'"
+            ))
+            await session.commit()
+        if not await _column_exists(session, "run_invocations", "schedule_id"):
+            await session.execute(text(
+                "ALTER TABLE run_invocations ADD COLUMN schedule_id INTEGER "
+                "REFERENCES run_schedules(id) ON DELETE SET NULL"
+            ))
+            await session.execute(text(
+                "CREATE INDEX ix_run_invocations_schedule_id ON run_invocations (schedule_id)"
+            ))
+            await session.commit()
+        if not await _column_exists(session, "projects", "schedules_paused"):
+            await session.execute(text(
+                "ALTER TABLE projects ADD COLUMN schedules_paused BOOLEAN NOT NULL DEFAULT 0"
+            ))
+            await session.commit()
+        # a scheduled fire lives in memory: one in flight when wickd stopped never finishes
+        await session.execute(text(
+            "UPDATE run_schedule_events SET outcome = 'error', "
+            "message = 'wickd stopped before this run finished' "
+            "WHERE outcome IN ('pending', 'running')"
+        ))
+        await session.execute(text(
+            "UPDATE run_schedules SET last_status = 'error' WHERE last_status IN ('pending', 'running')"
+        ))
+        await session.commit()
+
 async def init_db() -> None:
     await ensure_db_initialized()
     await run_migrations()

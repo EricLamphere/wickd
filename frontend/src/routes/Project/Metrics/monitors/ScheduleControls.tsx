@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Clock } from 'lucide-react';
 import type { MonitorDto, MonitorListDto, MonitorPatchBody, MonitorScheduleSettings } from '../../../../lib/monitorsApi';
-import { CronField } from './CronField';
+import { CronField } from '../../../../components/schedule/CronField';
 import {
   CUSTOM, describeProjectSchedule, FOLLOW_PROJECT, formatCheckTime, INTERVALS, monitorChoice, OFF, presetLabel,
   projectChoice, projectSettingsFor,
@@ -20,8 +20,7 @@ function CronChip({ expr, onClick }: { expr: string; onClick: () => void }) {
   );
 }
 
-export function ProjectScheduleControl({ projectId, data, onSave }: {
-  projectId: number;
+export function ProjectScheduleControl({ data, onSave }: {
   data: MonitorListDto;
   onSave: (body: MonitorScheduleSettings) => Promise<unknown>;
 }) {
@@ -44,15 +43,14 @@ export function ProjectScheduleControl({ projectId, data, onSave }: {
         </select>
       </label>
       {editing ? (
-        <CronField projectId={projectId} initial={data.schedule ?? ''} onCancel={() => setEditing(false)}
+        <CronField initial={data.schedule ?? ''} onCancel={() => setEditing(false)}
           onSave={async (expr) => { if (await onSave({ interval_hours: null, schedule: expr })) setEditing(false); }} />
       ) : data.schedule && <CronChip expr={data.schedule} onClick={() => setEditing(true)} />}
     </div>
   );
 }
 
-export function MonitorScheduleSetting({ projectId, monitor, project, onUpdate }: {
-  projectId: number;
+export function MonitorScheduleSetting({ monitor, project, onUpdate }: {
   monitor: MonitorDto;
   project: Pick<MonitorListDto, 'interval_hours' | 'schedule'>;
   onUpdate: (body: MonitorPatchBody) => Promise<unknown>;
@@ -77,7 +75,7 @@ export function MonitorScheduleSetting({ projectId, monitor, project, onUpdate }
         </select>
       </label>
       {editing ? (
-        <CronField projectId={projectId} initial={own ?? ''} onCancel={() => setEditing(false)}
+        <CronField initial={own ?? ''} onCancel={() => setEditing(false)}
           onSave={async (expr) => { if (await onUpdate({ schedule: expr })) setEditing(false); }} />
       ) : own && <span className="self-end"><CronChip expr={own} onClick={() => setEditing(true)} /></span>}
       <p className="self-end text-[11px] text-gray-600">

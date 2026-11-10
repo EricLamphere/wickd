@@ -1,6 +1,7 @@
 import { Link, NavLink } from 'react-router-dom';
 import { navAlert } from './health/healthStatus';
 import { useHealthSummary } from './health/useHealth';
+import { useScheduleAlerts } from '../../../lib/useRunSchedules';
 
 export type CurrentPage = 'home' | 'dag' | 'init' | 'files' | 'environment' | 'docs' | 'git' | 'workspace' | 'health' | 'runs' | 'metrics' | 'charts';
 
@@ -112,7 +113,7 @@ const PROJECT_ITEMS: { key: CurrentPage; label: string; icon: React.ReactNode; p
   { key: 'metrics',   label: 'Metrics',        icon: METRICS_ICON,   path: 'metrics' },
   { key: 'charts',    label: 'Charts',         icon: CHARTS_ICON,    path: 'charts' },
   { key: 'workspace', label: 'SQL Workspace',  icon: WORKSPACE_ICON, path: 'workspace' },
-  { key: 'runs',      label: 'Run History',    icon: RUNS_ICON,      path: 'runs' },
+  { key: 'runs',      label: 'Runs',           icon: RUNS_ICON,      path: 'runs' },
   { key: 'health',    label: 'Health',         icon: HEALTH_ICON,    path: 'health' },
   { key: 'git',       label: 'Source Control', icon: GIT_ICON,       path: 'git' },
 ];
@@ -190,7 +191,11 @@ function NavSection({
 export default function ProjectNav({ projectId, current, collapsed = false, onToggleCollapse }: Props) {
   const { data: health } = useHealthSummary(projectId);
   const healthAlert = navAlert(health);
-  const alerts: NavAlerts = healthAlert ? { health: healthAlert } : {};
+  const { failures: scheduleFailures } = useScheduleAlerts(projectId);
+  const alerts: NavAlerts = {
+    ...(healthAlert ? { health: healthAlert } : {}),
+    ...(scheduleFailures.length > 0 ? { runs: 'fail' as const } : {}),
+  };
 
   return (
     <nav className="flex flex-col pt-2 overflow-hidden h-full">

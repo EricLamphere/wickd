@@ -63,7 +63,7 @@ doesn't build, like metrics and exposures) and why, with counts in the header.
 A production preview is kept: reopening the dialog shows it again (with its age and a
 **Refresh** button) until your files, git state or manifest change.
 
-Click **Run build**. The run streams into the Execution DAG and is recorded in Run History with
+Click **Run build**. The run streams into the Execution DAG and is recorded on the Runs page with
 its state settings, so **Rerun** replays it against the state again.
 
 ### Smallest safe set (Pro)
@@ -96,6 +96,6 @@ model, so its first dev run is incremental instead of a full rebuild.
 
 ## 5. Retry
 
-When the latest run fails, **Retry** appears on it in Run History and as **Retry failed** in the
+When the latest run fails, **Retry** appears on it on the Runs page and as **Retry failed** in the
 Execution DAG header. `dbt retry` reads `target/run_results.json`, so it only works on the
 project's last run. If a later dbt command replaced that file, wickd says so and suggests Rerun.

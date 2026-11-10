@@ -6,7 +6,7 @@ Step-by-step guides for using wickd.
 |---|---|
 | [First-run setup](first-run-setup.md) | The setup wizard: projects folder, Python, dbt packages, preferences, and installing dbt |
 | [Create a project](create-project.md) | Run `dbt init` interactively, set up profiles.yml, and open your first project |
-| [Run, build, and test models](run-models.md) | Select models in the DAG, execute runs, and read output from the Run panel |
+| [Run, build, and test models](run-models.md) | Select models in the DAG, execute runs, read output from the Run panel, and schedule runs |
 | [Configure environment and targets](configure-environment.md) | Set env vars, switch dbt targets, manage profiles, and install requirements |
 | [Customize the init pipeline](init-pipeline.md) | Add, reorder, and link init steps; capture env vars from custom shell scripts |
 | [Navigate and filter the DAG](navigate-dag.md) | Use the DAG view, filter bar (selectors and dropdowns), and the side panel |
@@ -15,7 +15,7 @@ Step-by-step guides for using wickd.
 | [Use source control (Git)](use-git.md) | Stage, commit, push/pull, switch branches, and view diffs in the built-in SCM panel |
 | [Use the SQL workspace](use-sql-workspace.md) | Write and run ad-hoc SQL queries, inspect compiled SQL, and manage workspace files |
 | [Build only what changed (slim builds)](slim-builds.md) | Build changed vs a prod manifest (git ref or artifacts folder) with a preview, defer to prod, clone from prod, retry failed runs, and (Pro) the smallest safe set from column lineage |
-| [View run history](view-run-history.md) | Browse past invocations, inspect per-node timings and logs, and track execution trends |
+| [View run history](view-run-history.md) | Browse past invocations on the Runs page, inspect per-node timings and logs, and track execution trends |
 | [Analyze run performance](analyze-run-performance.md) | Run timeline per thread, DAG durations overlay, and (Pro) critical path, regressions and recommendations |
 | [Inherit docs and trace tagged columns (Pro)](inherit-docs-and-trace-tags.md) | Fill empty column descriptions from upstream columns, and follow tagged (e.g. `pii`) columns to every model and exposure they reach |
 | [Use the semantic layer (MetricFlow)](semantic-layer.md) | See semantic models, metrics and saved queries in the DAG, Docs and Impact; validate them in Health; pick a compatible dbt-core when MetricFlow can't run |

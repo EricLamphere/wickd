@@ -1,10 +1,10 @@
-# How to View Run History
+# How to View Runs
 
-The **Run History** page shows a chronological log of every dbt invocation for a project. Use it to audit past runs, diagnose failures, compare execution times across models, and inspect the raw dbt log for any individual run.
+The **Runs** page shows a chronological log of every dbt invocation for a project, with tabs **Runs · Schedule · Performance**. Use it to audit past runs, diagnose failures, compare execution times across models, and inspect the raw dbt log for any individual run.
 
-## Opening Run History
+## Opening Runs
 
-Click the **Run History** icon in the left nav rail (clock icon). The page lists all recorded invocations, newest first, up to 1,000 total entries.
+Click the **Runs** item in the left nav rail (clock icon). The page lists all recorded invocations, newest first, up to 1,000 total entries.
 
 ## The Run List
 
@@ -12,7 +12,7 @@ Each row in the table shows:
 
 | Column | Description |
 |---|---|
-| Started | Local date and time the run began |
+| Started | Local date and time the run began; scheduled runs also show a clock and the schedule's name |
 | Cmd | The dbt command: `run`, `build`, `test`, or `seed` |
 | Selector | The `--select` value, or *all* if no selector was used |
 | Duration | Wall-clock time from start to finish |
@@ -25,13 +25,16 @@ Click a row to open its **Detail Panel** on the right. Click the same row again 
 
 ## Filtering and Searching
 
-The filter bar at the top of the list has three controls:
+The filter bar at the top of the list has four controls:
 
 - **Search** — type a selector string and press Enter or click Search. Matches against the selector column (e.g. search `my_model` to find runs that targeted that model).
 - **Command** — filter to a single dbt command (`run`, `build`, `test`, `seed`).
 - **Status** — filter to `success`, `error`, or `running`.
+- **Trigger** — all, **Manual**, **Scheduled** or **Rerun**.
 
 Changing any filter resets to page 1 and clears the selected row.
+
+To run a past run's command on a schedule, click **Schedule this…** in its Detail Panel (see [Scheduling runs](run-models.md#scheduling-runs)).
 
 ## Pagination
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.semantic import cron
+from app.scheduling import cron
 from app.semantic import monitor_schedule as ms
 
 

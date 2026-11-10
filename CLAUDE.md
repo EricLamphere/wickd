@@ -36,6 +36,7 @@ backend/app/
   charts/       dbt Charts boards   data_diff/   data diff (Pro)
   health/       check summaries     propagation/, refactor/, test_targets/, performance/  Pro features
   licensing/    Polar entitlements  events/      bus + SSE
+  scheduling/   cron, rules, shared ticker loop   runs/  scheduled runs (plan 27)
   projects/     discovery + search  git/         GitRunner singleton
   files/        file operations     watcher/     shared file watcher
 
@@ -48,11 +49,11 @@ frontend/src/
 
 ## Database Tables
 
-All 26 in `backend/app/db/models.py`:
-- `projects` — discovered dbt projects (includes `init_script_path: str` per-project init dir; `ignored: bool` to hide from list; `last_init_status: str` (idle/running/success/error), `last_init_started_at`, `last_init_finished_at`, `last_init_failed_step` — persisted init pipeline status shown on the homepage and Initialization page; `metricflow_mode: str` '' = global default, auto, off — semantic layer)
+All 28 in `backend/app/db/models.py`:
+- `projects` — discovered dbt projects (includes `init_script_path: str` per-project init dir; `ignored: bool` to hide from list; `last_init_status: str` (idle/running/success/error), `last_init_started_at`, `last_init_finished_at`, `last_init_failed_step` — persisted init pipeline status shown on the homepage and Initialization page; `metricflow_mode: str` '' = global default, auto, off — semantic layer; `schedules_paused: bool` Runs → Schedule's Pause all)
 - `init_steps` — ordered init pipeline steps per project (includes `script_path` for linked external scripts; `last_status: str` (idle/running/success/error), `last_started_at`, `last_finished_at`, `last_log: str` (capped at 200 lines) — persisted per-step run status)
 - `model_statuses` — per-node run status (idle/pending/running/success/error/warn/stale); `kind` model / test / unit_test (`parent_model_id` = the tested model)
-- `run_invocations` — historical run records; `custom_args` (JSON list, nullable) holds the user-entered args of a custom dbt command so rerun replays them exactly; `state_json` (nullable) the slim build settings a run used (plan 18: state source/sha/target, state, defer, favor_state), replayed on rerun; `threads`, `elapsed_time` from run_results.json (NULL before timing capture)
+- `run_invocations` — historical run records; `custom_args` (JSON list, nullable) holds the user-entered args of a custom dbt command so rerun replays them exactly; `state_json` (nullable) the slim build settings a run used (plan 18: state source/sha/target, state, defer, favor_state), replayed on rerun; `threads`, `elapsed_time` from run_results.json (NULL before timing capture); `trigger` manual/schedule/rerun and `schedule_id` (FK run_schedules, SET NULL) — plan 27
 - `invocation_model_results` — per-node results per invocation (last 20 per node kept; `kind` model / test / unit_test): `execution_time`, `status`, `message`, plus timing from run_results.json — `started_at`/`completed_at` (execute window), `thread_id`, `rows_affected`, `bytes_processed`, `adapter_response_json` (capped ~2 KB); timing columns NULL for older runs
 - `env_profiles` — named environment profiles per project
 - `profile_env_vars` — key/value vars belonging to a profile
@@ -74,6 +75,8 @@ All 26 in `backend/app/db/models.py`:
 - `contract_check_snapshots` — contract checks (Pro, plan 05) per project: `scope` (working/branch), `base`, `base_sha` (commit compared with), `types` (column types probed), `status` running/done/error, `phase` while running, `target`, `results_json` (per changed model from wickd_pro.contracts, plus `dbt_state_contract` = null until plan 18), `notes_json`, `lineage_used`, `error_message`, timestamps; written by `api/contracts.py`
 - `data_diff_snapshots` — data diffs (Pro, plan 06): one row per model per diff (last 5 kept per model): `unique_id`, `name`, `scope`/`base_ref`, `dev_target`/`prod_target` (DIFF_BASE_TARGET), `dev_relation`/`prod_relation`, `mode` (joined = one connection reads both, separate = each side on its own connection), `key_json` + `key_source` (user/contract/unique_test/unique_combination/detected), `columns_json`, `where_sql`, `built`, `status` running/done/error, `phase`, `results_json` (wickd_pro.data_diff result), `error_message`, timestamps; written by `app/data_diff/job.py`
 - `test_gap_ignores` — Test gaps rows the user ignored (Health → Test Gaps → Ignored), per project: `key` (row key `<unique_id>::<column>` or `<unique_id>::(a, b)`, unique per project), `unique_id`, `name`, `label` (kept to list the row once the gap is gone), `created_at`; hidden from GET /test-gaps and its count until unignored (`app/test_targets/ignores.py`)
+- `run_schedules` — scheduled runs (plan 27, `app/runs/scheduler.py`): `name`, `command` (raw text, re-parsed on save and fire), `interval_hours` | `cron` (both NULL = off), `target` (NULL = active at fire time), `catch_up`, `busy_wait_minutes` (default 30), `enabled`, `position`, `armed_at` (due-ness counts from max(last_fired_at, armed_at)), `last_fired_at`, `last_status`, `last_invocation_id`, `last_event_id`
+- `run_schedule_events` — one fire of a schedule (last 50 kept): `at`, `trigger` schedule/manual, `outcome` pending/running/success/error/cancelled/missed/skipped_busy/invalid, `invocation_id`, `message`
 - `license_state` — single-row (id=1) cached Polar entitlement state for this installation: `license_key`, `activation_id`, `device_id`, `entitled`, `status`, `checked_at`, `customer_id` (Polar customer id, captured from `validate()`; required to cancel a subscription), `license_key_id` (Polar's internal id for the key, required to look up activation count), `limit_activations` (max devices allowed on this key) — see `app/licensing/entitlements.py`
 
 ## Critical Architecture Rules
@@ -146,7 +149,7 @@ finally:
 
 | Type | Topic | Meaning |
 |------|-------|---------|
-| `run_started` | project | dbt command started; payload `command`, `label` (command + subcommand words, e.g. `source freshness`), `select`, `started_at` |
+| `run_started` | project | dbt command started; payload `command`, `label` (command + subcommand words, e.g. `source freshness`), `select`, `started_at`, `trigger` (manual/schedule/rerun), `schedule_id` |
 | `run_log` | project | one line of stdout/stderr; frontend parses to update RunPanel DAG |
 | `run_finished` | project | dbt process exited |
 | `run_error` | project | dbt executable not found |
@@ -197,6 +200,7 @@ finally:
 | `charts_changed` | project | a dbt Charts board file under `charts/` (or `dbt_charts.yml`) changed on disk |
 | `charts_build_started` | project | static board build started; payload `board` |
 | `charts_build_finished` | project | static board build finished; payload `board`, `ok`, `error` |
+| `run_schedules_changed` | project | a scheduled run's settings or last outcome changed (plan 27); payload `schedule_id`, `outcome`, `name`, `invocation_id` |
 | `metricflow_env` | global | MetricFlow sidecar setup; payload `state` (installing/ready/error), `phase`, `message` |
 | `charts_env` | global | dbt Charts sidecar setup; payload `state` (installing/ready/error), `phase`, `message` |
 | `ai_model_download` | global | AI model download progress; payload `model_id`, `state`, `bytes_done`, `bytes_total`, `error` |

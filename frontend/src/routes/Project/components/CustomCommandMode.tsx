@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, History, SquareTerminal } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, CalendarClock, History, SquareTerminal } from 'lucide-react';
 import { loadCommandHistory, normalizeCommand, runCustomCommand } from '../lib/customCommand';
 
 interface CustomCommandModeProps {
@@ -22,6 +23,15 @@ export function CustomCommandMode({ projectId, initialCommand, autoSubmit, onBac
   const [submitting, setSubmitting] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const history = useMemo(() => loadCommandHistory(projectId), [projectId]);
+  const navigate = useNavigate();
+
+  /** Open Runs → Schedule with this command in the editor (⌘/Ctrl+Enter). */
+  const schedule = (value: string) => {
+    const cmd = normalizeCommand(value);
+    if (!cmd) return;
+    navigate(`/projects/${projectId}/runs?tab=schedule&new=${encodeURIComponent(cmd)}`);
+    onDone();
+  };
 
   const suggestions = useMemo(() => {
     const q = normalizeCommand(filterText).toLowerCase();
@@ -56,7 +66,10 @@ export function CustomCommandMode({ projectId, initialCommand, autoSubmit, onBac
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      schedule(command);
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       submit(command);
     } else if (e.key === 'ArrowDown') {
@@ -96,6 +109,11 @@ export function CustomCommandMode({ projectId, initialCommand, autoSubmit, onBac
           spellCheck={false}
           className="flex-1 bg-transparent text-sm text-gray-100 font-mono placeholder-gray-600 focus:outline-none disabled:opacity-60"
         />
+        <button onClick={() => schedule(command)} disabled={!normalizeCommand(command) || submitting}
+          title="Run this command on a schedule (⌘↵)"
+          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-200 border border-gray-700 rounded px-1.5 py-0.5 shrink-0 disabled:opacity-40">
+          <CalendarClock size={11} />Schedule
+        </button>
         <kbd className="text-[10px] text-gray-600 border border-gray-700 rounded px-1.5 py-0.5 shrink-0">↵ run</kbd>
       </div>
 

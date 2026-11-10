@@ -1,3 +1,4 @@
+import { Clock } from 'lucide-react';
 import type { RunInvocationDto } from '../../../lib/api';
 import { CommandBadge } from '../components/CommandBadge';
 import { RerunButton, RetryButton, StatusBadge, StopButton, formatDuration, formatTime } from './shared';
@@ -49,7 +50,10 @@ export function RunList({ invocations, total, isLoading, selectedId, onRowClick,
                   onClick={() => onRowClick(inv)}
                   className={`border-b border-gray-800/60 cursor-pointer transition-colors ${isActive ? 'bg-brand-900/20' : 'hover:bg-surface-elevated'}`}
                 >
-                  <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap font-mono">{formatTime(inv.started_at)}</td>
+                  <td className="px-4 py-2.5 text-gray-400 whitespace-nowrap font-mono">
+                    {formatTime(inv.started_at)}
+                    <ScheduleMark inv={inv} />
+                  </td>
                   <td className="px-4 py-2.5 text-gray-400 max-w-[120px] truncate">
                     {inv.profile ?? <span className="text-gray-600">—</span>}
                   </td>
@@ -91,5 +95,18 @@ export function RunList({ invocations, total, isLoading, selectedId, onRowClick,
         </table>
       )}
     </div>
+  );
+}
+
+/** Scheduled runs (and Run now from a schedule) show a clock and the schedule's name. */
+function ScheduleMark({ inv }: { inv: RunInvocationDto }) {
+  if (inv.trigger !== 'schedule' && inv.schedule_id === null) return null;
+  const label = inv.schedule_name ?? 'deleted schedule';
+  const title = inv.trigger === 'schedule' ? `Scheduled: ${label}` : `Run now from schedule: ${label}`;
+  return (
+    <span title={title} className="flex items-center gap-1 mt-0.5 font-sans text-[10px] text-sky-400/80 max-w-[160px]">
+      <Clock className="w-3 h-3 shrink-0" />
+      <span className="truncate">{label}</span>
+    </span>
   );
 }

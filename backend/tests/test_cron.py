@@ -1,10 +1,10 @@
-"""Cron expressions for metric monitor schedules (app/semantic/cron.py)."""
+"""Cron expressions for metric monitor schedules (app/scheduling/cron.py)."""
 
 from datetime import datetime
 
 import pytest
 
-from app.semantic import cron
+from app.scheduling import cron
 
 
 def at(text: str) -> datetime:

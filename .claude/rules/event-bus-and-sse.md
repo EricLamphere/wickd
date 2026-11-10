@@ -58,7 +58,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 
 | Type | Topic | Emitted by |
 |------|-------|------------|
-| `run_started` | project | `runner.stream()` automatically — includes `command`, `label` (`command_label()`: e.g. `source freshness`), `select`, `started_at` |
+| `run_started` | project | `runner.stream()` automatically — includes `command`, `label` (`command_label()`: e.g. `source freshness`), `select`, `started_at`, `trigger` (manual/schedule/rerun), `schedule_id` |
 | `run_log` | project | `runner.stream()` automatically |
 | `run_finished` | project | `runner.stream()` automatically |
 | `run_error` | project | `runner.stream()` (dbt not found) |
@@ -104,6 +104,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `charts_changed` | project | `watcher/service.py` — a board file under `charts/` (YAML / Markdown) or `dbt_charts.yml` changed on disk |
 | `charts_build_started` | project | `api/charts.py` — a static dbt Charts board build started; includes `board` |
 | `charts_build_finished` | project | `api/charts.py` — includes `board`, `ok`, `error` |
+| `run_schedules_changed` | project | `runs/scheduler.py` `publish_changed()` — on schedule create/edit/delete/reorder/pause (`api/run_schedules.py`) and whenever a schedule's last outcome changes; includes `schedule_id` (null for order/pause), and on an outcome change `outcome` (pending/running/success/error/cancelled/missed/skipped_busy/invalid), `name`, `invocation_id`, `event_id`; `deleted: true` on delete |
 | `charts_env` | global | `charts/env.py` — dbt Charts sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useChartsEnv` in `routes/Project/Charts/useCharts.ts`) |
 | `metricflow_env` | global | `semantic/runtime.py` — MetricFlow sidecar setup; includes `state` (installing/ready/error), `phase`, `message` (frontend: `useGlobalEvents` in `components/semantic/useSemantic.ts`) |
 | `ai_model_download` | global | `ai/download.py` — includes `model_id`, `state`, `bytes_done`, `bytes_total`, `error` (frontend: `useGlobalEvents`) |

@@ -10,7 +10,7 @@ timing details exist only for runs recorded from this version on. Older runs sho
 
 ## See a run as a timeline
 
-1. Open **Run History** in the left nav rail.
+1. Open **Runs** in the left nav rail.
 2. Click a run, then the **Timeline** tab in the detail panel.
 
 Each lane is one dbt thread (`T1`, `T2`, …), and each bar is a node, from when it
@@ -35,7 +35,7 @@ Without Pro, click **Find the critical path** to see the upgrade options.
 
 ## Performance tab (Pro)
 
-Click **Performance** at the top right of Run History (the tab is kept in the URL,
+Click **Performance** at the top right of the Runs page (the tab is kept in the URL,
 `?tab=performance`). Pick a command to narrow it to, for example, `build` runs.
 It looks at the last 20 finished runs:
 

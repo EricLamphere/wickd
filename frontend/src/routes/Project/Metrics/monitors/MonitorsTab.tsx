@@ -102,7 +102,7 @@ export function MonitorsTab({ projectId, catalog, draft, onDraftHandled }: Props
           (a monitor can have its own), and only while wickd is open: a time missed while it was closed is checked
           once when it opens. This isn't overnight alerting.
         </p>
-        <ProjectScheduleControl projectId={projectId} data={data} onSave={actions.setSchedule} />
+        <ProjectScheduleControl data={data} onSave={actions.setSchedule} />
         <button onClick={() => actions.refresh()} disabled={monitors.running || data.monitors.length === 0}
           className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40">
           <RotateCcw className={`w-3.5 h-3.5 ${monitors.running ? 'animate-spin' : ''}`} />

@@ -375,7 +375,14 @@ export interface RunInvocationDto {
   state: RunStateRecord | null;
   /** the project's latest run, failed: dbt retry can resume it */
   retryable: boolean;
+  /** who started it (plan 27) */
+  trigger: RunTrigger;
+  /** the schedule it belongs to (scheduled, or Run now from a schedule); null after the schedule is deleted */
+  schedule_id: number | null;
+  schedule_name: string | null;
 }
+
+export type RunTrigger = 'manual' | 'schedule' | 'rerun';
 
 export interface RunStateRecord {
   kind: 'git' | 'path';
@@ -1072,13 +1079,14 @@ export const api = {
       post<RunResponseDto>(`/projects/${projectId}/command`, { command }),
   },
   runHistory: {
-    list: (projectId: number, params: { limit?: number; offset?: number; command?: string; status?: string; q?: string } = {}) => {
+    list: (projectId: number, params: { limit?: number; offset?: number; command?: string; status?: string; q?: string; trigger?: RunTrigger } = {}) => {
       const p = new URLSearchParams();
       if (params.limit !== undefined) p.set('limit', String(params.limit));
       if (params.offset !== undefined) p.set('offset', String(params.offset));
       if (params.command) p.set('command', params.command);
       if (params.status) p.set('status', params.status);
       if (params.q) p.set('q', params.q);
+      if (params.trigger) p.set('trigger', params.trigger);
       return get<RunHistoryPageDto>(`/projects/${projectId}/run-history?${p}`);
     },
     detail: (projectId: number, invocationId: number) =>

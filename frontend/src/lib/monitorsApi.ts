@@ -147,13 +147,6 @@ export interface MonitorScheduleSettings {
   schedule: string | null;
 }
 
-export interface SchedulePreviewDto {
-  /** the expression as it would be stored */
-  expr: string;
-  /** the next three times it fires */
-  next: string[];
-}
-
 const base = (projectId: number) => `/projects/${projectId}/metric-monitors`;
 
 export const monitorsApi = {
@@ -167,8 +160,6 @@ export const monitorsApi = {
   reorder: (projectId: number, ids: number[]) => put<void>(`${base(projectId)}/order`, { ids }),
   setSchedule: (projectId: number, body: MonitorScheduleSettings) =>
     put<MonitorScheduleSettings>(`${base(projectId)}/settings`, body),
-  previewSchedule: (projectId: number, expr: string) =>
-    get<SchedulePreviewDto>(`${base(projectId)}/schedule-preview?expr=${encodeURIComponent(expr)}`),
   series: (projectId: number, id: number, slice: string) =>
     get<MonitorSeriesDto>(`${base(projectId)}/${id}/series?slice=${encodeURIComponent(slice)}`),
   suppress: (projectId: number, id: number, body: { slice: string; period: string; suppressed: boolean }) =>

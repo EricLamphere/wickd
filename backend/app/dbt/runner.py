@@ -22,6 +22,8 @@ class RunRequest:
     extra: tuple[str, ...] = ()
     env: dict[str, str] | None = None  # if None, inherits process environment
     inject_profiles_dir: bool = True  # set False when extra already contains --profiles-dir
+    trigger: str = "manual"  # manual | schedule | rerun (run_started payload; plan 27)
+    schedule_id: int | None = None
 
 
 def command_line(req: RunRequest) -> str:
@@ -150,6 +152,8 @@ class DbtRunner:
                         "label": command_label(req),
                         "select": req.select,
                         "started_at": started_at,
+                        "trigger": req.trigger,
+                        "schedule_id": req.schedule_id,
                     },
                 )
             )

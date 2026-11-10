@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { CalendarClock, Clock } from 'lucide-react';
 import { api, type RunInvocationDetailDto, type RunInvocationDto } from '../../../lib/api';
 import { useStickyTab } from '../../../lib/useUrlTab';
 import { logLineTone, type LogTone } from '../../../lib/logLineTone';
@@ -25,11 +26,13 @@ interface DetailPanelProps {
   invocation: RunInvocationDto;
   onRerun: (invocationId: number) => void;
   onRetry: (invocationId: number) => void;
+  /** Schedule this…: open the Schedule tab's editor prefilled from this run */
+  onSchedule: (invocation: RunInvocationDto) => void;
   failedRowsCache: FailedRowsCache;
   onFailedRowsCached: (uid: string, data: { columns: string[]; rows: unknown[][] }) => void;
 }
 
-export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRowsCache, onFailedRowsCached }: DetailPanelProps) {
+export function DetailPanel({ projectId, invocation, onRerun, onRetry, onSchedule, failedRowsCache, onFailedRowsCached }: DetailPanelProps) {
   const fileNav = useOpenInFiles(projectId);
   const [nodeFilter, setNodeFilter] = useState('');
   const [kindFilter, setKindFilter] = useState<'all' | 'model' | 'test' | 'unit_test'>('all');
@@ -85,6 +88,10 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRow
         </div>
         <div className="flex items-center gap-1.5">
           {invocation.retryable && <RetryButton size="md" onClick={(e) => { e.stopPropagation(); onRetry(invocation.id); }} />}
+          <button onClick={(e) => { e.stopPropagation(); onSchedule(invocation); }} title="Run this command on a schedule"
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded bg-surface-elevated hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors">
+            <CalendarClock className="w-3.5 h-3.5" />Schedule this…
+          </button>
           <RerunButton size="md" onClick={(e) => { e.stopPropagation(); onRerun(invocation.id); }} />
         </div>
       </div>
@@ -96,6 +103,13 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, failedRow
         <span>Models: <span className="text-gray-300">{modelCount}</span></span>
         {testCount > 0 && <span>Tests: <span className="text-gray-300">{testCount}</span></span>}
         {unitTestCount > 0 && <span>Unit tests: <span className="text-gray-300">{unitTestCount}</span></span>}
+        {(invocation.trigger !== 'manual' || invocation.schedule_id !== null) && (
+          <span className="flex items-center gap-1">
+            {invocation.trigger === 'rerun' ? 'Rerun' : (
+              <><Clock className="w-3 h-3 text-sky-400" />{invocation.trigger === 'schedule' ? 'Scheduled' : 'Run now'}: <span className="text-gray-300">{invocation.schedule_name ?? 'deleted schedule'}</span></>
+            )}
+          </span>
+        )}
       </div>
 
       {/* Tab bar */}

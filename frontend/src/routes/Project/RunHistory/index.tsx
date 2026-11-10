@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import NavRail from '../components/NavRail';
-import { api, type RunInvocationDto } from '../../../lib/api';
+import { api, type RunInvocationDto, type RunTrigger } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import { useUrlTab } from '../../../lib/useUrlTab';
 import { alertError } from '../../../lib/dialogs';
@@ -14,18 +14,27 @@ import { PerformanceTab } from './PerformanceTab';
 import { RunList } from './RunList';
 import { useResizablePane } from './useResizablePane';
 import type { FailedRowsCache } from './shared';
+import { saveSeen } from '../../../lib/scheduleAlerts';
+import { useRunSchedules, useScheduleAlerts } from '../../../lib/useRunSchedules';
+import { ScheduleDetail } from './schedule/ScheduleDetail';
+import { ScheduleTab } from './schedule/ScheduleTab';
+import { draftFromInvocation, emptyDraft, type ScheduleDraft } from './schedule/scheduleDraft';
 
 interface ListFilters {
   q: string;
   command: string;
   status: string;
+  trigger: '' | RunTrigger;
 }
+
+/** `?new=<dbt command>` opens the Schedule tab's editor prefilled (command palette → Schedule). */
+const NEW_SCHEDULE_PARAM = 'new';
 
 const PAGE_SIZE = 50;
 
-const PAGE_TABS = ['runs', 'performance'] as const;
+const PAGE_TABS = ['runs', 'schedule', 'performance'] as const;
 type PageTab = (typeof PAGE_TABS)[number];
-const PAGE_TAB_LABELS: Record<PageTab, string> = { runs: 'Runs', performance: 'Performance' };
+const PAGE_TAB_LABELS: Record<PageTab, string> = { runs: 'Runs', schedule: 'Schedule', performance: 'Performance' };
 
 export default function RunHistoryPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -33,9 +42,30 @@ export default function RunHistoryPage() {
   const qc = useQueryClient();
 
   const sessionKey = `run-history:${id}`;
-  // remembered per project, so coming back to Run History reopens Performance
+  // remembered per project, so coming back to Runs reopens the last tab
   const [tab, setTab] = useUrlTab<PageTab>('tab', PAGE_TABS, 'runs', `run-history-tab:${id}`);
   const pane = useResizablePane(sessionKey);
+  const schedulePane = useResizablePane(`${sessionKey}:schedule`);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { data: scheduleList } = useRunSchedules(id);
+  const { failures: scheduleFailures } = useScheduleAlerts(id);
+  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
+  const [incomingDraft, setIncomingDraft] = useState<ScheduleDraft | null>(null);
+  const selectedSchedule = scheduleList?.items.find((s) => s.id === selectedScheduleId) ?? null;
+
+  // Schedule from the command palette: /runs?tab=schedule&new=<command>
+  const newCommand = searchParams.get(NEW_SCHEDULE_PARAM);
+  useEffect(() => {
+    if (newCommand === null) return;
+    setIncomingDraft(emptyDraft(newCommand));
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete(NEW_SCHEDULE_PARAM);
+      next.set('tab', 'schedule');
+      return next;
+    }, { replace: true });
+  }, [newCommand, setSearchParams]);
+  const clearIncoming = useCallback(() => setIncomingDraft(null), []);
 
   const [failedRowsCache, setFailedRowsCache] = useState<FailedRowsCache>(() => {
     try {
@@ -79,7 +109,7 @@ export default function RunHistoryPage() {
     try { const v = sessionStorage.getItem(`${sessionKey}:selected`); return v ? Number(v) : null; } catch { return null; }
   });
   const [page, setPage] = useState(0);
-  const [filters, setFilters] = useState<ListFilters>({ q: '', command: '', status: '' });
+  const [filters, setFilters] = useState<ListFilters>({ q: '', command: '', status: '', trigger: '' });
   const [draftQ, setDraftQ] = useState('');
 
   function persistSelected(invId: number | null) {
@@ -93,6 +123,29 @@ export default function RunHistoryPage() {
     setSelectedId(inv.id);
     persistSelected(inv.id);
     pane.reveal();
+    const failed = scheduleFailures.find((f) => f.last_invocation_id === inv.id);
+    if (failed?.last_event_id) saveSeen(id, failed.last_event_id);
+  }
+
+  /** From the Schedule tab: show that run in the Runs tab (latest runs, no filters). */
+  function openRun(invocationId: number) {
+    setFilters({ q: '', command: '', status: '', trigger: '' });
+    setDraftQ('');
+    setPage(0);
+    setSelectedId(invocationId);
+    persistSelected(invocationId);
+    pane.reveal();
+    setTab('runs');
+  }
+
+  function scheduleFromRun(inv: RunInvocationDto) {
+    setIncomingDraft(draftFromInvocation(inv));
+    setTab('schedule');
+  }
+
+  function selectSchedule(scheduleId: number | null) {
+    setSelectedScheduleId(scheduleId);
+    if (scheduleId !== null) schedulePane.reveal();
   }
 
   function clearSelected() {
@@ -106,6 +159,7 @@ export default function RunHistoryPage() {
     command: filters.command || undefined,
     status: filters.status || undefined,
     q: filters.q || undefined,
+    trigger: filters.trigger || undefined,
   };
 
   const { data, isLoading } = useQuery({
@@ -160,8 +214,8 @@ export default function RunHistoryPage() {
               <svg className="w-5 h-5 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <h1 className="text-base font-semibold text-gray-100">Run History</h1>
-              {total > 0 && <span className="text-xs text-gray-500">{total} total</span>}
+              <h1 className="text-base font-semibold text-gray-100">Runs</h1>
+              {tab === 'runs' && total > 0 && <span className="text-xs text-gray-500">{total} total</span>}
               <div className="ml-auto flex items-center gap-1">
                 {PAGE_TABS.map((t) => (
                   <button
@@ -172,6 +226,9 @@ export default function RunHistoryPage() {
                     }`}
                   >
                     {PAGE_TAB_LABELS[t]}
+                    {t === 'schedule' && scheduleFailures.length > 0 && (
+                      <span title="A scheduled run failed" className="inline-block ml-1.5 mb-px w-1.5 h-1.5 rounded-full bg-red-500" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -216,12 +273,26 @@ export default function RunHistoryPage() {
                   <option value="error">error</option>
                   <option value="running">running</option>
                 </select>
+                <select
+                  value={filters.trigger}
+                  onChange={(e) => setFilter('trigger', e.target.value)}
+                  className="form-select border rounded px-2 py-1 text-xs"
+                  aria-label="Trigger"
+                >
+                  <option value="">All triggers</option>
+                  <option value="manual">Manual</option>
+                  <option value="schedule">Scheduled</option>
+                  <option value="rerun">Rerun</option>
+                </select>
               </div>
             )}
           </div>
 
           {tab === 'performance' ? (
             <PerformanceTab projectId={id} />
+          ) : tab === 'schedule' ? (
+            <ScheduleTab projectId={id} selectedId={selectedScheduleId} onSelect={selectSchedule} onOpenRun={openRun}
+              incoming={incomingDraft} onIncomingHandled={clearIncoming} />
           ) : (
             <>
               <RunList
@@ -265,13 +336,24 @@ export default function RunHistoryPage() {
         {tab === 'runs' && (
           <DetailPaneShell pane={pane}>
             {selected
-              ? <DetailPanel projectId={id} invocation={selected} onRerun={(invId) => rerunMutation.mutate(invId)} onRetry={(invId) => retryMutation.mutate(invId)} failedRowsCache={failedRowsCache} onFailedRowsCached={handleFailedRowsCached} />
+              ? <DetailPanel projectId={id} invocation={selected} onRerun={(invId) => rerunMutation.mutate(invId)} onRetry={(invId) => retryMutation.mutate(invId)} onSchedule={scheduleFromRun} failedRowsCache={failedRowsCache} onFailedRowsCached={handleFailedRowsCached} />
               : (
                 <div className="flex items-center justify-center h-full text-gray-500 text-sm px-6 text-center">
                   Select a run to see node timings and logs.
                 </div>
               )
             }
+          </DetailPaneShell>
+        )}
+        {tab === 'schedule' && (
+          <DetailPaneShell pane={schedulePane}>
+            {selectedSchedule
+              ? <ScheduleDetail projectId={id} schedule={selectedSchedule} paused={scheduleList?.paused ?? false} onOpenRun={openRun} />
+              : (
+                <div className="flex items-center justify-center h-full text-gray-500 text-sm px-6 text-center">
+                  Select a schedule to see its settings and history.
+                </div>
+              )}
           </DetailPaneShell>
         )}
       </div>

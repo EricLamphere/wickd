@@ -20,7 +20,8 @@ from app.db.engine import get_session
 from app.db.models import MetricMonitor, MetricMonitorRun, ProjectEnvVar
 from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
-from app.semantic import anomaly, cron, monitor_points, monitors, service
+from app.scheduling import cron
+from app.semantic import anomaly, monitor_points, monitors, service
 from app.semantic import monitor_queries as mq
 from app.semantic import monitor_schedule as ms
 from app.semantic.runtime import RuntimeUnavailable

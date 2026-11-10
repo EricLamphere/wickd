@@ -11,12 +11,12 @@ Select a model in the DAG or Files. The side pane's **Unit tests** section lists
 model's unit tests with the status of their last run:
 
 - **Run all** runs `dbt test --select <model>,test_type:unit`; the ▶ on a row runs that
-  test alone. Results land in the Run panel and Run History like any other test.
+  test alone. Results land in the Run panel and on the Runs page like any other test.
 - Click a test to see its inputs (`given`), how many rows it expects, and whether it
   uses `overrides`. The file icon opens the YAML that defines it.
 - In the DAG, turn on the test coverage overlay to see a **UT n** badge on each model
   with unit tests (red, with the failing count, when one failed).
-- Run History counts unit tests separately and can filter to them.
+- The Runs page counts unit tests separately and can filter to them.
 
 ## Understand a failure
 

@@ -36,6 +36,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Unit tests — results, expected vs actual rows & accept actual', base: true, pro: true },
   { label: 'Column profiling & test coverage heatmap', base: true, pro: true },
   { label: 'Run history, run timeline & DAG durations overlay', base: true, pro: true },
+  { label: 'Scheduled runs — any dbt command every N hours or on a cron schedule', base: true, pro: true },
   { label: 'Live sync with files on disk', base: true, pro: true },
   { label: 'Command palette (⌘K) — jump anywhere or run any dbt command', base: true, pro: true },
   { label: 'Search across projects — models, sources & columns', base: true, pro: true },

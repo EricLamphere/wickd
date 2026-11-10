@@ -122,7 +122,7 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
           )}
         </section>
 
-        <MonitorSettings projectId={projectId} monitor={monitor} targets={targets} project={project} onUpdate={onUpdate} onDelete={remove} />
+        <MonitorSettings monitor={monitor} targets={targets} project={project} onUpdate={onUpdate} onDelete={remove} />
       </div>
 
       <section className="flex flex-col gap-2 min-h-0">
@@ -135,8 +135,8 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
   );
 }
 
-function MonitorSettings({ projectId, monitor, targets, project, onUpdate, onDelete }: {
-  projectId: number; monitor: MonitorDto; targets: string[]; project: Pick<MonitorListDto, 'interval_hours' | 'schedule'>;
+function MonitorSettings({ monitor, targets, project, onUpdate, onDelete }: {
+  monitor: MonitorDto; targets: string[]; project: Pick<MonitorListDto, 'interval_hours' | 'schedule'>;
   onUpdate: (body: MonitorPatchBody) => Promise<unknown>; onDelete: () => void;
 }) {
   const [lookback, setLookback] = useState(String(monitor.lookback));
@@ -164,7 +164,7 @@ function MonitorSettings({ projectId, monitor, targets, project, onUpdate, onDel
           </select>
         </label>
       )}
-      <MonitorScheduleSetting projectId={projectId} monitor={monitor} project={project} onUpdate={onUpdate} />
+      <MonitorScheduleSetting monitor={monitor} project={project} onUpdate={onUpdate} />
       <label className="flex items-center justify-between gap-3">
         <span className="text-gray-400">Enabled</span>
         <input type="checkbox" checked={monitor.enabled} onChange={(e) => onUpdate({ enabled: e.target.checked })} />

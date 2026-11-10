@@ -7,8 +7,8 @@ Triggers (plan 10 decision 1):
   (`schedule_after_run`, called from api/runs.py);
 - Check now (POST /metric-monitors/refresh);
 - an optional schedule while wickd is open: every N hours or a cron expression per
-  project, overridable per monitor (monitor_schedule.py; off by default; one scheduler
-  loop for all projects, ticking every minute).
+  project, overridable per monitor (monitor_schedule.py; off by default; `tick` is registered on
+  the shared scheduler loop, app/scheduling/loop.py, ticking every minute).
 
 wickd only runs while it's open: this is "checked when you build or look", not 3 a.m.
 alerting. One refresh per project at a time; requests that arrive meanwhile are
@@ -29,6 +29,7 @@ from sqlalchemy import select
 
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
+from app.scheduling import loop as scheduler_loop
 from app.semantic import anomaly, monitor_points
 from app.semantic import monitor_queries as mq
 from app.semantic import monitor_schedule as ms
@@ -39,12 +40,10 @@ log = get_logger(__name__)
 STATUS_RANK = {"error": 4, "anomaly": 3, "warn": 2, "ok": 1, "not_enough_history": 0}
 MAX_FLAGGED = 20
 RECENT_POINTS = 60
-SCHEDULER_TICK_S = 60
 
 running: set[int] = set()
 _pending: dict[int, tuple[frozenset[int] | None, str]] = {}  # project → (ids, None = all; trigger)
 _tasks: set[asyncio.Task] = set()
-_scheduler: asyncio.Task | None = None
 _attempts: dict[int, datetime] = {}  # monitor → last scheduled request (a failed check isn't retried every tick)
 
 
@@ -450,32 +449,6 @@ async def _after_run(project_id: int, project_path: Path, succeeded: set[str]) -
 # ── schedule while open ──────────────────────────────────────────────────────
 
 
-def start_scheduler() -> None:
-    global _scheduler
-    if _scheduler is None or _scheduler.done():
-        _scheduler = asyncio.create_task(_scheduler_loop())
-
-
-async def stop_scheduler() -> None:
-    global _scheduler
-    if _scheduler is not None:
-        _scheduler.cancel()
-        try:
-            await _scheduler
-        except asyncio.CancelledError:
-            pass
-        _scheduler = None
-
-
-async def _scheduler_loop() -> None:
-    while True:
-        await asyncio.sleep(SCHEDULER_TICK_S)
-        try:
-            await tick(datetime.now(UTC))
-        except Exception:
-            log.exception("metric_monitor_scheduler_failed")
-
-
 async def tick(now: datetime) -> list[int]:
     """Start the scheduled refreshes that are due; the project ids started."""
     from app.db import engine as db_engine
@@ -519,3 +492,6 @@ def last_attempt(monitor_id: int, checked: datetime | None) -> datetime | None:
     """A monitor's last check or scheduled attempt, whichever is later (aware)."""
     times = [t for t in (_as_utc(checked), _attempts.get(monitor_id)) if t is not None]
     return max(times) if times else None
+
+
+scheduler_loop.register("metric_monitors", tick)

@@ -4,15 +4,17 @@
 Usage:
   kanban.py path                          print the board's path; exit 1 unless the
                                           board exists and this is the owner's checkout
+  kanban.py plans                         print the plan notes folder; exit 1 unless it exists
   kanban.py list [COLUMN]                 list cards (all columns, or one)
   kanban.py show QUERY                    print a card with its details
   kanban.py done QUERY [--date YYYY-MM-DD]  tick a card and move it to the top of Done
   kanban.py move QUERY COLUMN             move a card to the end of another column
-  kanban.py plan QUERY NN                 add "(plan NN)" to a card; Ideas -> Features
+  kanban.py plan QUERY NOTE [--detail D]...  title the card [[NOTE]] (its plan note,
+                                          "NN - Title"); Ideas -> Features
   kanban.py add COLUMN TEXT [--detail D]...  add a card (TEXT includes its tags)
 
 QUERY is a case-insensitive substring of the card's title, or "plan NN" to match
-"(plan NN)" exactly. done/move/plan skip cards already in Done. A query matching
+the card linking plan note "[[NN - ...]]" (or a legacy "(plan NN)"). done/move/plan skip cards already in Done. A query matching
 more than one card is refused and the matches are listed.
 
 Set WICKD_KANBAN to override the board's path.
@@ -36,8 +38,9 @@ from pathlib import Path
 DEFAULT_PATH = (
     Path.home()
     / "Library/Mobile Documents/iCloud~md~obsidian/Documents/notes"
-    / "Projects/notes/wickd Kanban.md"
+    / "Projects/notes/wickd/wickd Kanban.md"
 )
+PLANS_DIRNAME = "plans"  # plan notes, next to the board
 OWNER = "EricLamphere"  # git config user.name of the board's owner
 CARD_RE = re.compile(r"^- \[( |x)\] (.*)$")
 PLAN_QUERY_RE = re.compile(r"^plan\s+(\d+)$", re.IGNORECASE)
@@ -115,7 +118,7 @@ def find_card(lines: list[str], query: str, include_done: bool) -> Card:
     plan = PLAN_QUERY_RE.match(query.strip())
     if plan:
         n = int(plan.group(1))
-        hits = [c for c in pool if re.search(rf"\(plan 0*{n}\)", c.title)]
+        hits = [c for c in pool if re.search(rf"\[\[0*{n} - |\(plan 0*{n}\)", c.title)]
     else:
         hits = [c for c in pool if query.lower() in c.title.lower()]
     if len(hits) == 1:
@@ -176,18 +179,27 @@ def cmd_move(path: Path, lines: list[str], query: str, column: str) -> None:
     print(f"Moved '{card.title}' from {card.column} to {target}")
 
 
-def with_plan(title: str, number: int) -> str:
-    plan = f"(plan {number:02d})"
-    if re.search(r"\(plan \d+\)", title):
-        return re.sub(r"\(plan \d+\)", plan, title)
-    m = re.search(r"\s#\w", title)
-    return f"{title[: m.start()]} {plan}{title[m.start():]}" if m else f"{title} {plan}"
+PLAN_NOTE_RE = re.compile(r"^\d{2,} - [^\\/:#^|\[\]]+$")
 
 
-def cmd_plan(path: Path, lines: list[str], query: str, number: int) -> None:
+def with_plan(title: str, note: str) -> str:
+    """Replace the title text (everything before the first tag or date) with [[note]]."""
+    m = re.search(r"\s(#\w|✅ |@\{)", title)
+    return f"[[{note}]]{title[m.start():]}" if m else f"[[{note}]]"
+
+
+def cmd_plan(path: Path, lines: list[str], query: str, note: str, details: list[str]) -> None:
+    if not PLAN_NOTE_RE.match(note):
+        sys.exit(f"NOTE must look like 'NN - Title' (no \\ / : # ^ | [ ]): {note!r}")
+    if not (board_path().parent / PLANS_DIRNAME / f"{note}.md").exists():
+        sys.exit(f"No plan note '{note}.md' in {board_path().parent / PLANS_DIRNAME}")
     card = find_card(lines, query, include_done=False)
-    title = with_plan(card.title, number)
-    block = [f"- [ ] {title}"] + lines[card.start + 1 : card.end]
+    title = with_plan(card.title, note)
+    existing = lines[card.start + 1 : card.end]
+    if existing and details:
+        print("Card already has details; kept them and ignored --detail.")
+    body = existing or [f"\t* {d}" for d in details]
+    block = [f"- [ ] {title}"] + body
     target = "Features" if card.column == "Ideas" else card.column
     if target == card.column:
         new = lines[: card.start] + block + lines[card.end :]
@@ -210,6 +222,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("path")
+    sub.add_parser("plans")
     sub.add_parser("list").add_argument("column", nargs="?")
     sub.add_parser("show").add_argument("query")
     d = sub.add_parser("done")
@@ -220,7 +233,8 @@ def main() -> None:
     m.add_argument("column")
     pl = sub.add_parser("plan")
     pl.add_argument("query")
-    pl.add_argument("number", type=int)
+    pl.add_argument("note")
+    pl.add_argument("--detail", action="append", default=[])
     a = sub.add_parser("add")
     a.add_argument("column")
     a.add_argument("text")
@@ -233,6 +247,10 @@ def main() -> None:
     if args.cmd == "path":
         print(path)
         sys.exit(0 if path.exists() else 1)
+    if args.cmd == "plans":
+        plans = path.parent / PLANS_DIRNAME
+        print(plans)
+        sys.exit(0 if plans.is_dir() else 1)
     lines = read_lines(path)
     if args.cmd == "list":
         cmd_list(lines, args.column)
@@ -247,7 +265,7 @@ def main() -> None:
     elif args.cmd == "move":
         cmd_move(path, lines, args.query, args.column)
     elif args.cmd == "plan":
-        cmd_plan(path, lines, args.query, args.number)
+        cmd_plan(path, lines, args.query, args.note, args.detail)
     elif args.cmd == "add":
         cmd_add(path, lines, args.column, args.text, args.detail)
 

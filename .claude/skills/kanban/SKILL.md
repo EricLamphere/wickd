@@ -17,7 +17,7 @@ mention the board, don't work around the check (no `WICKD_KANBAN`, no editing
 
 ## The board
 
-`Projects/notes/wickd Kanban.md` in the Obsidian vault, an Obsidian Kanban plugin
+`Projects/notes/wickd/wickd Kanban.md` in the Obsidian vault, an Obsidian Kanban plugin
 board. Columns (`## ` headings):
 
 | Column | Holds |
@@ -27,8 +27,9 @@ board. Columns (`## ` headings):
 | Issues | bugs and UX problems |
 | Done | completed features and fixed issues, newest first under `**Complete**` |
 
-Tags: `#feature`, `#issue`, `#pro` (whole tile is Pro). `(plan NN)` in a title
-means `../wickd-pro/docs/plans/NN-*.md` (or `implemented/NN-*.md`) exists.
+Tags: `#feature`, `#issue`, `#pro` (whole tile is Pro). A tile titled
+`[[NN - Title]]` links its plan note, `plans/NN - Title.md` next to the board (the
+`plans` skill); its bullets summarize the plan. (Old tiles may still say `(plan NN)`.)
 Done tiles end with `✅ YYYY-MM-DD` (older ones use `@{YYYY-MM-DD}`).
 
 Leave everything outside the cards alone, especially the `%% kanban:settings`
@@ -43,14 +44,17 @@ rewording a tile's details), and Read the note first.
 ```bash
 K=.claude/skills/kanban/kanban.py
 python3 $K list [Ideas|Features|Issues|Done]   # titles + detail counts
-python3 $K show "plan 19"                      # one tile with its details
+python3 $K show "plan 19"                      # the tile linking [[19 - ...]]
 python3 $K done "Selector support"             # tick, add ✅ today, move to top of Done
 python3 $K move "Notes" Features               # Ideas -> Features, etc.
-python3 $K plan "Variable explorer" 27         # add "(plan 27)"; Ideas -> Features
+python3 $K plan "Variable explorer" "27 - Variable explorer" --detail "…"
+                                               # title -> [[27 - Variable explorer]]; Ideas -> Features
+python3 $K plans                               # print the plan notes folder
 python3 $K add Issues "Short title #issue" --detail "repro / context"
 ```
 
-A query is a case-insensitive substring of the title, or `plan NN`. An ambiguous
+A query is a case-insensitive substring of the title, or `plan NN` (matches
+`[[NN - ` or a legacy `(plan NN)`). An ambiguous
 query is refused with the matches listed: retry with a longer substring.
 `done`/`move`/`plan` ignore tiles already in Done.
 
@@ -67,19 +71,21 @@ already have a plan (ready to implement) vs. ones that need one.
    thin: ask the user the open questions before writing (one round, the ones
    that change the design).
 2. Write the plan with the `plans` skill (numbering, format, README row).
-3. `python3 $K plan "<tile>" NN` so the tile names its plan (and leaves Ideas).
+3. `python3 $K plan "<tile>" "NN - Title" --detail …` so the tile links its plan note,
+   with bullets summarizing it (and leaves Ideas).
 4. If the plan's scope differs from the tile's bullets, tell the user rather than
    rewriting their bullets.
 
 ### Implement a tile
 
-1. `show` the tile. If it has `(plan NN)`, read that plan and implement it; if
+1. `show` the tile. If it links a plan note (`[[NN - Title]]`), read that note and the
+   plans README in the folder `$K plans` prints, and implement it; if
    not, the tile's bullets are the spec (small tiles), or offer to plan first if
    it's large or ambiguous.
 2. Build it following the repo's normal workflow (tests, docs, feature lists).
 3. When it's done and verified, `done` the tile and tell the user (see the rule
-   in `.claude/rules/kanban.md`). If a plan was implemented, also archive it with
-   the `plans` skill.
+   in `.claude/rules/kanban.md`). If a plan was implemented, also mark it implemented
+   with the `plans` skill.
 
 ### Found a bug or idea mid-task
 

@@ -27,15 +27,16 @@ plan's) is delivered, verified (tests pass, the change works). Don't move a tile
 - the link is a guess: ask instead ("This looks like the *X* tile; move it to Done?");
 - the work is unfinished, untested, or the user is still iterating on it.
 
-Implementing a numbered plan counts: the tile with that `(plan NN)` moves to Done
-alongside archiving the plan (`plans` skill).
+Implementing a numbered plan counts: the tile linking that plan note (`[[NN - Title]]`,
+found with `kanban.py show "plan NN"`) moves to Done alongside marking the plan
+implemented (`plans` skill).
 
 ## Using the board as a source of work
 
 When the user asks what to build next, to plan an idea, or to implement a tile
 ("plan the variable explorer", "implement the running-status bubble"), read the
 board with the `kanban` skill and follow its Plan / Implement workflows. A new
-plan for a tile adds `(plan NN)` to it.
+plan for a tile retitles it `[[NN - Title]]`, linking the plan note (`plans` skill).
 
 Don't add, reword or delete tiles unless asked; moving to Done (above) and
-tagging a plan number are the only edits made without asking.
+linking a plan note are the only edits made without asking.

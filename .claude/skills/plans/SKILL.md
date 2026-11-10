@@ -24,7 +24,7 @@ repo, `wickd-pro`, or a scratchpad.
 <vault>/Projects/notes/wickd/
   wickd Kanban.md               the board; every plan has a tile linking its note
   plans/
-    wickd plans - README.md     roadmap table (every plan + status) and shared conventions
+    README.md                   roadmap table (every plan + status) and shared conventions
     NN - Title.md               every plan, implemented or not (no subfolders)
 ```
 

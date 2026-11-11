@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { MonitorDto, MonitorPointDto, MonitorStatus } from '../../../../lib/monitorsApi';
-import { clampBand, formatNumber, kindTone, monitorChip, monitorTitle, sparkGeometry, statusStyle, statusesByMetric, vsExpected } from './monitorView';
+import { clampBand, formatNumber, kindTone, monitorChip, monitorTitle, monitorUrl, sparkGeometry, statusStyle, statusesByMetric, vsExpected, widgetMonitorState } from './monitorView';
 
 function point(value: number | null, extra: Partial<MonitorPointDto> = {}): MonitorPointDto {
   return { period: '2026-10-01', value, expected: null, low: null, high: null, kind: 'none', partial: false, ...extra };
 }
 
-function monitor(metric: string, status: MonitorStatus | null, enabled = true): MonitorDto {
+function monitor(metric: string, status: MonitorStatus | null, enabled = true, id = Math.random()): MonitorDto {
   return {
-    id: Math.random(), metric, grain: 'day', dimension: null, sensitivity: 'normal', lookback: 180, enabled, target: null,
+    id, metric, grain: 'day', dimension: null, sensitivity: 'normal', lookback: 180, enabled, target: null,
     slices: [], position: 0, created_at: null, last_checked_at: null, schedule: null, next_check_at: null,
     latest: status ? {
       monitor_id: 1, metric, grain: 'day', dimension: null, target: '', status, headline: `${status}!`, since: null,
@@ -40,18 +40,53 @@ describe('statusStyle', () => {
 describe('statusesByMetric', () => {
   it('keeps the worst status per metric and skips disabled monitors', () => {
     const map = statusesByMetric([
-      monitor('revenue', 'ok'), monitor('revenue', 'anomaly'), monitor('revenue', 'warn'),
+      monitor('revenue', 'ok'), monitor('revenue', 'anomaly', true, 7), monitor('revenue', 'warn'),
       monitor('orders', null), monitor('orders', 'ok'), monitor('gone', 'anomaly', false),
     ]);
-    expect(map.get('revenue')).toEqual({ status: 'anomaly', headline: 'anomaly!', monitors: 3 });
+    expect(map.get('revenue')).toEqual({ status: 'anomaly', headline: 'anomaly!', monitors: 3, monitorId: 7 });
     expect(map.get('orders')?.status).toBe('ok');
     expect(map.get('orders')?.monitors).toBe(2);
     expect(map.has('gone')).toBe(false);
   });
 });
 
+describe('widgetMonitorState', () => {
+  const st = (status: MonitorStatus | null, headline: string, monitorId: number) => ({ status, headline, monitors: 1, monitorId });
+  const statuses = new Map([
+    ['discounts', st('warn', 'Unusual on 2026-11-01', 1)],
+    ['revenue', st('anomaly', 'Level shift down since 2026-10-29', 2)],
+    ['units', st('ok', 'Normal', 3)],
+    ['orders', st(null, 'Not checked yet', 4)],
+  ]);
+  const labels = new Map([['revenue', 'Revenue'], ['discounts', 'Discounts']]);
+
+  it('names every flagged metric, worst first, and opens the worst monitor', () => {
+    expect(widgetMonitorState(['discounts', 'units', 'revenue'], statuses, labels)).toEqual({
+      status: 'anomaly',
+      headline: 'Revenue: Level shift down since 2026-10-29\nDiscounts: Unusual on 2026-11-01',
+      monitors: 2,
+      monitorId: 2,
+    });
+  });
+
+  it('falls back to the metric name without a label', () => {
+    expect(widgetMonitorState(['revenue'], statuses, new Map())?.headline).toBe('revenue: Level shift down since 2026-10-29');
+  });
+
+  it('is null when nothing is flagged', () => {
+    expect(widgetMonitorState(['units', 'orders', 'missing'], statuses, labels)).toBeNull();
+    expect(widgetMonitorState([], statuses, labels)).toBeNull();
+  });
+});
+
+describe('monitorUrl', () => {
+  it('opens the monitor on the Monitors tab', () => {
+    expect(monitorUrl(3, 12)).toBe('/projects/3/metrics?tab=monitors&monitor=12');
+  });
+});
+
 describe('monitorChip', () => {
-  const state = (status: 'anomaly' | 'error' | 'warn' | 'ok' | 'not_enough_history' | null) => ({ status, headline: 'h', monitors: 1 });
+  const state = (status: 'anomaly' | 'error' | 'warn' | 'ok' | 'not_enough_history' | null) => ({ status, headline: 'h', monitors: 1, monitorId: 1 });
   it('is red with the status for an anomaly or a failed refresh', () => {
     expect(monitorChip(state('anomaly'))).toMatchObject({ text: 'monitor: anomaly', pill: statusStyle('anomaly').pill, title: 'Monitored · h' });
     expect(monitorChip(state('error')).text).toBe('monitor: refresh failed');

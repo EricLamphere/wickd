@@ -4,14 +4,16 @@
 // bottom with its timeseries; right-click a value for its menu (show timeseries, dashboard
 // filter, drill into…, explorer). While a
 // metric is dragged over it, it says whether it can take it.
-import { Component, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, useRef, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   CopyPlus, FileBarChart, Search, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
-import { statusStyle, type MetricMonitorState } from '../../monitors/monitorView';
+import { monitorUrl, statusStyle, type MetricMonitorState } from '../../monitors/monitorView';
+import { isOpenInFilesClick, OPEN_IN_FILES_CURSOR_CLS } from '../../../lib/openInFiles';
 import {
   HEIGHT_LOCK, MAX_HEIGHT, opt, pxToWidth, resized, widthCss, type Resized, type ResizeLimits, type Size,
 } from '../dashboardModel';
@@ -216,6 +218,24 @@ function ResizeHandles({ start }: { start: (axes: Axes) => (e: React.PointerEven
   );
 }
 
+/** The widget's monitor status; Cmd+click opens that monitor on the Monitors tab. */
+function MonitorPill({ projectId, state, label, cls }: { projectId: number; state: MetricMonitorState; label: string; cls: string }) {
+  const navigate = useNavigate();
+  const id = state.monitorId;
+  const onClick = (e: MouseEvent) => {
+    if (id === null || !isOpenInFilesClick(e)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(monitorUrl(projectId, id));
+  };
+  return (
+    <span onClick={onClick} title={id === null ? state.headline : `${state.headline}\nCmd+click to open the monitor`}
+      className={`shrink-0 px-1.5 py-px text-[10px] rounded border ${cls} ${id === null ? '' : `${OPEN_IN_FILES_CURSOR_CLS} mod:hover:brightness-125`}`}>
+      {label}
+    </span>
+  );
+}
+
 export function WidgetFrame(props: Props) {
   const { widget, result, title, selected, present, monitorStatus, dropHint, containerWidth, dragHandle, nodeRef, style } = props;
   const [menu, setMenu] = useState(false);
@@ -267,9 +287,7 @@ export function WidgetFrame(props: Props) {
         )}
         {!text && <h3 className="flex-1 min-w-0 text-xs font-medium text-gray-200 truncate" title={title}>{title}</h3>}
         {text && <div className="flex-1" />}
-        {pill && (
-          <span title={monitorStatus?.headline} className={`shrink-0 px-1.5 py-px text-[10px] rounded border ${pill.pill}`}>{pill.label}</span>
-        )}
+        {pill && monitorStatus && <MonitorPill projectId={props.projectId} state={monitorStatus} label={pill.label} cls={pill.pill} />}
         {result?.ran_at && (
           <span className="shrink-0 text-[10px] text-gray-500" title={new Date(result.ran_at).toLocaleString()} data-export-asof={result.ran_at}>
             {props.refreshing ? <Loader2 className="inline w-3 h-3 animate-spin" /> : relativeTime(result.ran_at)}

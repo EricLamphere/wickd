@@ -8,7 +8,7 @@ import { dashboardsApi, type DashboardDoc, type DashboardWidget, type WidgetType
 import { alertDialog, confirmDialog, promptDialog } from '../../../../../lib/dialogs';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
-import { statusesByMetric } from '../../monitors/monitorView';
+import { statusesByMetric, widgetMonitorState } from '../../monitors/monitorView';
 import { useMonitors } from '../../monitors/useMonitors';
 import { useOpenInFiles } from '../../../lib/openInFiles';
 import { exploreFromDashboard } from '../../lib/exploreWidget';
@@ -226,7 +226,7 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
 
   const frameProps = (widget: DashboardWidget) => {
     const result = byId.get(widget.id);
-    const status = (widget.metrics ?? []).map((m) => monitorStatuses.get(m)).find((s) => s?.status && s.status !== 'ok') ?? null;
+    const status = widgetMonitorState(widget.metrics ?? [], monitorStatuses, labels);
     const ranQuery = result ? Object.values(result.queries)[0]?.query : undefined;
     const applyFilter = (pick: Pick) => {
       apply((d) => pickFilters(pick).reduce(withDashboardFilter, d));

@@ -57,6 +57,13 @@ export interface MetricMonitorState {
   status: MonitorStatus | null;
   headline: string;
   monitors: number;
+  /** the monitor behind `status` (the worst one), opened by a Cmd+click on its pill */
+  monitorId: number | null;
+}
+
+/** The Monitors tab with one monitor's detail open. */
+export function monitorUrl(projectId: number, monitorId: number): string {
+  return `/projects/${projectId}/metrics?tab=monitors&monitor=${monitorId}`;
 }
 
 /** Worst latest status per monitored metric (enabled monitors only), for DAG dots and Impact flags. */
@@ -69,10 +76,32 @@ export function statusesByMetric(monitors: MonitorDto[]): Map<string, MetricMoni
     const worse = !prev || (status !== null && (prev.status === null || STATUS_RANK[status] > STATUS_RANK[prev.status]));
     const headline = m.latest?.headline ?? 'Not checked yet';
     out.set(m.metric, worse
-      ? { status, headline, monitors: (prev?.monitors ?? 0) + 1 }
+      ? { status, headline, monitors: (prev?.monitors ?? 0) + 1, monitorId: m.id }
       : { ...prev, monitors: prev.monitors + 1 });
   }
   return out;
+}
+
+/**
+ * A dashboard widget's monitor state: its metrics whose status isn't ok, worst first. The
+ * pill takes the worst one's status and monitor; the headline names every flagged metric
+ * (one per line) so a multi-metric widget says which metric it's about. Null = none flagged.
+ */
+export function widgetMonitorState(
+  metrics: string[], statuses: ReadonlyMap<string, MetricMonitorState>, labels: ReadonlyMap<string, string>,
+): MetricMonitorState | null {
+  const flagged = metrics
+    .map((metric) => ({ metric, state: statuses.get(metric) }))
+    .filter((f): f is { metric: string; state: MetricMonitorState & { status: MonitorStatus } } => !!f.state?.status && f.state.status !== 'ok')
+    .sort((a, b) => STATUS_RANK[b.state.status] - STATUS_RANK[a.state.status]);
+  if (!flagged.length) return null;
+  const worst = flagged[0].state;
+  return {
+    status: worst.status,
+    headline: flagged.map(({ metric, state }) => `${labels.get(metric) ?? metric}: ${state.headline}`).join('\n'),
+    monitors: flagged.reduce((n, f) => n + f.state.monitors, 0),
+    monitorId: worst.monitorId,
+  };
 }
 
 // ── sparkline geometry ──────────────────────────────────────────────────────

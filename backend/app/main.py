@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.ai.runtime import llama_server
+from app.api import activity as activity_api
 from app.api import ai_chat as ai_chat_api
 from app.api import ai_model as ai_model_api
 from app.api import ai_proposal_apply as ai_proposal_apply_api
@@ -158,6 +159,7 @@ app.include_router(impact_api.router)
 app.include_router(contracts_api.router)
 app.include_router(data_diff_api.router)
 app.include_router(runs_api.router)
+app.include_router(activity_api.router)
 app.include_router(run_history_api.router)
 app.include_router(run_schedules_api.router)
 app.include_router(run_trend_api.router)

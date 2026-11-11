@@ -149,7 +149,7 @@ finally:
 
 | Type | Topic | Meaning |
 |------|-------|---------|
-| `run_started` | project | dbt command started; payload `command`, `label` (command + subcommand words, e.g. `source freshness`), `select`, `started_at`, `trigger` (manual/schedule/rerun), `schedule_id` |
+| `run_started` | project | dbt command started; payload `command`, `label` (command + subcommand words, e.g. `source freshness`), `select`, `started_at`, `trigger` (manual/schedule/rerun), `schedule_id`, `invocation_id` (Runs page row, null when not recorded), `command_line` (the command as typed, no `--profiles-dir`) |
 | `run_log` | project | one line of stdout/stderr; frontend parses to update RunPanel DAG |
 | `run_finished` | project | dbt process exited |
 | `run_error` | project | dbt executable not found |

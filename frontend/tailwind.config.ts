@@ -99,8 +99,28 @@ export default {
           '0%, 100%': { boxShadow: '0 0 0 1px rgb(59 130 246 / 0.35), 0 0 12px -2px rgb(59 130 246 / 0.3)' },
           '50%': { boxShadow: '0 0 0 3px rgb(59 130 246 / 0.25), 0 0 28px -2px rgb(59 130 246 / 0.55)' },
         },
+        // Running-status bubble (plan 29): success pop; error/warn shake that starts hard and dies down
+        'bubble-pop': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '40%': { transform: 'scale(1.12)' },
+        },
+        'bubble-shake': {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '8%': { transform: 'translateX(-9px)' },
+          '17%': { transform: 'translateX(8px)' },
+          '26%': { transform: 'translateX(-7px)' },
+          '35%': { transform: 'translateX(6px)' },
+          '44%': { transform: 'translateX(-5px)' },
+          '53%': { transform: 'translateX(4px)' },
+          '62%': { transform: 'translateX(-3px)' },
+          '71%': { transform: 'translateX(2px)' },
+          '80%': { transform: 'translateX(-1px)' },
+          '90%': { transform: 'translateX(0.5px)' },
+        },
       },
       animation: {
+        'bubble-pop': 'bubble-pop 450ms ease-out',
+        'bubble-shake': 'bubble-shake 1000ms ease-in-out',
         'pro-shimmer': 'pro-shimmer 3s linear infinite',
         'flow-dash': 'flow-dash 1.6s linear infinite',
         'step-glow': 'step-glow 1.8s ease-in-out infinite',

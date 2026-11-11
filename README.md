@@ -31,6 +31,7 @@ task start
 
 - **Interactive DAG** — dependency graph with live status badges, dbt selector syntax (`+model`, `tag:x`), upstream/downstream traversal, and real-time updates while models run. Multi-select nodes to run, build, or test a whole slice at once
 - **Run / build / test** — trigger any dbt command from the side panel with upstream/downstream/full selectors; logs stream live
+- **Running-status bubble** — a small bubble at the bottom right of every project page shows what's running (a dbt command, the init pipeline, a compile, docs generation), blue while it runs, then green, red or amber; click it for elapsed time, progress, the end of the log, Open and Cancel — see [Watching what's running](docs/how-to/run-models.md#watching-whats-running-from-any-page)
 - **SQL Workspace** — a scratchpad with the Monaco editor (the engine behind VS Code), a Compiled SQL tab, and a resizable results pane. Cmd+Enter runs, Cmd+S saves
 - **File explorer & editor** — browse and edit model SQL, YAML, and config with autocomplete on refs, sources, and documented columns; a VS Code-style file tree with drag and drop (including from Finder), multi-select, cut/copy/paste, duplicate, inline rename and keyboard shortcuts
 - **Source control** — a VS Code-style Git panel: stage, diff, commit, push/pull, switch branches, and browse history

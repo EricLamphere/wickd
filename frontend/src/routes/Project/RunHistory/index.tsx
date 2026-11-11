@@ -30,6 +30,8 @@ interface ListFilters {
 
 /** `?new=<dbt command>` opens the Schedule tab's editor prefilled (command palette → Schedule). */
 const NEW_SCHEDULE_PARAM = 'new';
+/** /runs?run=<invocation id> selects that run (see runsPageLink in lib/activityView.ts) */
+const RUN_PARAM = 'run';
 
 const PAGE_SIZE = 50;
 
@@ -138,6 +140,29 @@ export default function RunHistoryPage() {
     pane.reveal();
     setTab('runs');
   }
+
+  // A specific run from elsewhere (the running-status bubble): /runs?run=<invocation id>
+  const runParam = searchParams.get(RUN_PARAM);
+  useEffect(() => {
+    if (runParam === null) return;
+    const invocationId = Number(runParam);
+    if (Number.isInteger(invocationId) && invocationId > 0) {
+      setFilters({ q: '', command: '', status: '', trigger: '' });
+      setDraftQ('');
+      setPage(0);
+      setSelectedId(invocationId);
+      persistSelected(invocationId);
+      pane.reveal();
+    }
+    // one write: the tab and dropping the param (two updaters would race)
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete(RUN_PARAM);
+      next.set('tab', 'runs');
+      return next;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runParam]);
 
   function scheduleFromRun(inv: RunInvocationDto) {
     setIncomingDraft(draftFromInvocation(inv));

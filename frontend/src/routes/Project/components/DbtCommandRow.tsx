@@ -14,6 +14,20 @@ function Spinner() {
 
 /** Free-form `dbt <command>` input for the project homepage's Quick Run card. */
 export function DbtCommandRow({ projectId }: { projectId: number }) {
+  return (
+    <div className="border-t border-gray-800 px-5 py-4">
+      <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-3">dbt Command</div>
+      <DbtCommandInput projectId={projectId} />
+    </div>
+  );
+}
+
+/**
+ * The `dbt <command>` input + Run button (↑/↓ recall recent commands), shared by the homepage's
+ * Quick Run card and the running-status bubble's panel (`compact`, which also clears the input once
+ * a run starts: the run shows in the list above it).
+ */
+export function DbtCommandInput({ projectId, compact = false }: { projectId: number; compact?: boolean }) {
   const [command, setCommand] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -33,6 +47,8 @@ export function DbtCommandRow({ projectId }: { projectId: number }) {
     if (err) {
       setError(err);
       setRunning(false);
+    } else if (compact) {
+      setCommand('');
     }
   };
 
@@ -56,11 +72,11 @@ export function DbtCommandRow({ projectId }: { projectId: number }) {
     }
   };
 
+  const pad = compact ? 'px-2.5 py-1.5' : 'px-3 py-2';
   return (
-    <div className="border-t border-gray-800 px-5 py-4">
-      <div className="text-[10px] text-gray-600 uppercase tracking-wider mb-3">dbt Command</div>
+    <div>
       <div className="flex items-center gap-2">
-        <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-surface-elevated border border-gray-700 rounded focus-within:border-gray-500 transition-colors">
+        <div className={`flex-1 min-w-0 flex items-center gap-2 ${pad} bg-surface-elevated border border-gray-700 rounded focus-within:border-gray-500 transition-colors`}>
           <span className="text-xs text-brand-400 font-mono shrink-0">dbt</span>
           <input
             type="text"
@@ -71,7 +87,7 @@ export function DbtCommandRow({ projectId }: { projectId: number }) {
               historyIndex.current = -1;
             }}
             onKeyDown={handleKeyDown}
-            placeholder="ls --select my_model+   (↑ for recent)"
+            placeholder={compact ? 'build -s my_model+  (↑ recent)' : 'ls --select my_model+   (↑ for recent)'}
             spellCheck={false}
             className="flex-1 min-w-0 bg-transparent text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none"
           />
@@ -79,7 +95,7 @@ export function DbtCommandRow({ projectId }: { projectId: number }) {
         <button
           onClick={submit}
           disabled={running || !command.trim()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded text-xs font-medium border border-brand-700 text-brand-400 hover:bg-brand-900/30 hover:border-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className={`flex items-center gap-1.5 ${pad} shrink-0 rounded text-xs font-medium border border-brand-700 text-brand-400 hover:bg-brand-900/30 hover:border-brand-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed`}
         >
           {running ? <Spinner /> : <SquareTerminal className="w-3.5 h-3.5" />}
           Run

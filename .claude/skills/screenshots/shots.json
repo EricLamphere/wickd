@@ -120,7 +120,8 @@
   ],
   "not_shown": {
     "Live sync with disk": "Behaviour over time; a still can't show it.",
-    "Back / forward navigation": "The arrows are in every shot's header; it never needs framing."
+    "Back / forward navigation": "The arrows are in every shot's header; it never needs framing.",
+    "Running-status bubble": "An animation over time; a still of a pill in a corner says little."
   },
   "preview": [
     "metric_dashboard",

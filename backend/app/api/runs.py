@@ -360,6 +360,7 @@ async def _run_invocation(
         inject_profiles_dir=spec.inject_profiles_dir,
         trigger=spec.trigger,
         schedule_id=spec.schedule_id,
+        invocation_id=invocation_id,
     )
     results_mtime_before = _run_results_mtime(project_path)
     run_error = False

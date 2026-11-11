@@ -1,6 +1,7 @@
 import asyncio
 import re
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -676,6 +677,15 @@ async def _compile_model(project_id: int, project_path: str, model_name: str) ->
         await bus.publish(Event(topic=topic, type="graph_changed", data={}))
 
 
+# Project compiles in flight (`_compile_project`, which runs dbt outside the runner), keyed by
+# project id → started_at, for GET /activity. In memory only, like other in-flight run state.
+_compiles_in_flight: dict[int, str] = {}
+
+
+def compile_started_at(project_id: int) -> str | None:
+    return _compiles_in_flight.get(project_id)
+
+
 async def _compile_project(project_id: int, project_path: str) -> bool:
     """Run `dbt compile` for a project, publishing compile_started/compile_finished
     (and graph_changed on success) to the event bus. Returns whether it succeeded —
@@ -693,6 +703,7 @@ async def _compile_project(project_id: int, project_path: str) -> bool:
 
     await bus.publish(Event(topic=topic, type="compile_started", data={}))
     append_project_log(project_path, ">>> dbt compile", project_id)
+    _compiles_in_flight[project_id] = datetime.now(UTC).isoformat()
     ok = False
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -709,6 +720,8 @@ async def _compile_project(project_id: int, project_path: str) -> bool:
         ok = rc == 0
     except Exception as exc:  # noqa: BLE001 — reported in the project log + compile_finished ok=False
         append_project_log(project_path, f"error: {exc}", project_id)
+    finally:
+        _compiles_in_flight.pop(project_id, None)
     append_project_log(project_path, f"<<< dbt compile {'OK' if ok else 'FAILED'}", project_id)
     await asyncio.sleep(0)  # let pending project_log tasks publish before compile_finished
     await bus.publish(Event(topic=topic, type="compile_finished", data={"ok": ok}))

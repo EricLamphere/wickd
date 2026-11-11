@@ -7,7 +7,7 @@ import type { ImpactMode } from './impactChanges';
  */
 export const OPEN_BOTTOM_TAB_EVENT = 'wickd:open-bottom-tab';
 
-export type BottomTabRequest = 'impact' | 'node-dag';
+export type BottomTabRequest = 'impact' | 'node-dag' | 'run' | 'project-logs';
 
 export interface OpenBottomTabDetail {
   tab: BottomTabRequest;

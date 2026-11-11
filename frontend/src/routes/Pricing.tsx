@@ -24,6 +24,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Project discovery & multi-project workspace', base: true, pro: true },
   { label: 'Interactive DAG with live status & selector syntax', base: true, pro: true },
   { label: 'Run / build / test with streaming logs', base: true, pro: true },
+  { label: 'Running-status bubble — see what is running from any page', base: true, pro: true },
   { label: 'Docs browser', base: true, pro: true },
   { label: 'Markdown pages — your docs/ folder with mermaid & links to models', base: true, pro: true },
   { label: 'File explorer (drag & drop) & Monaco SQL/YAML editor', base: true, pro: true },

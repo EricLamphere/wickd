@@ -47,6 +47,12 @@ Commands that don't run models — compile, docs generate, debug, source freshne
 
 The bottom pane never opens by itself when something runs: it stays open or closed as you left it. Open the **Execution DAG** tab whenever you want to watch.
 
+### Watching what's running from any page
+
+Whenever something is running in the project — a dbt command, the init pipeline, a project compile or docs generation — a small **bubble** appears at the bottom right of the page with its name (for example `dbt build -s orders+` or `Init: pip install`). It pulses blue while running, then turns green, red or amber when it finishes. A success stays for a few seconds and then shrinks to a small circle; a failure or warning shakes and stays until you click it. The circle never goes away: it shows the icon and color of the last thing that finished (a gray activity icon if nothing has run yet), so you can always click it to see recent activity. Drag the bubble to put it anywhere in the window (it stops just inside the edges, and if your pointer leaves the window mid-drag it's dropped at the edge); it stays there across reloads, and the ↺ button at the top of the activity list moves it back to the bottom right.
+
+Click the bubble to see the activity list: what's running now, then the most recent finished ones (5 in all), each with how long it took. Only the newest entry starts expanded; click any other to see its progress bar (nodes done for run/build/test/seed, steps for init) and the end of its log. For dbt commands, **Execution DAG** opens it in the bottom pane (the list stays open) and **Open in Runs** opens that run on the Runs page; other activities have **Open** (Project Logs, Initialization or Docs); **Cancel** stops a running dbt command. A `dbt` command bar stays at the bottom of the list, the same as the one on the project homepage: type a command (↑/↓ recalls recent ones) and press Enter or **Run**; the bar clears once the run starts. Each dbt command in the list has a small copy button ("Copy command") that copies the full command, flags included. If you reload or open the page mid-run, the bubble still shows it, marked "started before this page opened" (earlier log lines aren't replayed). Press **Escape** to close the list. With reduced motion turned on in your system settings, the bubble changes color without the confetti or shake animations.
+
 ## Reading run output
 
 The **Project Logs** tab (next to the Run tab in the bottom panel) shows full stdout/stderr from dbt. This is useful for debugging failing models.

@@ -129,7 +129,9 @@ export default function Header() {
   const isPricingPage = location.pathname === '/pricing';
 
   return (
-    <header className="flex items-center justify-between px-4 h-12 bg-surface-panel border-b border-gray-800 shrink-0 z-50">
+    // z-[45]: above page content, below the running-status bubble (z-[48], which can be dragged
+    // into the header) and modals (z-50)
+    <header className="flex items-center justify-between px-4 h-12 bg-surface-panel border-b border-gray-800 shrink-0 z-[45]">
       {/* Left — home + back/forward */}
       <div className="flex items-center gap-3 shrink-0">
         <Link

@@ -53,6 +53,17 @@ class _ActiveRun:
     """The init run in flight for a project: its steps and which have started so far."""
     steps: tuple[str, ...]
     started: set[str] = field(default_factory=set)
+    started_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+
+    def current_step(self) -> str | None:
+        """The latest step reached (steps run in order), or None before the first starts."""
+        reached = [name for name in self.steps if name in self.started]
+        return reached[-1] if reached else None
+
+
+def active_run(project_id: int) -> _ActiveRun | None:
+    """The project's init run in flight, or None."""
+    return _active_runs.get(project_id)
 
 
 # In memory only: a restart mid-run marks the run as failed (see migrations), so

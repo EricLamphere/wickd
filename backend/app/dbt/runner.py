@@ -1,6 +1,7 @@
 import asyncio
 import shlex
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ class RunRequest:
     inject_profiles_dir: bool = True  # set False when extra already contains --profiles-dir
     trigger: str = "manual"  # manual | schedule | rerun (run_started payload; plan 27)
     schedule_id: int | None = None
+    invocation_id: int | None = None  # the run_invocations row, when recorded (run_started payload)
 
 
 def command_line(req: RunRequest) -> str:
@@ -45,6 +47,17 @@ def command_label(req: RunRequest) -> str:
     return " ".join(words)
 
 
+@dataclass(frozen=True)
+class CurrentRun:
+    """The streamed dbt command a project is running now (GET /activity, plan 29)."""
+    command: str
+    label: str
+    select: str | None
+    started_at: str
+    invocation_id: int | None = None
+    command_line: str = ""  # command_line(req): the command as typed, for copying
+
+
 class DbtRunner:
     """Serializes dbt invocations per project (dbt is not parallel-safe in-process)."""
 
@@ -53,6 +66,7 @@ class DbtRunner:
         self._procs: dict[int, asyncio.subprocess.Process] = {}
         self._cancelled: set[int] = set()
         self._return_codes: dict[int, int] = {}
+        self._current: dict[int, CurrentRun] = {}
 
     def _lock_for(self, project_id: int) -> asyncio.Lock:
         lock = self._locks.get(project_id)
@@ -74,6 +88,11 @@ class DbtRunner:
         """True while this project has a dbt command in flight (a new one would wait)."""
         lock = self._locks.get(project_id)
         return lock is not None and lock.locked()
+
+    def current(self, project_id: int) -> CurrentRun | None:
+        """The streamed command this project is running, or None (run() calls aren't tracked:
+        they aren't user-visible)."""
+        return self._current.get(project_id)
 
     def cancel(self, project_id: int) -> bool:
         """Terminate the running dbt process for a project. Returns True if one was running."""
@@ -143,76 +162,112 @@ class DbtRunner:
             args = self.build_args(req)
             topic = f"project:{req.project_id}"
             started_at = datetime.now(UTC).isoformat()
-            await bus.publish(
-                Event(
-                    topic=topic,
-                    type="run_started",
-                    data={
-                        "command": req.command,
-                        "label": command_label(req),
-                        "select": req.select,
-                        "started_at": started_at,
-                        "trigger": req.trigger,
-                        "schedule_id": req.schedule_id,
-                    },
-                )
+            label = command_label(req)
+            self._current[req.project_id] = CurrentRun(
+                command=req.command, label=label, select=req.select, started_at=started_at,
+                invocation_id=req.invocation_id, command_line=command_line(req),
             )
-            log.info("dbt_invoke", project=req.project_id, args=args, cwd=str(req.project_path))
-            pid = req.project_id
-            append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
+            ended = [False]  # set once run_finished / run_error is published
             try:
-                proc = await asyncio.create_subprocess_exec(
-                    *args,
-                    cwd=str(req.project_path),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.STDOUT,
-                    env=req.env,
-                )
-            except FileNotFoundError:
-                await bus.publish(
-                    Event(
-                        topic=topic,
-                        type="run_error",
-                        data={"message": "dbt executable not found on PATH"},
-                    )
-                )
-                append_project_log(str(req.project_path), "ERROR: dbt executable not found on PATH", pid)
-                self._return_codes[pid] = 127
-                yield ("stderr", "dbt executable not found on PATH\n")
-                return
-
-            self._procs[req.project_id] = proc
-            assert proc.stdout is not None
-            try:
-                while True:
-                    raw = await proc.stdout.readline()
-                    if not raw:
-                        break
-                    line = raw.decode(errors="replace").rstrip("\n")
-                    await bus.publish(
-                        Event(topic=topic, type="run_log", data={"line": line})
-                    )
-                    append_project_log(str(req.project_path), line, pid)
-                    yield ("stdout", line)
+                async with aclosing(self._stream_locked(req, args, topic, started_at, label, ended)) as inner:
+                    async for item in inner:
+                        yield item
             finally:
-                self._procs.pop(req.project_id, None)
-            return_code = await proc.wait()
-            self._return_codes[pid] = return_code
-            finished_at = datetime.now(UTC).isoformat()
+                self._current.pop(req.project_id, None)
+                if not ended[0]:
+                    await self._publish_abandoned(req, topic)
+
+    async def _publish_abandoned(self, req: RunRequest, topic: str) -> None:
+        """The stream stopped before dbt finished (caller timeout, error or break): say so, so
+        nothing keeps showing the run as in progress."""
+        try:
+            await bus.publish(Event(topic=topic, type="run_finished", data={
+                "command": req.command,
+                "select": req.select,
+                "return_code": -1,
+                "finished_at": datetime.now(UTC).isoformat(),
+                "abandoned": True,
+            }))
+        except Exception as exc:  # noqa: BLE001 — best effort while unwinding
+            log.warning("run_abandoned_publish_failed", project=req.project_id, error=str(exc))
+
+    async def _stream_locked(
+        self, req: RunRequest, args: list[str], topic: str, started_at: str, label: str, ended: list[bool]
+    ) -> AsyncIterator[tuple[str, str]]:
+        await bus.publish(
+            Event(
+                topic=topic,
+                type="run_started",
+                data={
+                    "command": req.command,
+                    "label": label,
+                    "select": req.select,
+                    "started_at": started_at,
+                    "trigger": req.trigger,
+                    "schedule_id": req.schedule_id,
+                    "invocation_id": req.invocation_id,
+                    "command_line": command_line(req),
+                },
+            )
+        )
+        log.info("dbt_invoke", project=req.project_id, args=args, cwd=str(req.project_path))
+        pid = req.project_id
+        append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *args,
+                cwd=str(req.project_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=req.env,
+            )
+        except FileNotFoundError:
             await bus.publish(
                 Event(
                     topic=topic,
-                    type="run_finished",
-                    data={
-                        "command": req.command,
-                        "select": req.select,
-                        "return_code": return_code,
-                        "finished_at": finished_at,
-                    },
+                    type="run_error",
+                    data={"message": "dbt executable not found on PATH"},
                 )
             )
-            status = "OK" if return_code == 0 else f"FAILED (rc={return_code})"
-            append_project_log(str(req.project_path), f"<<< dbt {req.command} {status}", pid)
+            ended[0] = True
+            append_project_log(str(req.project_path), "ERROR: dbt executable not found on PATH", pid)
+            self._return_codes[pid] = 127
+            yield ("stderr", "dbt executable not found on PATH\n")
+            return
+
+        self._procs[req.project_id] = proc
+        assert proc.stdout is not None
+        try:
+            while True:
+                raw = await proc.stdout.readline()
+                if not raw:
+                    break
+                line = raw.decode(errors="replace").rstrip("\n")
+                await bus.publish(
+                    Event(topic=topic, type="run_log", data={"line": line})
+                )
+                append_project_log(str(req.project_path), line, pid)
+                yield ("stdout", line)
+        finally:
+            self._procs.pop(req.project_id, None)
+        return_code = await proc.wait()
+        self._return_codes[pid] = return_code
+        finished_at = datetime.now(UTC).isoformat()
+        await bus.publish(
+            Event(
+                topic=topic,
+                type="run_finished",
+                data={
+                    "command": req.command,
+                    "select": req.select,
+                    "return_code": return_code,
+                    "finished_at": finished_at,
+                },
+            )
+        )
+        ended[0] = True
+        status = "OK" if return_code == 0 else f"FAILED (rc={return_code})"
+        append_project_log(str(req.project_path), f"<<< dbt {req.command} {status}", pid)
 
 
 runner = DbtRunner()

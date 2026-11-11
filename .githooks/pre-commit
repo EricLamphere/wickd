@@ -8,6 +8,11 @@ root="$(git rev-parse --show-toplevel)"
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 status=0
 
+if ! grep -qE '^backend/.*\.py$|^frontend/.*\.(ts|tsx|js|jsx|cjs|mjs)$|^frontend/eslint\.config\.' <<<"$staged"; then
+  echo "pre-commit: no backend/frontend code staged; skipping lint"
+  exit 0
+fi
+
 if grep -qE '^backend/.*\.py$' <<<"$staged"; then
   echo "pre-commit: ruff (backend)"
   if [[ -x "$root/backend/.venv/bin/ruff" ]]; then

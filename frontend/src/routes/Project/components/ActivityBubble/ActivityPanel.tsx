@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronRight, RotateCcw, X } from 'lucide-react';
 import type { Activity } from '../../lib/activity';
-import { formatElapsed, isRowExpanded, panelRows } from '../../lib/activityView';
+import { formatElapsed, formatStartTime, isRowExpanded, panelRows } from '../../lib/activityView';
 import { DbtCommandInput } from '../DbtCommandRow';
 import { CopyCommandButton } from './CopyCommandButton';
 import { BAR_TONE, STATUS_LABEL, StatusIcon } from './statusStyle';
@@ -69,7 +69,7 @@ export function ActivityPanel({
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-800">
         {ordered.length === 0 && (
-          <p className="px-3 py-4 text-xs text-gray-500">Nothing has run since this page opened.</p>
+          <p className="px-3 py-4 text-xs text-gray-500">No recent activity.</p>
         )}
         {ordered.map((a) => (
           <ActivityRow
@@ -108,6 +108,7 @@ function elapsedOf(a: Activity, now: number): string | null {
 
 function ActivityRow({ activity: a, now, expanded, onToggle, onOpen, onOpenInRuns, onCancel }: ActivityRowProps) {
   const elapsed = elapsedOf(a, now);
+  const startedAt = a.startedAt !== null ? formatStartTime(a.startedAt, now) : null;
   return (
     <div className="flex flex-col">
       <div className="flex items-center min-w-0 pr-2 hover:bg-gray-800/50">
@@ -119,7 +120,17 @@ function ActivityRow({ activity: a, now, expanded, onToggle, onOpen, onOpenInRun
         >
           <ChevronRight className={`w-3 h-3 shrink-0 text-gray-500 transition-transform ${expanded ? 'rotate-90' : ''}`} />
           <StatusIcon status={a.status} />
-          <span className="flex-1 min-w-0 truncate text-xs font-medium text-gray-100" title={a.commandLine ?? a.title}>{a.title}</span>
+          <span className="min-w-0 truncate text-xs font-medium text-gray-100" title={a.commandLine ?? a.title}>{a.title}</span>
+          {startedAt && (
+            <time
+              dateTime={new Date(a.startedAt as number).toISOString()}
+              title={new Date(a.startedAt as number).toLocaleString()}
+              className="shrink-0 text-[11px] tabular-nums text-gray-500"
+            >
+              {startedAt}
+            </time>
+          )}
+          <span className="flex-1" />
           {elapsed && <span className="shrink-0 text-[11px] tabular-nums text-gray-400">{elapsed}</span>}
         </button>
         {a.kind === 'run' && a.commandLine && <CopyCommandButton command={a.commandLine} />}

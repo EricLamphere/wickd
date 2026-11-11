@@ -8,7 +8,10 @@ import {
   reduceActivity,
   seedActivity,
 } from './activity';
-import { MAX_PANEL_ROWS, SUCCESS_LINGER_MS, bubbleView, formatElapsed, isRowExpanded, panelRows, runsPageLink } from './activityView';
+import type { RecentRunDto } from '../../../lib/activityApi';
+import {
+  MAX_PANEL_ROWS, SUCCESS_LINGER_MS, bubbleView, formatElapsed, formatStartTime, isRowExpanded, panelRows, runsPageLink,
+} from './activityView';
 
 const T0 = 1_000_000;
 
@@ -146,7 +149,7 @@ describe('reduceActivity — overlap and odd orderings', () => {
   });
 
   it('reuses a running docs or compile activity instead of starting a second one', () => {
-    const seeded = seedActivity(EMPTY_ACTIVITY, { run: null, init: null, compile: null, docs: { started_at: null } });
+    const seeded = seedActivity(EMPTY_ACTIVITY, { run: null, init: null, compile: null, docs: { started_at: null }, recent: [] });
     const state = play([ev('docs_generating'), ev('docs_generated', { ok: true })], seeded);
     expect(state.activities.map((a) => [a.kind, a.status])).toEqual([['docs', 'success']]);
   });
@@ -184,6 +187,7 @@ describe('seedActivity', () => {
     init: { steps: ['base: pip install', 'base: dbt deps'], current_step: 'base: dbt deps', started: 2, started_at: '2026-11-11T09:59:00Z' },
     compile: null,
     docs: { started_at: null },
+    recent: [],
   };
 
   it('seeds what was running before the page opened', () => {
@@ -205,14 +209,14 @@ describe('seedActivity', () => {
 
   it('does not duplicate activities events already reported', () => {
     const live = play([ev('run_started', { command: 'build', label: 'build' })]);
-    const state = seedActivity(live, { run: snapshot.run, init: null, compile: null, docs: null });
+    const state = seedActivity(live, { run: snapshot.run, init: null, compile: null, docs: null, recent: [] });
     expect(state.activities).toHaveLength(1);
     expect(state.activities[0].seeded).toBe(false);
   });
 
   it('does not resurrect a run that finished before the snapshot landed', () => {
     const live = play([ev('run_finished', { return_code: 0, command: 'build' })]);
-    const state = seedActivity(live, { run: snapshot.run, init: null, compile: null, docs: null });
+    const state = seedActivity(live, { run: snapshot.run, init: null, compile: null, docs: null, recent: [] });
     expect(state.activities.map((a) => a.status)).toEqual(['success']);
   });
 
@@ -222,9 +226,59 @@ describe('seedActivity', () => {
       init: null,
       compile: { started_at: '2026-11-11T10:00:00Z' },
       docs: null,
+      recent: [],
     });
     expect(state.activities.map((a) => a.kind)).toEqual(['compile']);
     expect(state.runKey).toBe(state.activities[0].key);
+  });
+});
+
+describe('seedActivity — recent runs', () => {
+  const recent = (id: number, status: RecentRunDto['status'], minute: number): RecentRunDto => ({
+    invocation_id: id, command: 'run', label: 'run', select: `m${id}`, command_line: `dbt run --select m${id}`, status,
+    started_at: `2026-11-11T10:0${minute}:00Z`, finished_at: `2026-11-11T10:0${minute}:30Z`, log: ['\x1B[32mdone\x1B[0m'],
+  });
+  const empty = { run: null, init: null, compile: null, docs: null };
+
+  it('restores the recent runs as dismissed history, newest first', () => {
+    const state = seedActivity(EMPTY_ACTIVITY, { ...empty, recent: [recent(9, 'error', 2), recent(8, 'warn', 1)] });
+    expect(state.activities.map((a) => [a.title, a.status, a.acknowledged, a.invocationId])).toEqual([
+      ['dbt run -s m9', 'error', true, 9],
+      ['dbt run -s m8', 'warn', true, 8],
+    ]);
+    expect(state.activities[0].log).toEqual(['done']);
+    expect(state.activities[0].commandLine).toBe('dbt run --select m9');
+    expect(state.activities[0].startedAt).toBe(Date.parse('2026-11-11T10:02:00Z'));
+    expect(new Set(state.activities.map((a) => a.key)).size).toBe(2);
+    expect(bubbleView(state, T0)).toMatchObject({ mode: 'dot', status: 'error' });
+  });
+
+  it('lists history after what the events reported, skipping runs already listed', () => {
+    const live = play([
+      ev('run_started', { command: 'run', label: 'run', invocation_id: 9 }),
+      ev('run_finished', { return_code: 0 }),
+      ev('docs_generating'),
+    ]);
+    const state = seedActivity(live, { ...empty, recent: [recent(9, 'success', 2), recent(8, 'success', 1)] });
+    expect(state.activities.map((a) => [a.kind, a.invocationId])).toEqual([['docs', null], ['run', 9], ['run', 8]]);
+    // a new run after seeding gets a fresh key
+    const next = reduceActivity(state, ev('run_started', { command: 'build', label: 'build' }), T0);
+    expect(new Set(next.activities.map((a) => a.key)).size).toBe(next.activities.length);
+  });
+
+  it(`keeps at most ${MAX_FINISHED} finished`, () => {
+    const many = Array.from({ length: 7 }, (_, i) => recent(20 - i, 'success', i));
+    const state = seedActivity(EMPTY_ACTIVITY, { ...empty, recent: many });
+    expect(state.activities).toHaveLength(MAX_FINISHED);
+  });
+});
+
+describe('formatStartTime', () => {
+  const at = new Date(2026, 10, 11, 14, 5).getTime();
+  it('shows the time today, and the date on other days', () => {
+    expect(formatStartTime(at, new Date(2026, 10, 11, 18, 0).getTime(), 'en-US')).toBe('2:05 PM');
+    expect(formatStartTime(at, new Date(2026, 10, 12, 9, 0).getTime(), 'en-US')).toBe('Nov 11, 2:05 PM');
+    expect(formatStartTime(at, new Date(2027, 0, 2, 9, 0).getTime(), 'en-US')).toBe('Nov 11, 2026, 2:05 PM');
   });
 });
 

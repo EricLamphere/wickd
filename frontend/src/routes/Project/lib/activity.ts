@@ -2,7 +2,7 @@
 // SSE events to a list of activities (dbt commands, the init pipeline, project compiles, docs
 // generation), plus seeding from GET /activity after a reload. Pure; tested in activity.test.ts.
 
-import type { ActivitySnapshotDto } from '../../../lib/activityApi';
+import type { ActivitySnapshotDto, RecentRunDto } from '../../../lib/activityApi';
 import { drawsNodes, finishedStatus, isWarningLine, type OperationStatus } from './operationRun';
 
 export type ActivityKind = 'run' | 'init' | 'compile' | 'docs';
@@ -300,7 +300,8 @@ export function dismissFinished(state: ActivityState): ActivityState {
 
 /**
  * Adds what the server says is running and the events haven't reported yet (events win: a kind
- * they already reported is skipped). Logs before the page opened aren't replayed.
+ * they already reported is skipped), then the recent finished runs as history. Logs before the
+ * page opened aren't replayed for what's running.
  */
 export function seedActivity(state: ActivityState, snapshot: ActivitySnapshotDto): ActivityState {
   let next = state;
@@ -333,5 +334,35 @@ export function seedActivity(state: ActivityState, snapshot: ActivitySnapshotDto
       if (key) next = { ...next, runKey: key };
     }
   }
-  return next;
+  return seedHistory(next, snapshot.recent ?? []);
+}
+
+/**
+ * Appends the recent finished runs (older than anything the events reported) that aren't listed
+ * yet, already dismissed: after a reload the bubble rests as a dot in the last outcome's color.
+ */
+function seedHistory(state: ActivityState, recent: readonly RecentRunDto[]): ActivityState {
+  const listed = new Set(state.activities.map((a) => a.invocationId).filter((id) => id !== null));
+  let seq = state.seq;
+  const history = recent
+    .filter((r) => !listed.has(r.invocation_id))
+    .map((r): Activity => ({
+      key: `run:${++seq}`,
+      kind: 'run',
+      title: runTitle(r.label, r.select),
+      status: r.status,
+      startedAt: parseTime(r.started_at),
+      finishedAt: parseTime(r.finished_at),
+      progress: null,
+      log: r.log.map(stripAnsi).slice(-MAX_LOG_LINES),
+      warned: r.status === 'warn',
+      seeded: false,
+      acknowledged: true,
+      open: OPEN_BY_KIND.run,
+      cancellable: false,
+      invocationId: r.invocation_id,
+      commandLine: r.command_line || null,
+    }));
+  if (history.length === 0) return state;
+  return { ...state, seq, activities: trim([...state.activities, ...history]) };
 }

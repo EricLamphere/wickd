@@ -86,3 +86,18 @@ export function formatElapsed(ms: number): string {
   if (m > 0) return `${m}m ${String(sec).padStart(2, '0')}s`;
   return `${sec}s`;
 }
+
+/**
+ * When an activity started, for its panel row: "2:14 PM" today, "Nov 10, 2:14 PM" on another day
+ * (with the year when it isn't this year's).
+ */
+export function formatStartTime(ms: number, now: number, locale?: string): string {
+  const at = new Date(ms);
+  const today = new Date(now);
+  const time = at.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
+  if (at.toDateString() === today.toDateString()) return time;
+  const date = at.toLocaleDateString(locale, {
+    month: 'short', day: 'numeric', ...(at.getFullYear() !== today.getFullYear() ? { year: 'numeric' } : {}),
+  });
+  return `${date}, ${time}`;
+}

@@ -1,5 +1,5 @@
 // GET /api/projects/{id}/activity — what a project is running now (plan 29), mirroring
-// backend/app/api/activity.py.
+// backend/app/api/activity.py; also the last finished runs (`recent`).
 import { get } from './api';
 
 export interface RunActivityDto {
@@ -26,11 +26,29 @@ export interface SimpleActivityDto {
   started_at: string | null;
 }
 
+/** A finished dbt run from the Runs page (newest first), so the bubble's history survives a reload. */
+export interface RecentRunDto {
+  invocation_id: number;
+  command: string;
+  /** the command and its subcommand words (`source freshness`) */
+  label: string;
+  select: string | null;
+  command_line: string;
+  /** a cancelled run reads as error */
+  status: 'success' | 'warn' | 'error';
+  started_at: string | null;
+  finished_at: string | null;
+  /** the log's last lines */
+  log: string[];
+}
+
 export interface ActivitySnapshotDto {
   run: RunActivityDto | null;
   init: InitActivityDto | null;
   compile: SimpleActivityDto | null;
   docs: SimpleActivityDto | null;
+  /** the most recent finished dbt runs, newest first */
+  recent: RecentRunDto[];
 }
 
 export const activityApi = {

@@ -1,6 +1,7 @@
 """GET /api/projects/{id}/activity — what's running now, to seed the running-status
 bubble after a reload or navigation (plan 29)."""
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,8 +10,9 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api import init as init_api
 from app.api import models as models_api
+from app.api.activity import label_of, log_tail
 from app.db.engine import get_session
-from app.db.models import Project
+from app.db.models import InvocationModelResult, Project, RunInvocation
 from app.dbt.runner import CurrentRun, RunRequest, runner
 from app.main import app
 from app.projects import docs_state
@@ -56,7 +58,7 @@ async def test_idle_project(client: AsyncClient, tmp_path: Path) -> None:
     pid = await _project(tmp_path)
     res = await client.get(f"/api/projects/{pid}/activity")
     assert res.status_code == 200
-    assert res.json() == {"run": None, "init": None, "compile": None, "docs": None}
+    assert res.json() == {"run": None, "init": None, "compile": None, "docs": None, "recent": []}
 
 
 async def test_busy_runner_reports_the_current_run(client: AsyncClient, tmp_path: Path) -> None:
@@ -209,3 +211,68 @@ async def test_stream_ending_early_still_publishes_a_terminal_event(tmp_path: Pa
         assert 8 not in runner._procs
     finally:
         await bus.unsubscribe("project:8", queue)
+
+
+async def _invocations(rows: list[RunInvocation]) -> list[int]:
+    session_gen = app.dependency_overrides[get_session]()
+    session = await session_gen.__anext__()
+    try:
+        session.add_all(rows)
+        await session.commit()
+        return [r.id for r in rows]
+    finally:
+        await session_gen.aclose()
+
+
+def _inv(pid: int, status: str, cli: str, minute: int, **kw) -> RunInvocation:
+    return RunInvocation(
+        project_id=pid, command=cli.split()[1], cli_command=cli, status=status,
+        started_at=datetime(2026, 11, 11, 10, minute, tzinfo=UTC),
+        finished_at=datetime(2026, 11, 11, 10, minute, 30, tzinfo=UTC), **kw,
+    )
+
+
+async def test_recent_lists_the_five_newest_finished_runs(client: AsyncClient, tmp_path: Path) -> None:
+    pid = await _project(tmp_path)
+    log = tmp_path / "run.log"
+    log.write_text("".join(f"line {i}\n" for i in range(80)), encoding="utf-8")
+    rows = [_inv(pid, "success", f"dbt run --select m{i}", i, selector=f"m{i}") for i in range(6)]
+    rows.append(_inv(pid, "running", "dbt build", 7))
+    rows.append(_inv(pid, "cancelled", "dbt source freshness --target dev", 8, log_path=str(log)))
+    await _invocations(rows)
+    recent = (await client.get(f"/api/projects/{pid}/activity")).json()["recent"]
+    assert [r["label"] for r in recent] == ["source freshness", "run", "run", "run", "run"]
+    assert [r["select"] for r in recent[1:]] == ["m5", "m4", "m3", "m2"]
+    newest = recent[0]
+    assert newest["status"] == "error"
+    assert newest["command_line"] == "dbt source freshness --target dev"
+    assert newest["started_at"].startswith("2026-11-11T10:08:00")
+    assert newest["log"] == [f"line {i}" for i in range(30, 80)]
+    assert recent[1]["log"] == []
+
+
+async def test_recent_skips_the_run_in_flight_and_reports_warnings(client: AsyncClient, tmp_path: Path) -> None:
+    pid = await _project(tmp_path)
+    warned, other = await _invocations([_inv(pid, "success", "dbt test", 1), _inv(pid, "success", "dbt run", 2)])
+    await _invocations([InvocationModelResult(
+        invocation_id=warned, project_id=pid, unique_id="test.a", name="a", kind="test", status="warn",
+    )])
+    runner._current[pid] = CurrentRun(
+        command="run", label="run", select=None, started_at="2026-11-11T10:02:00+00:00", invocation_id=other,
+    )
+    recent = (await client.get(f"/api/projects/{pid}/activity")).json()["recent"]
+    assert [(r["invocation_id"], r["status"]) for r in recent] == [(warned, "warn")]
+
+
+def test_label_of() -> None:
+    assert label_of("dbt run-operation my_macro --args '{a: 1}'", "run-operation") == "run-operation my_macro"
+    assert label_of(None, "build") == "build"
+    assert label_of("dbt 'unbalanced", "run") == "'unbalanced"
+
+
+def test_log_tail_reads_only_the_end(tmp_path: Path) -> None:
+    log = tmp_path / "big.log"
+    log.write_text("x" * 40_000 + "\nlast\n", encoding="utf-8")
+    assert log_tail(str(log)) == ["last"]
+    assert log_tail(str(tmp_path / "missing.log")) == []
+    assert log_tail(None) == []

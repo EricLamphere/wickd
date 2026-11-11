@@ -1,6 +1,6 @@
 // A project's scheduled runs (plan 27), kept fresh by `run_schedules_changed`, and the
 // failed runs the viewer hasn't seen yet (Runs nav dot, Schedule tab dot).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { schedulesApi } from './schedulesApi';
 import { latestEventId, loadSeen, saveSeen, SEEN_EVENT, unseenFailures } from './scheduleAlerts';
@@ -34,7 +34,7 @@ export function useScheduleAlerts(projectId: number) {
     window.addEventListener(SEEN_EVENT, onSeen);
     return () => window.removeEventListener(SEEN_EVENT, onSeen);
   }, [projectId]);
-  const items = data?.items ?? [];
+  const items = useMemo(() => data?.items ?? [], [data]);
   const failures = unseenFailures(items, seen);
   const markAllSeen = useCallback(() => saveSeen(projectId, latestEventId(items)), [projectId, items]);
   return { failures, markAllSeen };

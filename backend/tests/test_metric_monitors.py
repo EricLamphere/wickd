@@ -573,7 +573,7 @@ async def test_series_suppress_and_latest(db, tmp_path, client, worker, shim, en
     assert (await client.get(f"{base}/999/series")).status_code == 404
 
 
-async def test_suppress_a_gap_period_stores_it(db, tmp_path, client, entitled) -> None:
+async def test_suppress_a_gap_period_stores_it(db, tmp_path, client, shim, entitled) -> None:
     """A missing period (no stored row) inside the history can be marked as expected too."""
     from app.semantic import monitor_points
 

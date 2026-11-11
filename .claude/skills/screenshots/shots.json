@@ -111,7 +111,8 @@
     "Smallest safe build": "No shot yet (plan 18, 2026-11-08): retake with the screenshots skill — the Build impacted dialog with the smallest safe set on.",
     "Unit tests": "No shot yet (plan 19, 2026-11-09): retake with the screenshots skill — the side pane's Unit tests section with a failing test's expected-vs-actual rows.",
     "Unit test generation": "No shot yet (plan 19, 2026-11-09): retake with the screenshots skill — a generated unit test in the review window, given / expect tables above the YAML diff.",
-    "Scheduled runs": "No shot yet (plan 27, 2026-11-10): retake with the screenshots skill — Runs → Schedule with a few schedules and the editor open."
+    "Scheduled runs": "No shot yet (plan 27, 2026-11-10): retake with the screenshots skill — Runs → Schedule with a few schedules and the editor open.",
+    "Markdown pages": "No shot yet (plan 28, 2026-11-11): retake with the screenshots skill — Docs → Pages with a demo docs/ folder (a demo.seed_edits group): a page with a table, a mermaid diagram and ref: links, the Pages tree on the left."
   },
   "preview": [
     "metric_dashboard",

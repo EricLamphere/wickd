@@ -21,6 +21,7 @@ from watchfiles import Change, watch
 from app.charts import discovery as charts_discovery
 from app.db.engine import SessionLocal
 from app.db.models import ModelStatus, Project, ProjectEnvVar
+from app.docs_pages import service as docs_pages
 from app.events.bus import Event, bus
 from app.git.repo import find_repo_root
 from app.logging_setup import get_logger
@@ -52,6 +53,7 @@ class WatchedProject:
     path: Path
     git_dir: Path | None
     dashboards_dir: Path | None = None  # DASHBOARDS_PATH, resolved; changes → dashboards_changed
+    docs_dir: Path | None = None  # DOCS_PATH (or docs/), resolved; .md / image changes → docs_pages_changed
 
 
 @dataclass(frozen=True)
@@ -81,9 +83,21 @@ def _dashboards_dir(path: Path, setting: str | None) -> Path | None:
         return None
 
 
-def build_plan(projects: list[tuple[int, Path]], dashboard_settings: dict[int, str] | None = None) -> WatchPlan:
+def _docs_dir(path: Path, repo_root: Path | None, setting: str | None) -> Path | None:
+    try:
+        return docs_pages.resolve_docs_dir(path, repo_root, setting)
+    except (docs_pages.DocsPagesError, OSError):
+        return None
+
+
+def build_plan(
+    projects: list[tuple[int, Path]],
+    dashboard_settings: dict[int, str] | None = None,
+    docs_settings: dict[int, str] | None = None,
+) -> WatchPlan:
     """Resolve each existing project's git dir and the minimal set of roots to watch."""
     settings = dashboard_settings or {}
+    docs = docs_settings or {}
     watched: list[WatchedProject] = []
     for project_id, path in projects:
         if not path.is_dir():
@@ -92,8 +106,15 @@ def build_plan(projects: list[tuple[int, Path]], dashboard_settings: dict[int, s
         git_dir = repo_root / ".git" if repo_root is not None else None
         if git_dir is not None and not git_dir.is_dir():
             git_dir = None  # worktree/submodule .git file — nothing to watch
-        watched.append(WatchedProject(project_id, path, git_dir, _dashboards_dir(path, settings.get(project_id))))
-    roots = [w.path for w in watched] + [w.git_dir for w in watched if w.git_dir is not None]
+        watched.append(WatchedProject(
+            project_id, path, git_dir, _dashboards_dir(path, settings.get(project_id)),
+            _docs_dir(path, repo_root, docs.get(project_id)),
+        ))
+    roots = (
+        [w.path for w in watched]
+        + [w.git_dir for w in watched if w.git_dir is not None]
+        + [w.docs_dir for w in watched if w.docs_dir is not None]
+    )
     return WatchPlan(projects=tuple(watched), roots=collapse_roots(roots))
 
 
@@ -103,6 +124,10 @@ def is_relevant(plan: WatchPlan, path: Path) -> bool:
         if wp.git_dir is not None and _is_under(path, wp.git_dir):
             rel = path.relative_to(wp.git_dir).parts
             return bool(rel) and (rel[0] in _GIT_STATUS_FILES or rel[0] == "refs")
+    for wp in plan.projects:
+        if wp.docs_dir is not None and _is_under(path, wp.docs_dir) and not _is_under(path, wp.path):
+            rel = path.relative_to(wp.docs_dir).parts
+            return not any(part in _IGNORED_PROJECT_DIRS for part in rel)
     for wp in plan.projects:
         if _is_under(path, wp.path):
             rel = path.relative_to(wp.path).parts
@@ -129,6 +154,15 @@ def chart_board_changes(project_path: Path, changed: list[Path]) -> bool:
     ) or any(f.name == "dbt_charts.yml" and f.parent == project_path for f in changed)
 
 
+def docs_page_paths(docs_dir: Path | None, changed: list[Path]) -> list[str]:
+    """Changed pages / images under the docs folder, relative to it (sorted)."""
+    if docs_dir is None:
+        return []
+    suffixes = docs_pages.PAGE_SUFFIXES | docs_pages.IMAGE_TYPES.keys()
+    resolved = [f.resolve() for f in changed if f.suffix.lower() in suffixes]  # a project path may be a symlink
+    return sorted({f.relative_to(docs_dir).as_posix() for f in resolved if f != docs_dir and _is_under(f, docs_dir)})
+
+
 def route_changes(plan: WatchPlan, changes: Changes) -> dict[int, Changes]:
     """Split one batch into per-project batches (a .git change goes to every project in that repo)."""
     routed: dict[int, Changes] = {}
@@ -137,7 +171,8 @@ def route_changes(plan: WatchPlan, changes: Changes) -> dict[int, Changes]:
         for wp in plan.projects:
             in_project = _is_under(path, wp.path)
             in_git = wp.git_dir is not None and _is_under(path, wp.git_dir)
-            if in_project or in_git:
+            in_docs = wp.docs_dir is not None and _is_under(path, wp.docs_dir)
+            if in_project or in_git or in_docs:
                 routed.setdefault(wp.project_id, set()).add(change)
     return routed
 
@@ -200,8 +235,11 @@ class WatcherManager:
             settings = dict((await session.execute(
                 select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == dashboard_store.SETTING_KEY)
             )).all())
+            docs_settings = dict((await session.execute(
+                select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == docs_pages.SETTING_KEY)
+            )).all())
         started = time.perf_counter()
-        plan = await asyncio.to_thread(build_plan, rows, settings)
+        plan = await asyncio.to_thread(build_plan, rows, settings, docs_settings)
         plan_ms = round((time.perf_counter() - started) * 1000)
         if plan == self._plan:
             return
@@ -255,7 +293,7 @@ class WatcherManager:
                 try:
                     await self._handle_changes(
                         project_id, wp.path, wp.git_dir, f"project:{project_id}", project_changes,
-                        wp.dashboards_dir,
+                        wp.dashboards_dir, wp.docs_dir,
                     )
                 except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("watcher_dispatch_error", project_id=project_id, error=str(exc))
@@ -268,8 +306,13 @@ class WatcherManager:
         topic: str,
         changes: set[tuple[Change, str]],
         dashboards_dir: Path | None = None,
+        docs_dir: Path | None = None,
     ) -> None:
         changed_files = [Path(p) for _, p in changes]
+
+        page_paths = docs_page_paths(docs_dir, changed_files)
+        if page_paths:
+            await bus.publish(Event(topic=topic, type="docs_pages_changed", data={"paths": page_paths}))
 
         for slug in dashboard_slugs(dashboards_dir, changed_files):
             await bus.publish(Event(topic=topic, type="dashboards_changed", data={"slug": slug}))

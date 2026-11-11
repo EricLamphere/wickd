@@ -20,6 +20,7 @@ from app.api import dashboards as dashboards_api
 from app.api import data_diff as data_diff_api
 from app.api import debug as debug_api
 from app.api import docs as docs_api
+from app.api import docs_pages as docs_pages_api
 from app.api import document as document_api
 from app.api import drift as drift_api
 from app.api import env as env_api
@@ -180,6 +181,7 @@ app.include_router(logs_api.router)
 app.include_router(terminal_api.router)
 app.include_router(git_api.router)
 app.include_router(workspace_api.router)
+app.include_router(docs_pages_api.router)
 
 
 _PROJECT_ID_RE = re.compile(r"/api/projects/(\d+)/")

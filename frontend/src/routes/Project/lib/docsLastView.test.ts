@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restorableDocsView } from './docsLastView';
+import { pageNodeId, pagePathOf, restorableDocsView } from './docsLastView';
 
 const exists = (uid: string) => uid === 'model.p.orders';
 
@@ -24,5 +24,21 @@ describe('restorableDocsView', () => {
 
   it('keeps only the docs params', () => {
     expect(restorableDocsView('node=model.p.orders&other=1', exists)?.toString()).toBe('node=model.p.orders');
+  });
+});
+
+describe('page node ids', () => {
+  it('round-trips a page path', () => {
+    expect(pageNodeId('guides/setup.md')).toBe('page:guides/setup.md');
+    expect(pagePathOf('page:guides/setup.md')).toBe('guides/setup.md');
+    expect(pagePathOf('page:')).toBeNull();
+    expect(pagePathOf('model.p.orders')).toBeNull();
+    expect(pagePathOf(null)).toBeNull();
+  });
+
+  it('restores a page while it still exists', () => {
+    const pages = new Set(['page:index.md']);
+    expect(restorableDocsView('node=page:index.md&browse=pages', (n) => pages.has(n))?.toString()).toBe('node=page%3Aindex.md&browse=pages');
+    expect(restorableDocsView('node=page:gone.md&browse=pages', (n) => pages.has(n))).toBeNull();
   });
 });

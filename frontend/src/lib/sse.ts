@@ -7,7 +7,7 @@ const PROJECT_EVENT_TYPES = [
   'statuses_changed', 'graph_changed', 'files_changed',
   'init_pipeline_started', 'init_step', 'init_pipeline_finished',
   'compile_started', 'compile_finished',
-  'docs_generating', 'docs_generated',
+  'docs_generating', 'docs_generated', 'docs_pages_changed',
   'test_failed',
   'git_status_changed', 'git_started', 'git_log', 'git_finished', 'git_error',
   'project_log', 'api_log',

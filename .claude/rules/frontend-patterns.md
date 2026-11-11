@@ -88,6 +88,7 @@ When handling SSE events, invalidate the relevant query:
 | `contract_check_started`, `contract_check_finished` | `['contract-check', projectId]` (Impact tab Contracts, Git page Impact section; `routes/Project/lib/useContractCheck.ts`) |
 | `data_diff_started`, `data_diff_finished`, `statuses_changed` (flags results whose dev relation was rebuilt since; never `files_changed`: a diff is a deliberate check) | `['data-diff', projectId]` (Impact tab Data column + drawer, `routes/Project/lib/useDataDiff.ts`) |
 | `metric_monitor_started`, `metric_monitor_finished` | `['metric-monitors', projectId]` (Metrics → Monitors, DAG badges, Impact; `Metrics/monitors/useMonitors.ts`), `['health-summary', projectId]` |
+| `docs_pages_changed`; also `graph_changed`, `docs_generated` for `['docs-page', projectId]` only (docs block usage comes from the manifest) | `['docs-pages', projectId]`, `['docs-page', projectId]` (Docs → Pages and README rendering, `DocsBrowser/pages/useDocsPages.ts`) |
 | `charts_changed`, `charts_build_started`, `charts_build_finished` | `['charts', projectId]` (Charts page + nav item, `routes/Project/Charts/useCharts.ts`); `charts_changed` also `['charts-validate', projectId]` |
 | `charts_env` (global stream) | `['charts']` once the dbt Charts sidecar is ready or failed |
 | `run_schedules_changed` (a failed outcome also shows a toast), `run_history_changed` | `['run-schedules', projectId]` (Runs → Schedule tab, Runs nav dot; `routes/Project/RunHistory/schedule/useSchedules.ts`); `run_schedules_changed` also `['run-schedule-history', projectId]` |

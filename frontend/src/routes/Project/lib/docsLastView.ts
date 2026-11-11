@@ -23,3 +23,15 @@ export function restorableDocsView(stored: string | null, nodeExists: (uid: stri
   }
   return view;
 }
+
+/** `?node=` ids for Markdown pages (plan 28): `page:<path relative to the docs folder>`. */
+const PAGE_PREFIX = 'page:';
+
+export function pageNodeId(path: string): string {
+  return `${PAGE_PREFIX}${path}`;
+}
+
+/** The page path of a `page:` node id, else null. */
+export function pagePathOf(node: string | null): string | null {
+  return node && node.startsWith(PAGE_PREFIX) && node.length > PAGE_PREFIX.length ? node.slice(PAGE_PREFIX.length) : null;
+}

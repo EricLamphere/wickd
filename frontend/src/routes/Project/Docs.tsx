@@ -4,13 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw, BookOpen, Search,
   Database,
-  LayoutGrid, ChevronsDownUp, Tag as TagIcon,
+  LayoutGrid, ChevronsDownUp, Tag as TagIcon, FileText,
 } from 'lucide-react';
 import { api, type DocsNodeDto, type DocsMacroDto } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
 import { useUrlTab } from '../../lib/useUrlTab';
 import { macroCallName } from './lib/macroCall';
-import { readSessionValue, restorableDocsView } from './lib/docsLastView';
+import { pagePathOf, readSessionValue, restorableDocsView } from './lib/docsLastView';
 import NavRail from './components/NavRail';
 import { TagBrowseList } from './components/propagation/TagBrowseList';
 import { TagFlowPanel } from './components/propagation/TagFlowPanel';
@@ -22,12 +22,19 @@ import { FlatTree, ProjectRootTree } from './DocsBrowser/DocsTrees';
 import { ProjectOverview } from './DocsBrowser/ProjectOverview';
 import { NodeDetail } from './DocsBrowser/NodeDetail';
 import { MacroDetail } from './DocsBrowser/MacroDetail';
+import { PagesTree } from './DocsBrowser/pages/PagesTree';
+import { PageDetail } from './DocsBrowser/pages/PageDetail';
+import { foldersOf } from './DocsBrowser/pages/pageFolders';
+import { useDocsPagesList } from './DocsBrowser/pages/useDocsPages';
 
 // ---- tab type ----
 
-type DocsTab = 'project' | 'database' | 'group' | 'tags';
+type DocsTab = 'project' | 'database' | 'group' | 'tags' | 'pages';
 
-const DOCS_TAB_IDS: readonly DocsTab[] = ['project', 'database', 'group', 'tags'];
+const DOCS_TAB_IDS: readonly DocsTab[] = ['project', 'database', 'group', 'tags', 'pages'];
+const DOCS_TAB_IDS_NO_PAGES: readonly DocsTab[] = ['project', 'database', 'group', 'tags'];
+/** List width at which four labeled tabs fit. */
+const TAB_LABELS_MIN_WIDTH = 290;
 
 
 // ---- Docs page ----
@@ -41,17 +48,22 @@ export default function DocsPage() {
   const { listWidth, startResize } = useListWidth();
   const [generating, setGenerating] = useState(false);
   const [filter, setFilter] = useState('');
-  const [docsTab, setDocsTab] = useUrlTab<DocsTab>('browse', DOCS_TAB_IDS, 'project', null); // Docs restores its last view itself (docsLastView.ts)
+  // Markdown pages (plan 28): the Pages tab exists only when the project has a docs folder
+  const { data: pagesList } = useDocsPagesList(id);
+  const hasPagesTab = pagesList === undefined || pagesList.dir !== null; // kept while loading so ?browse=pages doesn't flicker
+  const [docsTab, setDocsTab] = useUrlTab<DocsTab>('browse', hasPagesTab ? DOCS_TAB_IDS : DOCS_TAB_IDS_NO_PAGES, 'project', null); // Docs restores its last view itself (docsLastView.ts)
   const selectNode = useSelectDocsNode();
   const autoGenerateTriggered = useRef(false);
 
   const [projectExpanded, setProjectExpanded, collapseProject, expandProjectMany] = useExpandedSet(`docs-expanded-project-${id}`);
   const [databaseExpanded, setDatabaseExpanded, collapseDatabase, expandDatabaseMany] = useExpandedSet(`docs-expanded-database-${id}`);
   const [groupExpanded, setGroupExpanded, collapseGroup, expandGroupMany] = useExpandedSet(`docs-expanded-group-${id}`);
+  const [pagesExpanded, setPagesExpanded, collapsePages, expandPagesMany] = useExpandedSet(`docs-expanded-pages-${id}`);
 
-  const collapseAll = docsTab === 'project' ? collapseProject : docsTab === 'database' ? collapseDatabase : docsTab === 'group' ? collapseGroup : () => {};
+  const collapseAll = { project: collapseProject, database: collapseDatabase, group: collapseGroup, pages: collapsePages, tags: () => {} }[docsTab];
 
   const selectedUid = searchParams.get('node') ?? null;
+  const selectedPage = pagePathOf(selectedUid);
 
   const { data: status, isFetching: statusFetching } = useQuery({
     queryKey: ['docs-status', id],
@@ -118,16 +130,28 @@ export default function DocsPage() {
   }, [lastViewKey, selectedUid, searchParams]);
 
   // Arriving without ?node=: restore the last view if its node still exists, else the project overview
+  const pagePaths = useMemo(() => new Set((pagesList?.pages ?? []).map((p) => p.path)), [pagesList]);
+  const viewReady = (!!docsData || (!!status && !status.generated_at)) && pagesList !== undefined; // pages work without generated docs
   useEffect(() => {
-    if (!docsData || selectedUid) return;
-    const restored = restorableDocsView(readSessionValue(lastViewKey), (uid) => nodeMap.has(uid) || macroMap.has(uid));
+    if (!viewReady || selectedUid) return;
+    const exists = (uid: string) => {
+      const page = pagePathOf(uid);
+      return page !== null ? pagePaths.has(page) : nodeMap.has(uid) || macroMap.has(uid);
+    };
+    const restored = restorableDocsView(readSessionValue(lastViewKey), exists);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (restored) restored.forEach((value, key) => { if (!next.has(key)) next.set(key, value); });
       else next.set('node', '__project__');
       return next;
     }, { replace: true });
-  }, [docsData, selectedUid, lastViewKey, nodeMap, macroMap, setSearchParams]);
+  }, [viewReady, selectedUid, lastViewKey, nodeMap, macroMap, pagePaths, setSearchParams]);
+
+  // A selected page: open its folders in the Pages tree
+  useEffect(() => {
+    if (selectedPage) expandPagesMany(foldersOf(selectedPage));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPage]);
 
   // When a node is selected (e.g. via ReferencedBy link), expand the tree to reveal it
   useEffect(() => {
@@ -162,7 +186,12 @@ export default function DocsPage() {
     { id: 'database', label: 'Database', icon: <Database className="w-3.5 h-3.5" /> },
     { id: 'group',    label: 'Group',    icon: <LayoutGrid className="w-3.5 h-3.5" /> },
     { id: 'tags',     label: 'Tags',     icon: <TagIcon className="w-3.5 h-3.5" /> },
+    ...(hasPagesTab ? [{ id: 'pages' as const, label: 'Pages', icon: <FileText className="w-3.5 h-3.5" /> }] : []),
   ];
+  const nodeTab = docsTab !== 'tags' && docsTab !== 'pages';
+  // Five labeled tabs don't fit a narrow panel: then only the active tab keeps its label, and
+  // the others show theirs while hovered (the active tab is flex-1 + min-w-0, so it gives way)
+  const showTabLabel = (tab: DocsTab) => docsTab === tab || listWidth >= TAB_LABELS_MIN_WIDTH * (TABS.length / 4);
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -184,20 +213,33 @@ export default function DocsPage() {
 
           {/* Project / Database / Group tabs */}
           <div className="flex items-center gap-0.5">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setDocsTab(t.id)}
-                className={`flex items-center gap-1 px-1.5 py-1 text-[11px] rounded transition-colors flex-1 justify-center
-                  ${docsTab === t.id
-                    ? 'bg-brand-900/50 text-brand-300'
-                    : 'text-gray-500 hover:text-gray-300 hover:bg-surface-elevated/40'
-                  }`}
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            ))}
+            {TABS.map((t) => {
+              const labeled = showTabLabel(t.id);
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => setDocsTab(t.id)}
+                  aria-label={t.label}
+                  className={`group flex items-center px-1.5 py-1 text-[11px] rounded transition-colors justify-center
+                    ${labeled ? 'flex-1 min-w-0' : 'shrink-0'}
+                    ${docsTab === t.id
+                      ? 'bg-brand-900/50 text-brand-300'
+                      : 'text-gray-500 hover:text-gray-300 hover:bg-surface-elevated/40'
+                    }`}
+                >
+                  <span className="shrink-0">{t.icon}</span>
+                  {/* Collapsed tabs slide their label open on hover / keyboard focus, and close again on leave */}
+                  <span
+                    className={`overflow-hidden whitespace-nowrap transition-all duration-150 ease-out
+                      ${labeled
+                        ? 'ml-1 truncate'
+                        : 'max-w-0 opacity-0 group-hover:ml-1 group-hover:max-w-[6rem] group-hover:opacity-100 group-focus-visible:ml-1 group-focus-visible:max-w-[6rem] group-focus-visible:opacity-100'}`}
+                  >
+                    {t.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <div className={`flex items-center gap-1 ${docsTab === 'tags' ? 'hidden' : ''}`}>
@@ -222,20 +264,30 @@ export default function DocsPage() {
         {/* Tree */}
         <div className="overflow-auto flex-1 py-1 select-none">
           {docsTab === 'tags' && <TagBrowseList projectId={id} />}
-          {docsTab !== 'tags' && generating && !hasDoc && (
+          {docsTab === 'pages' && pagesList?.dir && (
+            <PagesTree
+              pages={pagesList.pages}
+              selectedNode={selectedUid}
+              onSelect={selectNode}
+              filterQ={q}
+              expanded={pagesExpanded}
+              onToggle={setPagesExpanded}
+            />
+          )}
+          {nodeTab && generating && !hasDoc && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-600">
               <RefreshCw className="w-5 h-5 animate-spin text-brand-400" />
               <span className="text-xs">Generating…</span>
             </div>
           )}
-          {docsTab !== 'tags' && !generating && !hasDoc && (
+          {nodeTab && !generating && !hasDoc && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-gray-600 px-4 text-center">
               <BookOpen className="w-6 h-6" />
               <p className="text-xs">No docs yet.</p>
               <button onClick={handleRefresh} className="px-3 py-1 text-xs rounded bg-brand-600 hover:bg-brand-500 text-white transition-colors">Generate</button>
             </div>
           )}
-          {docsTab !== 'tags' && !generating && hasDoc && docsLoading && (
+          {nodeTab && !generating && hasDoc && docsLoading && (
             <div className="flex items-center justify-center h-16 text-xs text-gray-600">Loading…</div>
           )}
           {!generating && hasDoc && !docsLoading && (
@@ -297,7 +349,10 @@ export default function DocsPage() {
             projectId={id}
             callName={macroCallName(selectedMacro.name, selectedMacro.package_name, projectName, docsData?.adapter_type ?? '')}
           />}
-        {docsTab !== 'tags' && !isProjectOverview && !selectedNode && !selectedMacro && (
+        {docsTab !== 'tags' && selectedPage && pagesList?.dir && (
+          <PageDetail key={selectedPage} projectId={id} path={selectedPage} list={pagesList} nodes={nodeMap} />
+        )}
+        {docsTab !== 'tags' && !isProjectOverview && !selectedNode && !selectedMacro && !selectedPage && (
           <div className="flex items-center justify-center h-full text-gray-600 text-sm select-none">
             Select a node to view documentation
           </div>

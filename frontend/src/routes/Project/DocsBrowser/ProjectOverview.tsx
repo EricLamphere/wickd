@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Package } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import { ReadmeMarkdown } from './pages/ReadmeMarkdown';
 import { api } from '../../../lib/api';
 import { useUrlTab } from '../../../lib/useUrlTab';
 import { InheritDescriptionsButton } from '../components/propagation/InheritDescriptionsButton';
@@ -63,9 +63,7 @@ export function ProjectOverview({ projectId, projectName, description }: {
         {tab === 'overview' && (
           <div className="px-8 py-6">
             {description ? (
-              <div className="prose-readme">
-                <ReactMarkdown>{description}</ReactMarkdown>
-              </div>
+              <ReadmeMarkdown projectId={projectId} text={description} inDocs={canEdit} />
             ) : (
               <p className="text-sm text-gray-600 italic">No project overview available.</p>
             )}
@@ -74,9 +72,7 @@ export function ProjectOverview({ projectId, projectName, description }: {
         {tab === 'readme' && (
           <div className="px-8 py-6">
             {project?.readme ? (
-              <div className="prose-readme">
-                <ReactMarkdown>{project.readme}</ReactMarkdown>
-              </div>
+              <ReadmeMarkdown projectId={projectId} text={project.readme} inDocs={canEdit} />
             ) : (
               <p className="text-sm text-gray-600 italic">No README found in this project.</p>
             )}

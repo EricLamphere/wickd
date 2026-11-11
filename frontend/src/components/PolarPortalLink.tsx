@@ -1,11 +1,5 @@
 import type { ReactNode } from 'react';
-import { openUrl } from '@tauri-apps/plugin-opener';
-
-function openExternal(url: string): void {
-  // openUrl only exists inside the Tauri shell; fall back to a browser tab
-  // when running from source (`task start`) in a regular browser.
-  openUrl(url).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
-}
+import { openExternal } from '../lib/openExternal';
 
 /** Link to the Polar customer portal (lost license keys, device seats, billing). Renders nothing if unconfigured. */
 export function PolarPortalLink({ url, children }: { url: string | null | undefined; children: ReactNode }) {

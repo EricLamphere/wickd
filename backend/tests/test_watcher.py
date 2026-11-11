@@ -130,3 +130,43 @@ def test_chart_board_changes(tmp_path: Path) -> None:
     assert chart_board_changes(tmp_path, [tmp_path / "dbt_charts.yml"])
     assert not chart_board_changes(tmp_path, [tmp_path / "charts" / "data.csv"])
     assert not chart_board_changes(tmp_path, [tmp_path / "models" / "a.yml"])
+
+
+def test_docs_dir_in_plan_and_page_paths(tmp_path: Path) -> None:
+    repo, (p1,) = _repo_with_projects(tmp_path, "one")
+    (repo / "docs" / "img").mkdir(parents=True)
+    plan = build_plan([(1, p1)])
+
+    wp = plan.projects[0]
+    assert wp.docs_dir == repo / "docs"  # repo root fallback, outside the project
+    assert repo / "docs" in plan.roots
+    assert is_relevant(plan, repo / "docs" / "guide.md")
+    assert not is_relevant(plan, repo / "docs" / "node_modules" / "x.md")
+    assert route_changes(plan, {(Change.modified, str(repo / "docs" / "guide.md"))}) == {
+        1: {(Change.modified, str(repo / "docs" / "guide.md"))}
+    }
+    changed = [repo / "docs" / "guide.md", repo / "docs" / "img" / "a.png", repo / "docs" / "x.txt", p1 / "models" / "a.sql"]
+    assert service.docs_page_paths(wp.docs_dir, changed) == ["guide.md", "img/a.png"]
+    assert service.docs_page_paths(None, changed) == []
+
+
+def test_docs_setting_in_plan(tmp_path: Path) -> None:
+    _, (p1,) = _repo_with_projects(tmp_path, "one")
+    (p1 / "handbook").mkdir()
+    assert build_plan([(1, p1)], None, {1: "handbook"}).projects[0].docs_dir == p1 / "handbook"
+    assert build_plan([(1, p1)], None, {1: "../../../../outside"}).projects[0].docs_dir is None
+
+
+async def test_handle_changes_publishes_docs_pages_changed(tmp_path: Path) -> None:
+    docs = tmp_path.resolve() / "proj" / "docs"
+    docs.mkdir(parents=True)
+    topic = "project:9901"
+    queue = await bus.subscribe(topic)
+    try:
+        await WatcherManager()._handle_changes(
+            9901, docs.parent, None, topic, {(Change.modified, str(docs / "a.md"))}, None, docs,
+        )
+        event = await asyncio.wait_for(queue.get(), timeout=2.0)
+        assert (event.type, event.data) == ("docs_pages_changed", {"paths": ["a.md"]})
+    finally:
+        await bus.unsubscribe(topic, queue)

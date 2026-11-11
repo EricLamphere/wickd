@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
+import { ReadmeMarkdown } from './DocsBrowser/pages/ReadmeMarkdown';
 import Editor from '@monaco-editor/react';
 import { api, type GraphDto, type Project, type RunInvocationDto, type RunOpts } from '../../lib/api';
 import { useProjectEvents } from '../../lib/sse';
@@ -634,8 +634,8 @@ function ProjectFilesPanel({ project }: { project: Project }) {
       </div>
 
       {active.id === 'readme' ? (
-        <div className="px-6 py-5 prose-readme">
-          <ReactMarkdown>{content}</ReactMarkdown>
+        <div className="px-6 py-5">
+          <ReadmeMarkdown projectId={project.id} text={content} inDocs={false} />
         </div>
       ) : (
         <YamlViewer key={active.id} content={content} />

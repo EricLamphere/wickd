@@ -125,6 +125,8 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 **DASHBOARDS_PATH** — the folder (inside the project) where metric dashboards are stored as YAML files. Defaults to `wickd/dashboards`. Click the value to edit; clear it to reset to the default. See [Build metric dashboards](metric-dashboards.md).
 
+**DOCS_PATH** — the folder of Markdown pages shown in Docs → **Pages**, relative to the dbt project (it may point elsewhere in the git repo, e.g. `../docs`). Unset, wickd uses the project's `docs/`, else the git repo root's `docs/`. Click the value to edit; clear it to go back to the default. See [Browse project docs and Markdown pages](browse-docs.md).
+
 **MONITOR_INTERVAL_HOURS** — how often metric monitors are checked automatically while wickd is open (wickd Pro), in whole hours (1 or more). Unset means off; builds and **Check now** still check them. See [Monitor metrics for anomalies](metric-monitors.md).
 
 **MONITOR_SCHEDULE** — the same automatic check as a cron expression in your computer's local time, e.g. `0 9 * * 1-5` for weekdays at 9:00 (wickd Pro). It replaces `MONITOR_INTERVAL_HOURS` (saving one clears the other) and can fire at most every 15 minutes. Unset means off.

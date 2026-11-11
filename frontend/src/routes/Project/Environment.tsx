@@ -264,6 +264,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const requirementsPath = envVars.find((v) => v.key === 'REQUIREMENTS_PATH')?.value ?? '';
   const workspacePath = envVars.find((v) => v.key === 'WORKSPACE_PATH')?.value ?? '';
   const dashboardsPath = envVars.find((v) => v.key === 'DASHBOARDS_PATH')?.value ?? '';
+  const docsPath = envVars.find((v) => v.key === 'DOCS_PATH')?.value ?? '';
   const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
   const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
   const monitorSchedule = envVars.find((v) => v.key === 'MONITOR_SCHEDULE')?.value ?? '';
@@ -309,6 +310,21 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     }
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
     qc.invalidateQueries({ queryKey: ['dashboards', projectId] });
+  };
+
+  const handleSaveDocsPath = async (val: string) => {
+    const normalized = val.trim().replace(/\/+$/, '');
+    if (normalized.startsWith('/')) {
+      throw new Error('DOCS_PATH must be relative to the dbt project, e.g. docs or ../docs');
+    }
+    if (normalized) {
+      await api.init.setEnvVar(projectId, 'DOCS_PATH', normalized);
+    } else {
+      await api.init.deleteEnvVar(projectId, 'DOCS_PATH');
+    }
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+    qc.invalidateQueries({ queryKey: ['docs-pages', projectId] });
+    qc.invalidateQueries({ queryKey: ['docs-page', projectId] });
   };
 
   const { data: appSettings } = useQuery({ queryKey: ['app-settings'], queryFn: () => api.settings.get() });
@@ -421,6 +437,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               placeholder="wickd/dashboards"
               kind="default"
               onSave={handleSaveDashboardsPath}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
+              label="DOCS_PATH"
+              value={docsPath}
+              placeholder="docs (Markdown pages for Docs → Pages; else the git repo's docs/)"
+              kind="default"
+              onSave={handleSaveDocsPath}
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />

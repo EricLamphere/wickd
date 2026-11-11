@@ -25,6 +25,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Interactive DAG with live status & selector syntax', base: true, pro: true },
   { label: 'Run / build / test with streaming logs', base: true, pro: true },
   { label: 'Docs browser', base: true, pro: true },
+  { label: 'Markdown pages — your docs/ folder with mermaid & links to models', base: true, pro: true },
   { label: 'File explorer (drag & drop) & Monaco SQL/YAML editor', base: true, pro: true },
   { label: 'Integrated terminal', base: true, pro: true },
   { label: 'Init pipeline, global env vars & profiles', base: true, pro: true },

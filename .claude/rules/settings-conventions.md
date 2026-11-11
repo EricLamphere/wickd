@@ -45,6 +45,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `PROPAGATE_TAGS` | `ProjectEnvVar` | `pii,sensitive` | `pii,sensitive` |
 | `METRICFLOW_MODE` | `projects.metricflow_mode` | (empty = global default) | `off` |
 | `DASHBOARDS_PATH` | `ProjectEnvVar` | `wickd/dashboards` | `wickd/dashboards` |
+| `DOCS_PATH` | `ProjectEnvVar` (Markdown pages for Docs → Pages; relative to the project, may point into the git repo, e.g. `../docs`) | `docs`, else the git repo root's `docs/` | `docs` |
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
 | `MONITOR_SCHEDULE` | `ProjectEnvVar` (saved through PUT …/metric-monitors/settings, which validates it) | (empty = off) | `0 9 * * 1-5` |
 | `DIFF_BASE_TARGET` | `ProjectEnvVar` (metric compare's "before" side; data diff's prod side, required there; the target a `git:` STATE_SOURCE is parsed for) | (empty = the active target) | `prod` |

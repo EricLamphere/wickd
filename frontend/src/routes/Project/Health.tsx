@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useUrlTab } from '../../lib/useUrlTab';
 import NavRail from './components/NavRail';
-import { PageTabs } from '../../components/PageTabs';
+import { PageHeader } from './components/PageHeader';
 import HealthCheckPanel from './components/HealthCheckPanel';
 import DriftPanel from './components/DriftPanel';
 import FreshnessPanel from './components/FreshnessPanel';
@@ -49,26 +49,12 @@ export default function HealthPage() {
       <NavRail projectId={id} current="health" />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Page header + tab bar */}
-        <div className="shrink-0 border-b border-gray-800 px-6 pt-5 pb-0 bg-surface-app">
-          <div className="flex items-center gap-2.5 mb-4">
-            <svg
-              className="w-5 h-5 text-rose-400 shrink-0"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12h3l2-4 3 8 2-4 1 2h3.5" strokeWidth={1.5} />
-            </svg>
-            <h1 className="text-base font-semibold text-gray-100">Health</h1>
-          </div>
-
-          <PageTabs
-            active={activeTab}
-            onChange={handleTabChange}
-            tabs={TABS.filter((tab) => tab.kind !== 'semantic' || summary?.semantic || activeTab === tab.id).map((tab) => ({
+        <PageHeader
+          page="health"
+          tabs={{
+            active: activeTab,
+            onChange: handleTabChange,
+            items: TABS.filter((tab) => tab.kind !== 'semantic' || summary?.semantic || activeTab === tab.id).map((tab) => ({
               id: tab.id,
               label: (
                 <>
@@ -77,9 +63,9 @@ export default function HealthPage() {
                   {tab.id === 'test-gaps' && <TabBadge badge={gapsBadge} />}
                 </>
               ),
-            }))}
-          />
-        </div>
+            })),
+          }}
+        />
 
         {/* Tab content */}
         <div className="flex-1 overflow-auto">

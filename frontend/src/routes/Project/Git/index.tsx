@@ -4,6 +4,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, type GitFileChange } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import NavRail from '../components/NavRail';
+import { PageTitle } from '../components/PageHeader';
 import { useReportSelectedNode } from '../lib/selectedNodeContext';
 import { nodeForRepoPath } from '../lib/nodeForPath';
 import { ChangesList } from './components/ChangesList';
@@ -198,9 +199,7 @@ export default function GitPage() {
         className="shrink-0 flex flex-col bg-surface-panel border-r border-zinc-800 overflow-hidden"
       >
         <div className="flex items-center justify-between gap-2 h-9 pl-3 pr-2 shrink-0">
-          <h2 className="shrink-0 text-xs font-semibold uppercase tracking-widest text-zinc-400">
-            Source Control
-          </h2>
+          <PageTitle page="git" />
           {status && (
             <BranchControls
               projectId={id}

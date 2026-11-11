@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, ApiError, type FileContentDto, type GraphDto, type ModelNode, type MovedPathDto } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import NavRail from '../components/NavRail';
+import { PageTitle } from '../components/PageHeader';
 import { SidePane, type FailedRowsCache } from '../components/SidePane';
 import { FileTree } from './FileTree';
 import { ViewPane } from './panes/ViewPane';
@@ -330,6 +331,9 @@ export default function FileExplorerPage() {
 
       {/* File tree */}
       <div style={{ width: treeWidth }} className="shrink-0 bg-surface-app border-r border-gray-800 flex flex-col overflow-hidden relative">
+        <div className="flex items-center h-9 px-3 shrink-0">
+          <PageTitle page="files" />
+        </div>
         <FileTree
           projectId={id}
           projectPath={project?.path ?? null}

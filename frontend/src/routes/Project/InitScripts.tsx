@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { api, type InitStepDto } from '../../lib/api';
 import NavRail from './components/NavRail';
+import { PageHeader } from './components/PageHeader';
 import { useProjectEvents } from '../../lib/sse';
 import { FilePickerModal } from './components/FilePickerModal';
 import { StepTile } from './components/InitPipeline/StepTile';
@@ -343,20 +344,14 @@ export default function InitScriptsPage() {
     : null;
 
   return (
-    <PageShell id={id}>
-      <div className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
-        {/* Header with Initialize button */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-sm font-semibold text-gray-200">Initialization</h1>
-            {formattedLastRun && (
-              <p className="text-xs text-gray-600 mt-0.5">Last run: {formattedLastRun}</p>
-            )}
-          </div>
+    <PageShell
+      id={id}
+      header={
+        <PageHeader page="init" meta={formattedLastRun ? `Last run: ${formattedLastRun}` : undefined}>
           <button
             onClick={() => runInitMutation.mutate()}
             disabled={displayRunning || runInitMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-medium transition-colors"
+            className="flex items-center gap-2 px-3 py-1 text-xs rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-medium transition-colors"
           >
             {displayRunning && (
               <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
@@ -366,8 +361,10 @@ export default function InitScriptsPage() {
             )}
             {displayRunning ? 'Running…' : 'Initialize'}
           </button>
-        </div>
-
+        </PageHeader>
+      }
+    >
+      <div className="max-w-3xl mx-auto p-6 flex flex-col gap-8">
         {/* Init steps section — a staggered flow of tiles joined by connectors */}
         <div className="flex flex-col gap-4">
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -471,11 +468,14 @@ export default function InitScriptsPage() {
 
 // ---- layout wrapper ----
 
-function PageShell({ id, children }: { id: number; children: React.ReactNode }) {
+function PageShell({ id, header, children }: { id: number; header?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex h-full overflow-hidden">
       <NavRail projectId={id} current="init" />
-      <div className="flex-1 overflow-auto">{children}</div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {header ?? <PageHeader page="init" />}
+        <div className="flex-1 overflow-auto">{children}</div>
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { useProjectEvents } from '../../../lib/sse';
 import { DataTable } from '../../../components/DataTable';
 import { useTheme } from '../../../lib/useTheme';
 import NavRail from '../components/NavRail';
+import { PageTitle } from '../components/PageHeader';
 import { TreeItem } from './TreeItem';
 import { DatabaseExplorer } from './DatabaseExplorer';
 import type { ContextMenuState, QueryResult, RenameState, TreeNode } from './types';
@@ -825,7 +826,7 @@ export default function WorkspacePage() {
         <div className="flex flex-col min-h-0 overflow-hidden" style={{ flex: '1 1 0' }}>
           {/* Tree header */}
           <div className="flex items-center gap-1 px-2 py-2 border-b border-gray-800 shrink-0">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex-1 truncate">Workspace</span>
+            <PageTitle page="workspace" className="flex-1 pl-1" />
             <button
               onClick={() => openNewFileModal(wsRelPath)}
               title="New file"

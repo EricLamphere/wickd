@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import NavRail from '../components/NavRail';
-import { PageTabs } from '../../../components/PageTabs';
+import { PageHeader } from '../components/PageHeader';
 import { api, type RunInvocationDto, type RunTrigger } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import { useUrlTab } from '../../../lib/useUrlTab';
@@ -209,20 +209,13 @@ export default function RunHistoryPage() {
         {/* Left: list */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-          {/* Header + tab bar (same layout as Health) */}
-          <div className="shrink-0 border-b border-gray-800 px-6 pt-5 pb-0 bg-surface-app">
-            <div className="flex items-center gap-2.5 mb-4">
-              <svg className="w-5 h-5 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <h1 className="text-base font-semibold text-gray-100">Runs</h1>
-              {tab === 'runs' && total > 0 && <span className="text-xs text-gray-500">{total} total</span>}
-            </div>
-
-            <PageTabs
-              active={tab}
-              onChange={setTab}
-              tabs={PAGE_TABS.map((t) => ({
+          <PageHeader
+            page="runs"
+            meta={tab === 'runs' && total > 0 ? `${total} total` : undefined}
+            tabs={{
+              active: tab,
+              onChange: setTab,
+              items: PAGE_TABS.map((t) => ({
                 id: t,
                 label: (
                   <>
@@ -232,9 +225,9 @@ export default function RunHistoryPage() {
                     )}
                   </>
                 ),
-              }))}
-            />
-          </div>
+              })),
+            }}
+          />
 
           {/* Filter bar */}
           {tab === 'runs' && (

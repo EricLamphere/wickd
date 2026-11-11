@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Plus, Trash2, Check, X } from 'lucide-react';
 import { api, type EnvVarDto, type Project } from '../../lib/api';
 import NavRail from './components/NavRail';
+import { PageHeader } from './components/PageHeader';
 import { GlobalEnvVarsReadOnly } from './components/GlobalEnvVarsReadOnly';
 import { EnvPrecedenceNote } from '../../components/GlobalEnvVarsSection';
 import { alertError, confirmDialog } from '../../lib/dialogs';
@@ -49,17 +50,22 @@ export default function EnvironmentPage() {
     <div className="flex min-h-full">
       <NavRail projectId={id} current="environment" />
 
-      <div className="flex-1 p-6 flex flex-col gap-4">
-        <Tile title="Settings">
-          <ProjectSettingsSection projectId={id} project={project ?? null} />
-        </Tile>
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="sticky top-0 z-10">
+          <PageHeader page="environment" />
+        </div>
+        <div className="flex-1 p-6 flex flex-col gap-4">
+          <Tile title="Settings">
+            <ProjectSettingsSection projectId={id} project={project ?? null} />
+          </Tile>
 
-        <Tile title="Environment">
-          <EnvPrecedenceNote className="-mb-2" />
-          <GlobalEnvVarsReadOnly />
-          <GlobalProfileSelector projectId={id} />
-          <EnvironmentVariablesSection projectId={id} />
-        </Tile>
+          <Tile title="Environment">
+            <EnvPrecedenceNote className="-mb-2" />
+            <GlobalEnvVarsReadOnly />
+            <GlobalProfileSelector projectId={id} />
+            <EnvironmentVariablesSection projectId={id} />
+          </Tile>
+        </div>
       </div>
     </div>
   );

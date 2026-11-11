@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { PageTitle } from './PageHeader';
 import { X, FlaskConical, Lock, Download, Timer } from 'lucide-react';
 import type { GraphDto } from '../../../lib/api';
 import { type FilterState, emptyFilter, isFilterActive, getAvailableFilters } from '../lib/dagFilter';
@@ -66,6 +67,8 @@ export default function DagFilterBar({
 
   return (
     <div className="flex items-center gap-2 px-4 py-2 bg-surface-panel border-b border-gray-800 flex-wrap">
+      <PageTitle page="dag" />
+      <span className="w-px h-4 mx-1 bg-gray-700" aria-hidden="true" />
       {/* Text selector input */}
       <input
         type="search"

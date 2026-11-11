@@ -21,7 +21,7 @@ import { MonitorsTab } from './monitors/MonitorsTab';
 import { widgetFromQuery, widgetTitle } from './dashboards/dashboardModel';
 import { DashboardsTab } from './dashboards/DashboardsTab';
 import { ProLabel } from '../../../components/ProLabel';
-import { PageTabs } from '../../../components/PageTabs';
+import { PageHeader } from '../components/PageHeader';
 import { DraftFromModel } from './DraftFromModel';
 import { MetricsSidebar } from './MetricsSidebar';
 import { MetricsUnavailable } from './MetricsUnavailable';
@@ -120,19 +120,14 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
   }, [setParams]);
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="shrink-0 px-6 pt-5 pb-0 border-b border-gray-800 bg-surface-app">
-        <div className="flex items-center gap-2.5 mb-4">
-          <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18M7.5 15l3.75-4.5 3 3L19.5 7.5" />
-          </svg>
-          <h1 className="text-base font-semibold text-gray-100">Metrics</h1>
-        </div>
-        <PageTabs
-          active={tab}
-          onChange={setTab}
-          tabs={TABS.map((t) => ({ id: t, label: t === 'monitors' ? <ProLabel>Monitors</ProLabel> : TAB_LABELS[t] }))}
-        />
-      </div>
+      <PageHeader
+        page="metrics"
+        tabs={{
+          active: tab,
+          onChange: setTab,
+          items: TABS.map((t) => ({ id: t, label: t === 'monitors' ? <ProLabel>Monitors</ProLabel> : TAB_LABELS[t] })),
+        }}
+      />
       <div className="flex-1 min-h-0 overflow-auto">
         {tab === 'explore' && (
           <Explorer projectId={projectId} catalog={catalog} onMonitor={monitor} onOpenDashboard={openDashboard} onOpenMonitors={() => setTab('monitors')} />

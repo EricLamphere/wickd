@@ -63,7 +63,10 @@ the settings.
 
 If a flagged period isn't a problem (a promotion, a known outage), click **Mark as
 expected** in the detail view. The period stops being flagged and is left out of future
-baselines. **Undo** flags it again.
+baselines. This works for missing periods too (no data at all). **Undo** flags it again.
+
+Because a marked period is left out of the baseline, marking or undoing one can change the
+expected values, normal range and scores of other periods in the chart and stored history.
 
 ## When monitors are checked
 

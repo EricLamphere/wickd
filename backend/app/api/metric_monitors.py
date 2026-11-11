@@ -384,7 +384,9 @@ async def suppress(
     await _gate(session)
     m = await _monitor(session, project_id, monitor_id)
     target_name = target if target is not None else (m.target or await _active_target(session, project_id))
-    if not await monitor_points.set_suppressed(session, m.id, target_name, dto.slice, dto.period, dto.suppressed):
+    if not await monitor_points.set_suppressed(
+        session, m.id, target_name, dto.slice, dto.period, dto.suppressed, grain=m.grain
+    ):
         raise HTTPException(status_code=404, detail="no stored value for that period")
     await session.commit()
     return {"ok": True}

@@ -126,6 +126,8 @@ The hooks themselves use `handlerRef` internally (so the ref is always up to dat
 
 ## In-Page Tabs — Keep Them in the URL, and Sticky
 
+Render a page's top-level tab row with `PageTabs` (`components/PageTabs.tsx`) so every page's tabs look the same (Health, Runs, Metrics use it; Docs has its own layout). Never hand-roll tab buttons for a page-level tab row.
+
 Top-level tabs inside a page (Health, project home files, Docs browse/detail tabs) use `useUrlTab()` from `lib/useUrlTab.ts`, not `useState`, so switching tabs pushes a history entry the header back/forward arrows (`NavArrows`, `lib/navHistoryContext.tsx`) can step through. Tabs inside side/bottom panes stay local `useState` — they are deliberately excluded from navigation history. The same applies to in-page selections: the open file on Files (`?path=`), the selected DAG node (`?model=`) and the selected Docs node (`?node=`) live in the URL and push history entries.
 
 ### MANDATORY: every tab is sticky

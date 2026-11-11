@@ -1,13 +1,13 @@
 """A metric monitor's stored history (table metric_monitor_points), per dbt target and slice."""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import MetricMonitorPoint
-from app.semantic.monitor_queries import period_ended
+from app.semantic.monitor_queries import period_ended, period_start
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -116,9 +116,35 @@ async def trim(session: AsyncSession, monitor_id: int, target: str, before: str)
     )
 
 
-async def set_suppressed(
-    session: AsyncSession, monitor_id: int, target: str, slice_: str, period: str, suppressed: bool
+async def _is_gap(
+    session: AsyncSession, monitor_id: int, target: str, slice_: str, period: str, grain: str
 ) -> bool:
+    """Whether `period` is a gap detect() fills with None: a period start of `grain` from
+    the first stored period up to the last complete one (before today's period)."""
+    try:
+        day = date.fromisoformat(period)
+    except ValueError:
+        return False
+    if period_start(day, grain) != day:
+        return False
+    if day >= period_start(date.today(), grain):
+        return False
+    first = (await session.execute(
+        select(func.min(MetricMonitorPoint.period)).where(
+            MetricMonitorPoint.monitor_id == monitor_id,
+            MetricMonitorPoint.target == target,
+            MetricMonitorPoint.slice == slice_,
+        )
+    )).scalar_one()
+    return first is not None and first < period
+
+
+async def set_suppressed(
+    session: AsyncSession, monitor_id: int, target: str, slice_: str, period: str, suppressed: bool,
+    *, grain: str,
+) -> bool:
+    """Mark a period as expected (or not). A gap in the history gets a row with no value,
+    which later refreshes keep (upsert() stores gaps as None). False = no such period."""
     row = (await session.execute(
         select(MetricMonitorPoint).where(
             MetricMonitorPoint.monitor_id == monitor_id,
@@ -127,9 +153,14 @@ async def set_suppressed(
             MetricMonitorPoint.period == period,
         )
     )).scalar_one_or_none()
-    if row is None:
+    if row is not None:
+        row.suppressed = suppressed
+        return True
+    if not await _is_gap(session, monitor_id, target, slice_, period, grain):
         return False
-    row.suppressed = suppressed
+    session.add(MetricMonitorPoint(
+        monitor_id=monitor_id, target=target, slice=slice_, period=period, value=None, suppressed=suppressed,
+    ))
     return True
 
 

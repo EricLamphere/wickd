@@ -573,6 +573,37 @@ async def test_series_suppress_and_latest(db, tmp_path, client, worker, shim, en
     assert (await client.get(f"{base}/999/series")).status_code == 404
 
 
+async def test_suppress_a_gap_period_stores_it(db, tmp_path, client, entitled) -> None:
+    """A missing period (no stored row) inside the history can be marked as expected too."""
+    from app.semantic import monitor_points
+
+    project = await _project(db, tmp_path)
+    m = await _monitor(db, project)
+    for period, value in [("2026-10-01", 5.0), ("2026-10-03", 7.0)]:  # 2026-10-02 is a gap
+        db.add(MetricMonitorPoint(monitor_id=m.id, target="", slice="", period=period, value=value))
+    await db.commit()
+    url = f"/api/projects/{project.id}/metric-monitors/{m.id}/points/suppress"
+
+    ok = await client.post(url, json={"period": "2026-10-02"})
+    assert ok.status_code == 200
+    stored = await monitor_points.series(db, m.id, "", "", "2026-10-01")
+    assert {"period": "2026-10-02", "value": None, "suppressed": True} in stored
+    undo = await client.post(url, json={"period": "2026-10-02", "suppressed": False})
+    assert undo.status_code == 200
+    # a trailing gap (after the last stored period, before today's) counts too
+    assert (await client.post(url, json={"period": "2026-10-04"})).status_code == 200
+    # before the history, today's (in-progress) period or later: still 404
+    for period in ("2026-09-30", date.today().isoformat(), "2999-01-01"):
+        assert (await client.post(url, json={"period": period})).status_code == 404
+    weekly = await _monitor(db, project, grain="week")
+    db.add_all([MetricMonitorPoint(monitor_id=weekly.id, target="", slice="", period=p, value=1.0)
+                for p in ("2026-10-05", "2026-10-19")])
+    await db.commit()
+    wurl = f"/api/projects/{project.id}/metric-monitors/{weekly.id}/points/suppress"
+    assert (await client.post(wurl, json={"period": "2026-10-13"})).status_code == 404  # a Tuesday
+    assert (await client.post(wurl, json={"period": "2026-10-12"})).status_code == 200
+
+
 async def test_health_summary_includes_monitors_with_pro(db, tmp_path, client, worker, shim, entitled) -> None:
     project = await _project(db, tmp_path)
     url = f"/api/projects/{project.id}/health/summary"

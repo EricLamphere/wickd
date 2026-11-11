@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Check, RotateCcw, Trash2 } from 'lucide-react';
 import { DataTable } from '../../../../components/DataTable';
+import { Switch } from '../../../../components/Switch';
 import { confirmDialog } from '../../../../lib/dialogs';
 import type { MonitorDto, MonitorListDto, MonitorPatchBody, MonitorPointDto, MonitorSensitivity } from '../../../../lib/monitorsApi';
 import { MonitorChart } from './MonitorChart';
@@ -27,6 +28,8 @@ interface Props {
   onDelete: () => void;
   onRefresh: () => void;
   onSuppress: (slice: string, period: string, suppressed: boolean) => void;
+  /** the last failed action (save, check, mark as expected), if any */
+  error: string | null;
 }
 
 const round = (v: number | null | undefined) => (typeof v === 'number' ? Number(v.toFixed(2)) : null);
@@ -36,7 +39,7 @@ function pointRow(p: MonitorPointDto): unknown[] {
   return [p.period, round(p.value), round(p.expected), round(p.low), round(p.high), round(p.score), flag];
 }
 
-export function MonitorDetail({ projectId, monitor, targets, running, project, onBack, onUpdate, onDelete, onRefresh, onSuppress }: Props) {
+export function MonitorDetail({ projectId, monitor, targets, running, project, onBack, onUpdate, onDelete, onRefresh, onSuppress, error }: Props) {
   const [slice, setSlice] = useState(monitor.latest?.worst_slice ?? (monitor.dimension ? String(monitor.slices[0] ?? '') : ''));
   const series = useMonitorSeries(projectId, monitor.id, slice);
   const data = series.data;
@@ -60,6 +63,7 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
           <RotateCcw className={`w-3.5 h-3.5 ${running ? 'animate-spin' : ''}`} />Check now
         </button>
       </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
 
       {monitor.dimension && monitor.slices.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -101,7 +105,7 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
                     {p.expected !== null ? ` vs ~${formatNumber(p.expected)}` : ''}
                   </span>
                   <button onClick={() => onSuppress(slice, p.period, !p.suppressed)}
-                    title={p.suppressed ? 'Flag this period again' : 'Not a problem: stop flagging it and leave it out of future baselines'}
+                    title={p.suppressed ? 'Flag this period again' : 'Not a problem: stop flagging it and leave it out of the baseline (other periods\' expected values may change)'}
                     className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-700 text-[11px] text-gray-400 hover:text-gray-200">
                     {p.suppressed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3" />}
                     {p.suppressed ? 'Undo' : 'Mark as expected'}
@@ -109,6 +113,12 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
                 </li>
               ))}
             </ul>
+          )}
+          {flagged.length > 0 && (
+            <p className="text-[11px] text-gray-600 leading-relaxed">
+              A period marked as expected is left out of the baseline, so the expected values, normal range and
+              scores of other periods (in the chart and the stored history below) can shift when you mark or undo one.
+            </p>
           )}
           <h3 className="mt-2 text-xs font-medium text-gray-300">Restated periods</h3>
           {(data?.restatements ?? []).length === 0 ? (
@@ -127,8 +137,9 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
 
       <section className="flex flex-col gap-2 min-h-0">
         <h3 className="text-xs font-medium text-gray-300">Stored history</h3>
-        <div className="h-72 min-h-0 border border-gray-800 rounded overflow-hidden">
-          <DataTable columns={POINT_COLUMNS} rows={[...clampBand(data?.points ?? [])].reverse().map(pointRow)} />
+        {/* every period the chart shows, newest first; scrolls inside a fixed height */}
+        <div className="h-96 min-h-0">
+          <DataTable className="h-full" columns={POINT_COLUMNS} rows={[...clampBand(data?.points ?? [])].reverse().map(pointRow)} />
         </div>
       </section>
     </div>
@@ -165,10 +176,11 @@ function MonitorSettings({ monitor, targets, project, onUpdate, onDelete }: {
         </label>
       )}
       <MonitorScheduleSetting monitor={monitor} project={project} onUpdate={onUpdate} />
-      <label className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <span className="text-gray-400">Enabled</span>
-        <input type="checkbox" checked={monitor.enabled} onChange={(e) => onUpdate({ enabled: e.target.checked })} />
-      </label>
+        <Switch checked={monitor.enabled} onChange={(on) => onUpdate({ enabled: on })} label="Enable this monitor"
+          title={monitor.enabled ? 'On: click to stop checking this monitor' : 'Off: click to check this monitor again'} />
+      </div>
       <p className="text-[11px] text-gray-600 leading-relaxed">
         Late-arriving data shows as a drop in the latest period, then as a restatement once it lands.
         The current period is shown but never scored.

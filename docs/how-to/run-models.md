@@ -94,7 +94,7 @@ Runs → **Schedule** runs any dbt command on a schedule, for example `build -s 
 
 Scheduled runs are ordinary runs: they wait for the project's run lock, stream into the Execution DAG, appear on the Runs tab (with a clock and the schedule's name) and update model statuses.
 
-Each row shows the schedule, its next run and its last outcome (click it to open that run). Hover for **Run now**, **Edit**, **Duplicate** and **Delete**; the checkbox enables or disables it; drag to reorder. Click a row for its settings and history, including missed and skipped runs. **Pause all schedules** stops every schedule in the project; when you resume, they count from then, so the paused time isn't reported as missed.
+Each row shows the schedule, its next run and its last outcome (click it to open that run). Hover for **Run now**, **Edit**, **Duplicate** and **Delete**; the switch on the right turns it on or off; drag to reorder. Click a row for its settings and history, including missed and skipped runs. **Pause all** stops every schedule in the project and turns into an amber **Paused · Resume all** pill until you click it; when you resume, they count from then, so the paused time isn't reported as missed.
 
 When a scheduled run fails, is skipped or its command is no longer valid, a red dot appears on **Runs** in the nav and on the Schedule tab until you look, and a toast appears if wickd is in front.
 

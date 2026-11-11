@@ -5,6 +5,7 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import { Clock, Copy, GripVertical, Pencil, Play, Trash2 } from 'lucide-react';
 import type { RunScheduleDto } from '../../../../lib/schedulesApi';
+import { Switch } from '../../../../components/Switch';
 import { describeTiming, formatCheckTime } from '../../../../components/schedule/scheduleView';
 import { TONE_CLS, outcomeView } from './scheduleDraft';
 
@@ -70,10 +71,9 @@ function Row({ schedule, paused, selected, alert, actions }: {
         <button onClick={() => actions.onDuplicate(schedule)} title="Duplicate" className={ICON_BTN}><Copy className="w-3.5 h-3.5" /></button>
         <button onClick={() => actions.onDelete(schedule)} title="Delete" className={`${ICON_BTN} hover:text-red-400`}><Trash2 className="w-3.5 h-3.5" /></button>
       </div>
-      <label onClick={(e) => e.stopPropagation()} title={schedule.enabled ? 'Enabled' : 'Disabled'} className="flex items-center cursor-pointer">
-        <input type="checkbox" checked={schedule.enabled} onChange={(e) => actions.onToggle(schedule.id, e.target.checked)}
-          aria-label={`Enable ${schedule.name}`} />
-      </label>
+      <Switch checked={schedule.enabled} onChange={(on) => actions.onToggle(schedule.id, on)}
+        label={`Enable ${schedule.name}`}
+        title={schedule.enabled ? (paused ? 'On (all schedules are paused)' : 'On: click to turn off') : 'Off: click to turn on'} />
     </div>
   );
 }

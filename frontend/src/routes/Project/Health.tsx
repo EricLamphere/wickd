@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useUrlTab } from '../../lib/useUrlTab';
 import NavRail from './components/NavRail';
+import { PageTabs } from '../../components/PageTabs';
 import HealthCheckPanel from './components/HealthCheckPanel';
 import DriftPanel from './components/DriftPanel';
 import FreshnessPanel from './components/FreshnessPanel';
@@ -64,23 +65,20 @@ export default function HealthPage() {
             <h1 className="text-base font-semibold text-gray-100">Health</h1>
           </div>
 
-          <div className="flex gap-1">
-            {TABS.filter((tab) => tab.kind !== 'semantic' || summary?.semantic || activeTab === tab.id).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 text-sm rounded-t whitespace-nowrap transition-colors border-b-2 -mb-px ${
-                  activeTab === tab.id
-                    ? 'text-brand-300 border-brand-500 font-medium'
-                    : 'text-gray-500 border-transparent hover:text-gray-300'
-                }`}
-              >
-                {tab.label}
-                {tab.kind && summary?.[tab.kind] && <TabBadge badge={tabBadge(summary[tab.kind]!)} />}
-                {tab.id === 'test-gaps' && <TabBadge badge={gapsBadge} />}
-              </button>
-            ))}
-          </div>
+          <PageTabs
+            active={activeTab}
+            onChange={handleTabChange}
+            tabs={TABS.filter((tab) => tab.kind !== 'semantic' || summary?.semantic || activeTab === tab.id).map((tab) => ({
+              id: tab.id,
+              label: (
+                <>
+                  {tab.label}
+                  {tab.kind && summary?.[tab.kind] && <TabBadge badge={tabBadge(summary[tab.kind]!)} />}
+                  {tab.id === 'test-gaps' && <TabBadge badge={gapsBadge} />}
+                </>
+              ),
+            }))}
+          />
         </div>
 
         {/* Tab content */}

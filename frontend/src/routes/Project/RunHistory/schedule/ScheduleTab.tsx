@@ -7,6 +7,7 @@ import type { RunScheduleDto } from '../../../../lib/schedulesApi';
 import { confirmDialog } from '../../../../lib/dialogs';
 import { useRunSchedules, useScheduleAlerts } from '../../../../lib/useRunSchedules';
 import { ScheduleEditorDialog } from './ScheduleEditorDialog';
+import { PauseAllButton } from './PauseAllButton';
 import { ScheduleList, type RowActions } from './ScheduleList';
 import { draftFromSchedule, emptyDraft, type ScheduleDraft } from './scheduleDraft';
 import { useScheduleActions } from './useScheduleActions';
@@ -72,10 +73,7 @@ export function ScheduleTab({ projectId, selectedId, onSelect, onOpenRun, incomi
           <Info className="w-3.5 h-3.5 text-sky-400" />
           Schedules run only while wickd is open. Runs it misses while closed are skipped unless Catch up is on.
         </span>
-        <label className="ml-auto flex items-center gap-1.5 text-gray-400 cursor-pointer">
-          <input type="checkbox" checked={paused} onChange={(e) => void actions.setPaused(e.target.checked)} />
-          Pause all schedules
-        </label>
+        <PauseAllButton paused={paused} onChange={(next) => void actions.setPaused(next)} />
         <button onClick={() => setEditing({ id: null, title: 'Schedule a run', draft: emptyDraft() })}
           className="flex items-center gap-1 px-2.5 py-1 rounded bg-brand-600 text-white hover:bg-brand-500">
           <Plus className="w-3.5 h-3.5" />New schedule
@@ -83,7 +81,7 @@ export function ScheduleTab({ projectId, selectedId, onSelect, onOpenRun, incomi
       </div>
       {paused && schedules.length > 0 && (
         <div className="shrink-0 px-4 py-1.5 border-b border-gray-800 bg-amber-950/30 text-xs text-amber-400">
-          All schedules are paused. Nothing runs until you turn Pause all off.
+          All schedules are paused. Nothing runs until you click Resume all.
         </div>
       )}
       <div className="flex-1 overflow-auto">

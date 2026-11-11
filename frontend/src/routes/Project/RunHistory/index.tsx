@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import NavRail from '../components/NavRail';
+import { PageTabs } from '../../../components/PageTabs';
 import { api, type RunInvocationDto, type RunTrigger } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import { useUrlTab } from '../../../lib/useUrlTab';
@@ -208,85 +209,85 @@ export default function RunHistoryPage() {
         {/* Left: list */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-          {/* Header */}
-          <div className="shrink-0 border-b border-gray-800 px-6 pt-5 pb-3 bg-surface-app">
-            <div className="flex items-center gap-2.5 mb-1">
+          {/* Header + tab bar (same layout as Health) */}
+          <div className="shrink-0 border-b border-gray-800 px-6 pt-5 pb-0 bg-surface-app">
+            <div className="flex items-center gap-2.5 mb-4">
               <svg className="w-5 h-5 text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <h1 className="text-base font-semibold text-gray-100">Runs</h1>
               {tab === 'runs' && total > 0 && <span className="text-xs text-gray-500">{total} total</span>}
-              <div className="ml-auto flex items-center gap-1">
-                {PAGE_TABS.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTab(t)}
-                    className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
-                      tab === t ? 'bg-brand-900/30 text-brand-300' : 'text-gray-500 hover:text-gray-300 hover:bg-surface-elevated'
-                    }`}
-                  >
-                    {PAGE_TAB_LABELS[t]}
-                    {t === 'schedule' && scheduleFailures.length > 0 && (
-                      <span title="A scheduled run failed" className="inline-block ml-1.5 mb-px w-1.5 h-1.5 rounded-full bg-red-500" />
-                    )}
-                  </button>
-                ))}
-              </div>
             </div>
 
-            {/* Filter bar */}
-            {tab === 'runs' && (
-              <div className="flex items-center gap-2 mt-3">
-                <form
-                  className="flex-1 flex gap-1.5"
-                  onSubmit={(e) => { e.preventDefault(); applySearch(); }}
-                >
-                  <input
-                    type="text"
-                    placeholder="Search by selector…"
-                    value={draftQ}
-                    onChange={(e) => setDraftQ(e.target.value)}
-                    className="flex-1 min-w-0 form-input border rounded px-2.5 py-1 text-xs"
-                  />
-                  <button type="submit" className="px-2.5 py-1 form-btn border rounded text-xs transition-colors">
-                    Search
-                  </button>
-                </form>
-                <select
-                  value={filters.command}
-                  onChange={(e) => setFilter('command', e.target.value)}
-                  className="form-select border rounded px-2 py-1 text-xs"
-                >
-                  <option value="">All commands</option>
-                  <option value="run">run</option>
-                  <option value="build">build</option>
-                  <option value="test">test</option>
-                  <option value="seed">seed</option>
-                </select>
-                <select
-                  value={filters.status}
-                  onChange={(e) => setFilter('status', e.target.value)}
-                  className="form-select border rounded px-2 py-1 text-xs"
-                >
-                  <option value="">All statuses</option>
-                  <option value="success">success</option>
-                  <option value="error">error</option>
-                  <option value="running">running</option>
-                </select>
-                <select
-                  value={filters.trigger}
-                  onChange={(e) => setFilter('trigger', e.target.value)}
-                  className="form-select border rounded px-2 py-1 text-xs"
-                  aria-label="Trigger"
-                >
-                  <option value="">All triggers</option>
-                  <option value="manual">Manual</option>
-                  <option value="schedule">Scheduled</option>
-                  <option value="rerun">Rerun</option>
-                </select>
-              </div>
-            )}
+            <PageTabs
+              active={tab}
+              onChange={setTab}
+              tabs={PAGE_TABS.map((t) => ({
+                id: t,
+                label: (
+                  <>
+                    {PAGE_TAB_LABELS[t]}
+                    {t === 'schedule' && scheduleFailures.length > 0 && (
+                      <span title="A scheduled run failed" className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    )}
+                  </>
+                ),
+              }))}
+            />
           </div>
+
+          {/* Filter bar */}
+          {tab === 'runs' && (
+            <div className="shrink-0 flex items-center gap-2 px-6 py-3 border-b border-gray-800 bg-surface-app">
+              <form
+                className="flex-1 flex gap-1.5"
+                onSubmit={(e) => { e.preventDefault(); applySearch(); }}
+              >
+                <input
+                  type="text"
+                  placeholder="Search by selector…"
+                  value={draftQ}
+                  onChange={(e) => setDraftQ(e.target.value)}
+                  className="flex-1 min-w-0 form-input border rounded px-2.5 py-1 text-xs"
+                />
+                <button type="submit" className="px-2.5 py-1 form-btn border rounded text-xs transition-colors">
+                  Search
+                </button>
+              </form>
+              <select
+                value={filters.command}
+                onChange={(e) => setFilter('command', e.target.value)}
+                className="form-select border rounded px-2 py-1 text-xs"
+              >
+                <option value="">All commands</option>
+                <option value="run">run</option>
+                <option value="build">build</option>
+                <option value="test">test</option>
+                <option value="seed">seed</option>
+              </select>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilter('status', e.target.value)}
+                className="form-select border rounded px-2 py-1 text-xs"
+              >
+                <option value="">All statuses</option>
+                <option value="success">success</option>
+                <option value="error">error</option>
+                <option value="running">running</option>
+              </select>
+              <select
+                value={filters.trigger}
+                onChange={(e) => setFilter('trigger', e.target.value)}
+                className="form-select border rounded px-2 py-1 text-xs"
+                aria-label="Trigger"
+              >
+                <option value="">All triggers</option>
+                <option value="manual">Manual</option>
+                <option value="schedule">Scheduled</option>
+                <option value="rerun">Rerun</option>
+              </select>
+            </div>
+          )}
 
           {tab === 'performance' ? (
             <PerformanceTab projectId={id} />

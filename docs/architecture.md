@@ -657,7 +657,7 @@ GET    /api/projects/{id}/metric-monitors/latest         Pro: the latest MetricM
 PUT    /api/projects/{id}/metric-monitors/settings       Pro: {interval_hours: 1–168 | null, schedule: cron | null} (at most one; both null = off) → the MONITOR_INTERVAL_HOURS / MONITOR_SCHEDULE project env vars; 400 invalid_schedule
 GET    /api/projects/{id}/metric-monitors/schedule-preview?expr=  Pro: a cron expression checked → {expr (as stored), next: [3 ISO times]}; 400 invalid_schedule
 GET    /api/projects/{id}/metric-monitors/{mid}/series?slice=&target=  Pro: stored history scored again → {monitor, slice, slices, target, points, summary, restatements}
-POST   /api/projects/{id}/metric-monitors/{mid}/points/suppress  Pro: {slice, period, suppressed} — mark a period as expected (404 when not stored)
+POST   /api/projects/{id}/metric-monitors/{mid}/points/suppress  Pro: {slice, period, suppressed} — mark a period as expected; a gap in the history (no stored value, before the current period) gets a value-less row; 404 outside the history
 POST   /api/projects/{id}/metricflow/plan-dbt-change     body {version, want_cli}: pip dry run → {ok, previous_version, install, changes, pins, error}
 POST   /api/projects/{id}/metricflow/apply-dbt-change    body {version, want_cli, update_pins, replace_ranges}: rewrites pins, installs via the global-setup stream; 409 while dbt / setup / init runs
 POST   /api/projects/{id}/metricflow/verify-dbt-change   after the install: dbt --version, dbt parse, compatibility again

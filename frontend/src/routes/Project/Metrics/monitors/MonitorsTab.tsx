@@ -87,6 +87,7 @@ export function MonitorsTab({ projectId, catalog, draft, onDraftHandled }: Props
           onDelete={async () => { await actions.remove(selected.id); select(null); }}
           onRefresh={() => actions.refresh([selected.id])}
           onSuppress={(slice, period, suppressed) => actions.suppress(selected.id, slice, period, suppressed)}
+          error={dialogOpen ? null : actions.error}
         />
         {dialog}
       </>

@@ -7,8 +7,9 @@ Thanks for helping out. This guide covers setting up a dev environment, the proj
 **Prerequisites:** Python 3.11+, Node.js 20+, [Task](https://taskfile.dev) (`brew install go-task`). Building the desktop app also needs Rust and the Tauri CLI (`cargo install tauri-cli`).
 
 ```bash
-task install                    # create backend/.venv, pip install, npm install
+task install                    # create backend/.venv, pip install, npm install, install git hooks
 task install PYTHON=python3.12  # or pin a specific Python interpreter
+task hooks:install              # just the git hooks: pre-commit runs ruff / ESLint when backend / frontend files are staged
 task start                      # backend on :8001 + Vite on :5173, hot reload; auto-installs missing/stale deps
 ```
 

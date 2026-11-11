@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Runs the same linters CI does (ruff, ESLint --max-warnings 0), only for the side
+# of the repo with staged changes. Install with `task hooks:install`.
+# Skip once with `git commit --no-verify`.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+status=0
+
+if grep -qE '^backend/.*\.py$' <<<"$staged"; then
+  echo "pre-commit: ruff (backend)"
+  if [[ -x "$root/backend/.venv/bin/ruff" ]]; then
+    (cd "$root/backend" && .venv/bin/ruff check app tests) || status=1
+  else
+    echo "pre-commit: backend/.venv/bin/ruff not found; run 'task install:backend'" >&2
+    status=1
+  fi
+fi
+
+if grep -qE '^frontend/.*\.(ts|tsx|js|jsx|cjs|mjs)$|^frontend/eslint\.config\.' <<<"$staged"; then
+  echo "pre-commit: eslint (frontend)"
+  if [[ -d "$root/frontend/node_modules" ]]; then
+    (cd "$root/frontend" && npm run --silent lint) || status=1
+  else
+    echo "pre-commit: frontend/node_modules not found; run 'task install:frontend'" >&2
+    status=1
+  fi
+fi
+
+if [[ $status -ne 0 ]]; then
+  echo "pre-commit: lint failed; fix the issues above (or commit with --no-verify)" >&2
+fi
+exit $status

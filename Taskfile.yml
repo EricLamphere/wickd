@@ -176,6 +176,13 @@ tasks:
         vars:
           PYTHON: '{{.PYTHON | default "python3"}}'
       - task: install:frontend
+      - task: hooks:install
+
+  hooks:install:
+    desc: Point git at .githooks/ (pre-commit runs ruff + ESLint on staged sides)
+    cmds:
+      - git config core.hooksPath .githooks
+      - chmod +x .githooks/pre-commit
 
   # ---- Tests ----
 

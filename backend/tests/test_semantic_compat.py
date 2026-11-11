@@ -7,6 +7,7 @@ import pytest
 
 from app.semantic import compat
 from app.semantic.compat import check, cli_release_for, compatible_versions, recommend
+from app.semantic.compat_data import DBT_CORE_LATEST_PATCHES
 from app.semantic.pins import find_pins, rewrite_pins, would_undo
 from app.semantic.spec import classify, detect_spec, is_latest_spec_parse_error, spec_of
 
@@ -57,8 +58,11 @@ def test_candidates_go_both_ways_and_skip_the_current_version() -> None:
 
 
 def test_candidates_respect_python_and_spec() -> None:
-    assert compatible_versions("3.14", uses_latest_spec=False, want_cli=True) == ("1.11.16", "1.12.6")
-    assert compatible_versions("3.12", uses_latest_spec=True, want_cli=False) == ("1.12.6",)
+    # The latest patches come from compat_data, which the release refreshes from PyPI.
+    latest_1_11 = DBT_CORE_LATEST_PATCHES["1.11"]
+    latest_1_12 = DBT_CORE_LATEST_PATCHES["1.12"]
+    assert compatible_versions("3.14", uses_latest_spec=False, want_cli=True) == (latest_1_11, latest_1_12)
+    assert compatible_versions("3.12", uses_latest_spec=True, want_cli=False) == (latest_1_12,)
 
 
 def test_newer_than_tested_is_ok_with_a_warning(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -211,7 +211,6 @@ export default function RunHistoryPage() {
 
           <PageHeader
             page="runs"
-            meta={tab === 'runs' && total > 0 ? `${total} total` : undefined}
             tabs={{
               active: tab,
               onChange: setTab,
@@ -279,6 +278,9 @@ export default function RunHistoryPage() {
                 <option value="schedule">Scheduled</option>
                 <option value="rerun">Rerun</option>
               </select>
+              {total > 0 && (
+                <span className="shrink-0 pl-1 text-xs text-gray-500 tabular-nums">{total} total</span>
+              )}
             </div>
           )}
 

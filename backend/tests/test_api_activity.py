@@ -25,6 +25,17 @@ async def client():
 
 
 @pytest.fixture(autouse=True)
+def fake_dbt_binary(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests fake the subprocess, but resolving the dbt path would still build or
+    require the real dbt venv, which CI doesn't have."""
+    from app.dbt import runner as runner_mod
+    from app.dbt import venv
+
+    monkeypatch.setattr(runner_mod, "venv_dbt", lambda: Path("dbt"))
+    monkeypatch.setattr(venv, "venv_dbt", lambda: Path("dbt"))
+
+
+@pytest.fixture(autouse=True)
 def clean_state():
     init_api._active_runs.clear()
     models_api._compiles_in_flight.clear()

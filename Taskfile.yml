@@ -275,11 +275,9 @@ tasks:
     deps:
       - task: ensure:backend
     cmds:
-      - |
-        if ! .venv/bin/python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('wickd_pro') else 1)"; then
-          echo "wickd_pro is not installed in backend/.venv — run 'task package:pro' first (or pass PRO_DIR=<path> to it if wickd-pro isn't a sibling checkout)."
-          exit 1
-        fi
+      # Also refuses a pure-Python wickd_pro: shipped builds carry it as Cython
+      # extension modules only (see package:pro).
+      - .venv/bin/python packaging/check_pro_native.py
 
   package:pro:
     desc: |
@@ -312,8 +310,16 @@ tasks:
         # bundle silently ends up without it ("missing module named
         # wickd_pro" in build/wickd/warn-wickd.txt). A plain install
         # copies real files PyInstaller can actually find.
-        .venv/bin/pip install -q "{{.PRO_DIR}}"
-        echo "wickd-pro installed — the next pro build (package:sandbox:pro / package:production) will bundle it."
+        #
+        # WICKD_PRO_NATIVE=1 compiles every module to a native extension with
+        # Cython and leaves the .py sources out (see wickd-pro's setup.py), so
+        # the app ships machine code, not decompilable bytecode. Uninstall
+        # first: pip may skip reinstalling an unchanged version, and
+        # --force-reinstall would also re-resolve sqlglot.
+        .venv/bin/pip uninstall -y -q wickd_pro 2>/dev/null || true
+        WICKD_PRO_NATIVE=1 .venv/bin/pip install -q "{{.PRO_DIR}}"
+        .venv/bin/python packaging/check_pro_native.py
+        echo "wickd-pro installed (native) — the next pro build (package:sandbox:pro / package:production) will bundle it."
 
   _package:backend:
     desc: "Internal: bundle the FastAPI backend via PyInstaller, using whichever backend/.env is in place at call time."

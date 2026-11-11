@@ -59,7 +59,16 @@ package or git submodule.
   live checkout on `PYTHONPATH` (nothing installed; uvicorn reloads on edits in
   either repo). It takes precedence over any copy `task package:pro` installed.
 - Installed into wickd's **shared backend venv** via `task package:pro`
-  (plain `pip install`, deliberately **not** `-e`/editable — PyInstaller's
+  **compiled to native extension modules** (`WICKD_PRO_NATIVE=1`, Cython,
+  see `wickd-pro/setup.py`): every module, `__init__` included, ships as a
+  `.so` with docstrings and local symbols stripped, and no `.py` sources;
+  the only plain module is the generated `wickd_pro/_bundle_imports.py`
+  (import statements for PyInstaller, which can't scan a `.so`).
+  `backend/packaging/check_pro_native.py` (run by `package:pro` and
+  `_package:pro-check`) refuses a pure-Python install. Since the shipped
+  code is compiled, run wickd-pro's tests against the installed `.so`
+  build under the backend venv's sqlglot, not only from source. It's a
+  plain `pip install`, deliberately **not** `-e`/editable (PyInstaller's
   static analysis can't see through an editable install's import-finder
   indirection, so an editable install silently produces a build missing
   `wickd_pro` at runtime). See `Taskfile.yml`'s `package:pro` /

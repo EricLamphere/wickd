@@ -33,10 +33,13 @@ hidden_imports = (
 
 # wickd_pro (the private column-lineage algorithm package — see
 # app/dbt/column_lineage.py) is only present in maintainer/release builds
-# that ran `task package:pro` first (pip install -e ../wickd-pro). It's
-# imported lazily at call time, not at module load, so PyInstaller's static
-# analysis can never discover it on its own — it must be added to
-# hiddenimports explicitly whenever it's actually installed. Contributor
+# that ran `task package:pro` first, which installs it as Cython-compiled
+# extension modules (.so, no .py sources). It's imported lazily at call time,
+# not at module load, so PyInstaller's static analysis can never discover it
+# on its own — it must be added to hiddenimports explicitly whenever it's
+# actually installed. PyInstaller can't scan a .so for imports either, so the
+# native build ships one plain module, wickd_pro._bundle_imports (collected
+# here like any submodule), listing every import the package makes. Contributor
 # builds without it simply don't bundle it; column lineage stays unavailable
 # (ColumnLineageUnavailable), same as running the public repo directly.
 if importlib.util.find_spec("wickd_pro") is not None:

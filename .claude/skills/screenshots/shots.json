@@ -79,6 +79,20 @@
           "find": "sum(net_amount_dollars) as lifetime_net_revenue",
           "replace": "sum(net_amount_dollars) * 1.02 as lifetime_net_revenue"
         }
+      ],
+      "unit_break": [
+        {
+          "file": "duckdb_dbt/models/silver/int_sales_enriched.sql",
+          "find": "round(s.gross_amount_dollars - s.discount_dollars, 2) as net_amount_dollars",
+          "replace": "round(s.gross_amount_dollars, 2) as net_amount_dollars"
+        }
+      ],
+      "bounce_change": [
+        {
+          "file": "duckdb_dbt/models/silver/int_ga_sessions_cleaned.sql",
+          "find": "    page_views <= 1 as is_bounced,\n",
+          "replace": "    page_views <= 1 or session_duration_sec < 10 as is_bounced,\n"
+        }
       ]
     },
     "seed_edits": [
@@ -106,13 +120,7 @@
   ],
   "not_shown": {
     "Live sync with disk": "Behaviour over time; a still can't show it.",
-    "Back / forward navigation": "The arrows are in every shot's header; it never needs framing.",
-    "Slim builds": "No shot yet (plan 18, 2026-11-08): retake with the screenshots skill — Build impacted dialog with What changed compared with production.",
-    "Smallest safe build": "No shot yet (plan 18, 2026-11-08): retake with the screenshots skill — the Build impacted dialog with the smallest safe set on.",
-    "Unit tests": "No shot yet (plan 19, 2026-11-09): retake with the screenshots skill — the side pane's Unit tests section with a failing test's expected-vs-actual rows.",
-    "Unit test generation": "No shot yet (plan 19, 2026-11-09): retake with the screenshots skill — a generated unit test in the review window, given / expect tables above the YAML diff.",
-    "Scheduled runs": "No shot yet (plan 27, 2026-11-10): retake with the screenshots skill — Runs → Schedule with a few schedules and the editor open.",
-    "Markdown pages": "No shot yet (plan 28, 2026-11-11): retake with the screenshots skill — Docs → Pages with a demo docs/ folder (a demo.seed_edits group): a page with a table, a mermaid diagram and ref: links, the Pages tree on the left."
+    "Back / forward navigation": "The arrows are in every shot's header; it never needs framing."
   },
   "preview": [
     "metric_dashboard",
@@ -583,6 +591,35 @@
       }
     },
     {
+      "name": "markdown_pages",
+      "tier": "base",
+      "caption": "Markdown pages — your docs/ folder's guides beside the dbt docs, with mermaid diagrams, tables and links to model docs",
+      "features": [
+        "Markdown pages"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/docs?browse=pages&node=page:how-to/semantic-layer-and-metrics.md"
+        },
+        {
+          "wait": "How it fits together",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        },
+        {
+          "sleep": 1500
+        }
+      ],
+      "label": "Markdown pages",
+      "alt": "wickd Docs → Pages showing the project's semantic layer guide, with a mermaid diagram and a table, and the pages tree on the left",
+      "site": {
+        "gallery": "main"
+      }
+    },
+    {
       "name": "sql_workspace",
       "tier": "base",
       "caption": "SQL Workspace — Monaco editor, ref autocomplete, compiled SQL, and live query results",
@@ -676,6 +713,46 @@
       },
       "storage": {
         "wickd:run-history-pane-width": "1200"
+      }
+    },
+    {
+      "name": "scheduled_runs",
+      "tier": "base",
+      "caption": "Scheduled runs — any dbt command every few hours or on a cron, with each run's outcome and failures flagged",
+      "features": [
+        "Scheduled runs"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/runs?tab=schedule"
+        },
+        {
+          "js": "const B='/api/projects/{pid:duckdb_dbt}/run-schedules';for (const s of (await shot.api('GET', B)).items) await shot.api('DELETE', `${B}/${s.id}`);const mk=(b)=>shot.api('POST', B, b);const nightly=await mk({name:'Nightly prod build', command:'build', cron:'0 2 * * *', target:'prod', catch_up:true});const staging=await mk({name:'Refresh staging', command:'run --select bronze', interval_hours:4});await mk({name:'Weekday source freshness', command:'source freshness', cron:'0 7 * * 1-5'});const tests=await mk({name:'Data tests', command:'test --select silver gold', interval_hours:12});for (const s of [staging, tests]) { await shot.api('POST', `${B}/${s.id}/run`); await shot.sleep(1500); for (let i=0;i<120;i++){ const cur=(await shot.api('GET', B)).items.find(x=>x.id===s.id); if (cur.last_status && cur.last_status!=='running' && !cur.pending) break; await shot.sleep(1000);} }return nightly.id;",
+          "timeout": 300000
+        },
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/runs?tab=schedule"
+        },
+        {
+          "wait": "Nightly prod build",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        },
+        {
+          "click": "Data tests"
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        }
+      ],
+      "label": "Scheduled runs",
+      "alt": "wickd Runs → Schedule listing four scheduled dbt commands with their next run and last outcome, one flagged as failed",
+      "site": {
+        "gallery": "main"
       }
     },
     {
@@ -936,6 +1013,114 @@
       }
     },
     {
+      "name": "slim_build",
+      "tier": "base",
+      "caption": "Slim builds — Build impacted… previews dbt build --select state:modified+ against production, with defer to prod",
+      "features": [
+        "Slim builds"
+      ],
+      "edits": "bounce_change",
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'impact', impactMode:'working'}})); await shot.sleep(1500); return true;"
+        },
+        {
+          "wait": "Build impacted…",
+          "timeout": 30000
+        },
+        {
+          "click": "Build impacted…"
+        },
+        {
+          "wait": "What changed compared with production",
+          "timeout": 30000
+        },
+        {
+          "click": "What changed compared with production"
+        },
+        {
+          "click": "Defer to production (--defer)"
+        },
+        {
+          "wait": "Previewed",
+          "timeout": 180000
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        }
+      ],
+      "storage": {
+        "wickd:bottom-pane-height": "420"
+      },
+      "label": "Slim builds",
+      "alt": "wickd Build impacted dialog configuring a state:modified+ build against production, with the command and the nodes it will build",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "smallest_safe_build",
+      "tier": "pro",
+      "caption": "Smallest safe build (Pro) — column lineage skips downstream models that read none of the columns you changed",
+      "features": [
+        "Smallest safe build"
+      ],
+      "edits": "bounce_change",
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "window.dispatchEvent(new CustomEvent('wickd:open-bottom-tab', {detail:{tab:'impact', impactMode:'working'}})); await shot.sleep(1500); return true;"
+        },
+        {
+          "wait": "Build impacted…",
+          "timeout": 30000
+        },
+        {
+          "click": "Build impacted…"
+        },
+        {
+          "wait": "What changed compared with production",
+          "timeout": 30000
+        },
+        {
+          "click": "What changed compared with production"
+        },
+        {
+          "click": "Only what actually changed (smallest safe set)"
+        },
+        {
+          "wait": "Previewed",
+          "timeout": 180000
+        },
+        {
+          "settle": true,
+          "timeout": 120000
+        }
+      ],
+      "storage": {
+        "wickd:bottom-pane-height": "420"
+      },
+      "label": "Smallest safe build (Pro)",
+      "alt": "wickd Build impacted dialog with the smallest safe set on, listing downstream models skipped because they read none of the changed columns",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
       "name": "test_gaps",
       "tier": "pro",
       "caption": "Smarter test suggestions (Pro) — the riskiest untested columns, ranked, with the evidence",
@@ -965,6 +1150,116 @@
       ],
       "label": "Test gaps (Pro)",
       "alt": "wickd Test Gaps: untested columns ranked by risk, with one expanded to show its evidence",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "unit_tests",
+      "tier": "base",
+      "caption": "Unit tests — a model's dbt unit tests in the side pane; a failure shows expected → actual, cell by cell",
+      "features": [
+        "Unit tests"
+      ],
+      "edits": "unit_break",
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=model.duckdb_dbt.int_sales_enriched"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "const h=await shot.waitFor(()=>[...document.querySelectorAll('button')].find(b=>b.innerText.trim().startsWith('UNIT TESTS')),30000,'the Unit tests section');if (!shot.find('Run all')) h.click(); await shot.sleep(800); return true;",
+          "timeout": 40000
+        },
+        {
+          "click": "Run all"
+        },
+        {
+          "js": "await shot.sleep(2000); await shot.waitFor(()=>/1 failing/.test(document.body.innerText),180000,'the unit test to fail'); return true;",
+          "timeout": 190000
+        },
+        {
+          "click": "test_int_sales_enriched_net_and_margin"
+        },
+        {
+          "wait": "Accept actual as expected",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        }
+      ],
+      "storage": {
+        "wickd:side-pane-width:dag": "560"
+      },
+      "label": "Unit tests",
+      "alt": "wickd side pane with a failing dbt unit test, its expected and actual rows side by side and a changed cell highlighted",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
+      "name": "unit_test_generation",
+      "tier": "pro",
+      "caption": "Unit test generation (Pro) — pick a CASE column; wickd samples real rows that hit each branch and drafts the given / expect fixtures",
+      "features": [
+        "Unit test generation"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/models?model=model.duckdb_dbt.int_ga_sessions_cleaned"
+        },
+        {
+          "settle": true,
+          "timeout": 60000
+        },
+        {
+          "js": "const h=await shot.waitFor(()=>[...document.querySelectorAll('button')].find(b=>b.innerText.trim().startsWith('UNIT TESTS')),30000,'the Unit tests section');if (!shot.find('Run all')) h.click(); await shot.sleep(800); return true;",
+          "timeout": 40000
+        },
+        {
+          "click": "Add unit test…"
+        },
+        {
+          "js": "const s=await shot.waitFor(()=>[...document.querySelectorAll('select')].find(s=>[...s.options].some(o=>o.value==='case:traffic_category')),30000,'the Logic to cover picker');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,'case:traffic_category');s.dispatchEvent(new Event('change',{bubbles:true})); await shot.sleep(500); return true;",
+          "timeout": 40000
+        },
+        {
+          "click": "Generate unit test"
+        },
+        {
+          "wait": "is ready to review",
+          "timeout": 240000
+        },
+        {
+          "js": "const b=[...document.querySelectorAll('button')].filter(b=>b.innerText.trim()==='Review').pop(); b.click(); return true;"
+        },
+        {
+          "wait": "Sample rows",
+          "timeout": 30000
+        },
+        {
+          "js": "const b=await shot.waitFor(()=>[...document.querySelectorAll('[role=dialog] button')].find(x=>x.innerText.trim().startsWith('Sample rows')),30000,'Sample rows'); if (b.getAttribute('aria-expanded')!=='true') b.click(); await shot.sleep(800); return b.getAttribute('aria-expanded');",
+          "timeout": 40000
+        },
+        {
+          "wait": "expect ·",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 30000
+        },
+        {
+          "js": "const b=[...document.querySelectorAll('[role=dialog] button')].find(x=>x.innerText.trim().startsWith('Sample rows')); let p=b.parentElement; while(p && !(p.scrollHeight>p.clientHeight+5 && getComputedStyle(p).overflowY!=='visible')) p=p.parentElement; if (p) p.scrollTop=0; await shot.sleep(800); return !!p;"
+        }
+      ],
+      "label": "Unit test generation (Pro)",
+      "alt": "wickd review window for a generated dbt unit test: the sampled input rows and expected rows as tables above the YAML diff",
       "site": {
         "gallery": "more"
       }

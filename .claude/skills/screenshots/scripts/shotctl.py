@@ -73,8 +73,10 @@ WINDOW_SIZE = "1920x1145"
 WINDOW_ZOOM = "0.8"
 
 DEMO_ROOT = Path("/Users/Shared/wickd-demo")
+# The backend's data dir: under DEMO_ROOT, because paths inside it (e.g. slim builds' --state folder) show on screen.
+DATA_ROOT = DEMO_ROOT / ".data"
 SHARED_DATA = ("models", "dbt-charts-venv")
-STALE_RESULT_TABLES = ("contract_check_snapshots", "data_diff_snapshots")
+STALE_RESULT_TABLES = ("contract_check_snapshots", "data_diff_snapshots", "run_schedule_events", "run_schedules")
 BACKEND_READY_TIMEOUT = 60
 COMMAND_TIMEOUT = 120
 DOWN_TIMEOUT = 30
@@ -149,6 +151,17 @@ def commit_demo_state(demo: dict) -> None:
             check=False,
             capture_output=True,
         )
+        # Production (the upstream branch) includes the seed edits too, so slim builds and
+        # Source Control see only a shot's own demo edits as changes.
+        upstream = subprocess.run(
+            ["git", "rev-parse", "--symbolic-full-name", "@{upstream}"],
+            cwd=project,
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        if upstream.startswith("refs/remotes/"):
+            subprocess.run(["git", "update-ref", upstream, "HEAD"], cwd=project, check=True)
 
 
 def set_demo_edits(demo: dict, group: str | None) -> None:
@@ -215,7 +228,7 @@ def seed_database(data_dir: Path, tier: str, demo: dict) -> None:
 
 
 def seed_data_dir(tier: str, demo: dict) -> Path:
-    data_dir = WORK / tier
+    data_dir = DATA_ROOT / tier
     shutil.rmtree(data_dir, ignore_errors=True)
     data_dir.mkdir(parents=True)
     seed_database(data_dir, tier, demo)
@@ -270,7 +283,7 @@ def wait_for_backend(process: subprocess.Popen) -> None:
     deadline = time.monotonic() + BACKEND_READY_TIMEOUT
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            fail(f"backend exited with {process.returncode}; see {WORK}/<tier>/backend.log")
+            fail(f"backend exited with {process.returncode}; see {DATA_ROOT}/<tier>/backend.log")
         try:
             with urllib.request.urlopen(f"{BACKEND_URL}/api/health", timeout=2):
                 return

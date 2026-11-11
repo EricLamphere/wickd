@@ -14,7 +14,7 @@ Arguments: `$ARGUMENTS`: shot names from `shots.json`, or empty for all of them.
 |-------|--------------|
 | Debug Tauri shell (`src-tauri/target/debug/wickd`) | The same Rust and WKWebView as the release app. `WICKD_SHELL_URL` and `WICKD_SHELL_SIZE` attach it to a backend; both are compiled out of release builds |
 | Backend on `:8002` | Runs the working tree, with live `../wickd-pro` on `PYTHONPATH` for Pro sessions |
-| `data/screenshots/<tier>/` | Fresh copy of the dev database. Base sessions drop `license_state`, so the app is really unlicensed |
+| `/Users/Shared/wickd-demo/.data/<tier>/` | The backend's data dir, outside the repo so paths in it (a slim build's `--state` folder) show no username. A fresh copy of the dev database. Base sessions drop `license_state`, so the app is really unlicensed |
 | `/Users/Shared/wickd-demo/` | Copies of the demo projects, and the backend's `HOME`. Keeps the username out of shots and the real project untouched |
 | `driver.js` | Injected only into a throwaway frontend build. It runs commands inside the webview, because nothing else can automate WKWebView on macOS |
 | `screencapture -l` | Captures just that window, with its shadow, even when it's covered |

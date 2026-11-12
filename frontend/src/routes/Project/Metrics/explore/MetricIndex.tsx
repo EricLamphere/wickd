@@ -63,7 +63,7 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
           <Sparkline values={pts.map((p) => p.v)} labels={pts.map((p) => formatTime(p.t, grain))} format={(v) => formatValue(v)} width={160} height={28} />
         ) : (
           <span className="text-[11px] text-gray-600">
-            {item?.status === 'error' ? 'Error' : item?.status === 'ok' ? 'Not enough data' : 'Not run'}
+            {item?.status === 'error' ? 'Error' : item?.status === 'ok' ? 'Not enough data' : item?.status === 'running' ? 'Running…' : 'Not run'}
           </span>
         )}
       </div>

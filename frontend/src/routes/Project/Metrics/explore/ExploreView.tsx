@@ -69,7 +69,8 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onOp
     `${currentLabel(shownPeriod.current)}${result?.current ? ` (${rangeLabel(result.current)})` : ''}`,
     result?.previous ? `vs ${compareLabel(shownPeriod.compare).toLowerCase()} (${rangeLabel(result.previous)})` : null,
   ].filter(Boolean).join(' ');
-  const busy = preview.isFetching || preview.refreshing;
+  // a run answers at once (`running`) and finishes in the background (metric_queries_finished)
+  const busy = preview.isFetching || preview.refreshing || result?.status === 'running';
   const title = widgetTitle(widget, labels);
   const runError = preview.refreshError ?? preview.error;
 
@@ -142,7 +143,7 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onOp
           </section>
         </div>
         <div id="explore-results">
-          <ExploreResults projectId={projectId} result={result} onOpenInWorkspace={openInWorkspace} tab={resultsTab} onTab={setResultsTab}
+          <ExploreResults projectId={projectId} result={result} loading={preview.isLoading} onOpenInWorkspace={openInWorkspace} tab={resultsTab} onTab={setResultsTab}
             onSetPeriod={(range) => onChange(withExplorePeriod(widget, { current: range }))}
             compare={entitled ? (
               <ComparePanel projectId={projectId} catalog={catalog} labels={labels} query={main?.body ?? null}

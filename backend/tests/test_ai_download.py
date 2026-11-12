@@ -45,7 +45,9 @@ async def _run(d: ModelDownloader, spec) -> list[dict]:
         await asyncio.wait_for(asyncio.shield(task), timeout=5)
         events = []
         while not queue.empty():
-            events.append(queue.get_nowait().data)
+            event = queue.get_nowait()
+            if event.type == "ai_model_download":  # the global stream also carries api_log lines
+                events.append(event.data)
         return events
     finally:
         await bus.unsubscribe(download_module.TOPIC, queue)

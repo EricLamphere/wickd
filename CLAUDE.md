@@ -190,6 +190,7 @@ finally:
 | `metric_monitor_started` | project | metric monitor check started; payload `run_id`, `count`, `trigger` |
 | `metric_monitor_progress` | project | check step; payload `run_id`, `step` (slices/querying/detecting), `total` |
 | `metric_monitor_finished` | project | check finished; payload `run_id`, `ok`, `counts` by status |
+| `metric_queries_finished` | project | a background metric query run (metric page / index Run, the query view) finished; payload `run_id`, `count`, `errors`, `elapsed_ms` |
 | `contract_check_started` | project | contract check (Pro) started; payload `snapshot_id`, `scope`, `types` |
 | `contract_check_progress` | project | payload `snapshot_id`, `phase` (compiling_head/compiling_base/types/checking) |
 | `contract_check_finished` | project | payload `snapshot_id`, `scope`, `ok`, `errors`, `warnings` |

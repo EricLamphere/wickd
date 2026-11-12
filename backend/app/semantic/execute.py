@@ -22,7 +22,6 @@ log = get_logger(__name__)
 
 DEFAULT_ROW_LIMIT = 500
 MAX_ROW_LIMIT = 5000
-QUERY_TIMEOUT_S = 120
 LOCK_WAIT_S = 60.0
 LOCK_POLL_S = 0.25
 _ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -68,10 +67,11 @@ def for_dbt_show(sql: str, adapter_type: str | None) -> str:
     return cleaned
 
 
-async def wait_for_lock(project_id: int) -> bool:
+async def wait_for_lock(project_id: int, seconds: float = LOCK_WAIT_S) -> bool:
+    """Wait up to `seconds` for the project's other dbt command to finish; False if it didn't."""
     waited = 0.0
     while runner.is_project_busy(project_id):
-        if waited >= LOCK_WAIT_S:
+        if waited >= seconds:
             return False
         await asyncio.sleep(LOCK_POLL_S)
         waited += LOCK_POLL_S
@@ -84,7 +84,14 @@ async def run_sql(
     limit = max(1, min(limit, MAX_ROW_LIMIT))
     if not await wait_for_lock(project_id):
         raise ExecutionError("busy", "dbt stayed busy with another command — try again in a moment.")
+    from app.semantic.batch import (  # batch imports this module
+        STARTUP_ALLOWANCE_S,
+        TIMEOUT_KEY,
+        query_timeout,
+    )
+
     env = await load_project_env(project_id)
+    timeout = query_timeout(env)
     target = env.get("DBT_TARGET")
     req = RunRequest(
         project_id=project_id,
@@ -95,12 +102,17 @@ async def run_sql(
         env=env,
     )
     try:
-        async with asyncio.timeout(QUERY_TIMEOUT_S):
+        async with asyncio.timeout(STARTUP_ALLOWANCE_S + timeout):
             code, stdout, stderr = await runner.run(req)
     except TimeoutError:
-        raise ExecutionError("timeout", f"The query took longer than {QUERY_TIMEOUT_S}s.") from None
+        log.warning("metric_query_timeout", project_id=project_id, timeout_s=int(timeout), sql=sql[:2000])
+        raise ExecutionError(
+            "timeout", f"The query took longer than {timeout:.0f}s (the project's {TIMEOUT_KEY} setting) and was stopped."
+        ) from None
     out = stdout.decode(errors="replace")
     columns, rows = parse_show_json(out)
     if code != 0 or not columns:
-        raise ExecutionError("dbt_show_failed", error_detail(out + "\n" + stderr.decode(errors="replace")))
+        detail = error_detail(out + "\n" + stderr.decode(errors="replace"))
+        log.warning("metric_query_failed", project_id=project_id, error=detail[:2000], sql=sql[:2000])
+        raise ExecutionError("dbt_show_failed", detail)
     return QueryResult(columns=columns, rows=rows[:limit], truncated=len(rows) > limit)

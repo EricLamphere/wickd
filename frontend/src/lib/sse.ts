@@ -18,6 +18,7 @@ const PROJECT_EVENT_TYPES = [
   'ai_proposal_updated', 'ai_proposal_progress', 'ai_query_updated',
   'semantic_check_started', 'semantic_check_finished',
   'metric_monitor_started', 'metric_monitor_progress', 'metric_monitor_finished',
+  'metric_queries_finished',
   'dashboards_changed',
   'contract_check_started', 'contract_check_progress', 'contract_check_finished',
   'data_diff_started', 'data_diff_progress', 'data_diff_finished',

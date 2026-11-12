@@ -1,8 +1,14 @@
 // Left column of the Metrics page: metrics grouped by semantic model, then saved queries.
 import { useMemo, useState } from 'react';
-import { Bookmark, LayoutGrid, Pencil, Search } from 'lucide-react';
+import { Bookmark, LayoutGrid, Pencil, Search, X } from 'lucide-react';
 import type { CatalogMetric, CatalogSavedQuery, SemanticCatalogDto } from '../../../lib/semanticApi';
 import { OPEN_IN_FILES_TITLE, isOpenInFilesClick } from '../lib/openInFiles';
+import { FilterDropdown } from '../components/FilterDropdown';
+import { EMPTY_SIDEBAR_FILTER, filterMetrics, filterSavedQueries, modelOptions, typeOptions, type SidebarFilter } from './lib/sidebarFilter';
+import { RailHandle, useRailWidth, type RailSpec } from './dashboards/builder/RailResize';
+
+/** Drag the sidebar's right edge to widen it (double-click resets); remembered across sessions. */
+const SIDEBAR_RAIL: RailSpec = { key: 'wickd:metrics-sidebar-width', side: 'left', initial: 256, min: 200, max: 560 };
 
 /** Type pill colors per metric type (also the metric index and pages). */
 export const TYPE_CLS: Record<string, string> = {
@@ -28,10 +34,6 @@ interface Props {
   indexActive: boolean;
 }
 
-function matches(text: string, needle: string): boolean {
-  return text.toLowerCase().includes(needle);
-}
-
 function groupByModel(metrics: CatalogMetric[]): [string, CatalogMetric[]][] {
   const groups = new Map<string, CatalogMetric[]>();
   for (const m of metrics) {
@@ -42,25 +44,37 @@ function groupByModel(metrics: CatalogMetric[]): [string, CatalogMetric[]][] {
 }
 
 export function MetricsSidebar({ catalog, selected, savedQuery, onSelectMetric, onRunSaved, onEditSaved, onOpenYaml, onShowIndex, indexActive }: Props) {
-  const [search, setSearch] = useState('');
-  const needle = search.trim().toLowerCase();
-  const metrics = useMemo(
-    () => catalog.metrics.filter((m) => !needle || matches(m.name, needle) || matches(m.label ?? '', needle)),
-    [catalog.metrics, needle],
-  );
-  const saved = catalog.saved_queries.filter((q) => !needle || matches(q.name, needle) || matches(q.label ?? '', needle));
+  const [filter, setFilter] = useState<SidebarFilter>(EMPTY_SIDEBAR_FILTER);
+  const update = (patch: Partial<SidebarFilter>) => setFilter((f) => ({ ...f, ...patch }));
+  const models = useMemo(() => modelOptions(catalog.metrics), [catalog.metrics]);
+  const types = useMemo(() => typeOptions(catalog.metrics), [catalog.metrics]);
+  const metrics = useMemo(() => filterMetrics(catalog.metrics, filter), [catalog.metrics, filter]);
+  const saved = useMemo(() => filterSavedQueries(catalog.saved_queries, catalog.metrics, filter), [catalog.saved_queries, catalog.metrics, filter]);
+  const faceted = filter.models.size > 0 || filter.types.size > 0;
+  const rail = useRailWidth(SIDEBAR_RAIL);
 
   return (
-    <aside className="flex flex-col w-64 shrink-0 border-r border-gray-800 bg-surface-panel min-h-0">
+    <aside style={{ width: rail.width }} className="relative flex flex-col shrink-0 border-r border-gray-800 bg-surface-panel min-h-0">
+      <RailHandle side="left" onPointerDown={rail.onPointerDown} onReset={rail.reset} />
       <button onClick={onShowIndex} className={`flex items-center gap-2 mx-2 mt-2 px-2 py-1.5 text-xs rounded text-left ${
         indexActive ? 'bg-brand-950/40 text-brand-200' : 'text-gray-300 hover:bg-gray-800/60'}`}>
         <LayoutGrid className="w-3.5 h-3.5" />All metrics
       </button>
-      <label className="flex items-center gap-2 m-2 px-2 py-1.5 bg-surface-app border border-gray-800 rounded focus-within:border-brand-600">
+      <label className="flex items-center gap-2 mx-2 mt-2 px-2 py-1.5 bg-surface-app border border-gray-800 rounded focus-within:border-brand-600">
         <Search className="w-3.5 h-3.5 text-gray-500" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search metrics"
+        <input value={filter.search} onChange={(e) => update({ search: e.target.value })} placeholder="Search metrics"
           className="flex-1 min-w-0 bg-transparent text-xs text-gray-200 placeholder:text-gray-600 outline-none" />
       </label>
+      <div className="flex flex-wrap items-center gap-1.5 mx-2 mt-1.5 mb-2">
+        <FilterDropdown label="Model" options={models} selected={filter.models} onChange={(next) => update({ models: next })} />
+        <FilterDropdown label="Type" options={types} selected={filter.types} onChange={(next) => update({ types: next })} />
+        {faceted && (
+          <button onClick={() => update({ models: new Set(), types: new Set() })} title="Clear model and type filters"
+            className="flex items-center gap-0.5 px-1 text-[11px] text-gray-500 hover:text-gray-300">
+            <X className="w-3 h-3" />Clear
+          </button>
+        )}
+      </div>
       <div className="flex-1 overflow-y-auto pb-4">
         {groupByModel(metrics).map(([model, items]) => (
           <section key={model} className="mb-2">

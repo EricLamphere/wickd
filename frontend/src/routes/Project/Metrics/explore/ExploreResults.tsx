@@ -25,8 +25,10 @@ const ROLE_LABELS: Record<string, string> = {
   trend: 'Trend', trend_previous: 'Trend, previous period',
 };
 
-export function ExploreResults({ projectId, result, onOpenInWorkspace, onSetPeriod, tab, onTab, compare }: {
+export function ExploreResults({ projectId, result, loading, onOpenInWorkspace, onSetPeriod, tab, onTab, compare }: {
   projectId: number; result: WidgetResultDto | undefined; onOpenInWorkspace: (sql: string) => void;
+  /** the query is still being planned (no result yet): the tabs say so instead of "pick a metric" */
+  loading: boolean;
   /** Debug's period fixes */
   onSetPeriod: (range: { start: string; end: string }) => void;
   tab: ResultTab; onTab: (tab: ResultTab) => void;
@@ -69,12 +71,12 @@ export function ExploreResults({ projectId, result, onOpenInWorkspace, onSetPeri
       </div>
       <div className="flex-1 min-h-0">
         {tab === 'compare' ? compare
-          : tab === 'debug' ? <DebugPanel projectId={projectId} body={mainQuery(result)?.body ?? null} onOpenInWorkspace={onOpenInWorkspace} onSetPeriod={onSetPeriod} />
-          : !q ? <p className="p-4 text-xs text-gray-500">Pick a metric to see its rows and SQL.</p>
+          : tab === 'debug' ? <DebugPanel projectId={projectId} body={mainQuery(result)?.body ?? null} loading={loading} onOpenInWorkspace={onOpenInWorkspace} onSetPeriod={onSetPeriod} />
+          : !q ? <p className="p-4 text-xs text-gray-500">{loading ? 'Loading…' : 'Pick a metric to see its rows and SQL.'}</p>
           : tab === 'table' ? (
             q.status === 'ok'
               ? <div className="h-full p-2"><DataTable className="h-full" columns={q.columns.map((c) => ({ key: c }))} rows={q.rows} /></div>
-              : <p className="p-4 text-xs text-gray-500">{q.status === 'error' ? q.error : 'Not run yet.'}</p>
+              : <p className="p-4 text-xs text-gray-500 whitespace-pre-wrap">{q.status === 'error' ? q.error : q.status === 'running' ? 'Running on the warehouse…' : 'Not run yet.'}</p>
           ) : q.sql ? (
             <Editor language="sql" value={q.sql} theme={theme === 'light' ? 'vs-light' : 'vs-dark'}
               options={{ readOnly: true, domReadOnly: true, fontSize: 12, minimap: { enabled: false }, scrollBeyondLastLine: false,

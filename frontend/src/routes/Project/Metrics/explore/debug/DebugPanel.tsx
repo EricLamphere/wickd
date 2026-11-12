@@ -20,8 +20,10 @@ import { debuggable, useMetricDebug } from './useMetricDebug';
 
 const BTN = 'flex items-center gap-1.5 px-2 py-1 text-[11px] rounded border border-gray-700 text-gray-300 hover:border-gray-500 disabled:opacity-40';
 
-export function DebugPanel({ projectId, body, onOpenInWorkspace, onSetPeriod }: {
+export function DebugPanel({ projectId, body, loading = false, onOpenInWorkspace, onSetPeriod }: {
   projectId: number; body: MetricQueryBody | null; onOpenInWorkspace: (sql: string) => void;
+  /** the query is still being planned: say so rather than "pick a metric" */
+  loading?: boolean;
   /** a problem's fix: the query's period set to this range (null where the period can't be changed) */
   onSetPeriod: ((range: { start: string; end: string }) => void) | null;
 }) {
@@ -42,6 +44,9 @@ export function DebugPanel({ projectId, body, onOpenInWorkspace, onSetPeriod }: 
 
   const savedQuery = !!body?.saved_query;
   if (!debuggable(body)) {
+    if (loading) {
+      return <p className="flex items-center gap-1.5 p-4 text-xs text-gray-500"><Loader2 className="w-3.5 h-3.5 animate-spin" />Loading the query…</p>;
+    }
     return <p className="p-4 text-xs text-gray-500">{savedQuery
       ? 'Debug works on metrics: pick the saved query’s metrics in Configure to debug them.'
       : 'Pick a metric to debug it.'}</p>;

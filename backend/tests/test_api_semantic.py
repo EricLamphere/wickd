@@ -16,8 +16,9 @@ from app.db import engine as db_engine
 from app.db.engine import get_session
 from app.db.models import Base, Project, ProjectEnvVar, SemanticCheckSnapshot
 from app.dbt.runner import runner
+from app.events.bus import bus
 from app.main import app
-from app.semantic import dbt_change, execute, service, status
+from app.semantic import dbt_change, execute, query_runs, service, status
 from app.semantic.runtime import WorkerRequestError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "semantic"
@@ -264,16 +265,15 @@ async def test_query_results_are_cached_per_sql_and_env(client, db, tmp_path, db
 async def test_query_batch_reads_stored_results_and_runs_the_rest_in_one_batch(
     client, db, tmp_path, dbt_env, worker_calls, monkeypatch
 ) -> None:
-    from app.semantic import query_batch
     from app.semantic.batch import BatchResult
 
     batches: list[list[str]] = []
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60):
         batches.append(sqls)
         return [BatchResult(["metric_time__day", "revenue"], [["2024-01-01", 5]], False) for _ in sqls]
 
-    monkeypatch.setattr(query_batch, "run_many", fake_run_many)
+    monkeypatch.setattr(query_runs, "run_many", fake_run_many)
     project = await _project(db, tmp_path)
     url = f"/api/projects/{project.id}/semantic/query/batch"
     queries = [{"metrics": ["revenue"]}, {"metrics": ["nope"]}]
@@ -282,10 +282,19 @@ async def test_query_batch_reads_stored_results_and_runs_the_rest_in_one_batch(
     assert [r["status"] for r in stored] == ["not_run", "error"] and not batches
     assert "nope" in stored[1]["error"]
 
-    ran = (await client.post(url, json={"queries": queries, "run": True})).json()["results"]
-    assert ran[0]["status"] == "ok" and ran[0]["result"]["rows"] == [["2024-01-01", 5]]
-    assert ran[0]["result"]["source"] == "warehouse" and ran[1]["status"] == "error"
+    events = await bus.subscribe(f"project:{project.id}")
+    try:
+        ran = (await client.post(url, json={"queries": queries, "run": True})).json()["results"]
+        assert [r["status"] for r in ran] == ["running", "error"]  # answers at once; runs in the background
+        await query_runs.wait_idle()
+        finished = await _next_event(events, query_runs.FINISHED_EVENT)
+    finally:
+        await bus.unsubscribe(f"project:{project.id}", events)
+    assert finished.data["count"] == 1 and finished.data["errors"] == 0
     assert len(batches) == 1 and len(batches[0]) == 1
+
+    done = (await client.post(url, json={"queries": queries})).json()["results"]
+    assert done[0]["status"] == "ok" and done[0]["result"]["rows"] == [["2024-01-01", 5]]
 
     again = (await client.post(url, json={"queries": queries[:1], "run": True})).json()["results"]
     assert again[0]["result"]["source"] == "cache" and len(batches) == 1  # stored: nothing re-run
@@ -631,3 +640,41 @@ async def test_failed_run_without_a_waiter_is_logged(monkeypatch) -> None:
     query_service._finished(key, task)
     assert key not in query_service._inflight
     assert logged and "warehouse down" in logged[0][1]["error"]
+
+
+async def test_query_batch_returns_the_sql_even_when_not_run_or_failed(
+    client, db, tmp_path, dbt_env, worker_calls, monkeypatch
+) -> None:
+    """The SQL dialog must show what was (or would be) run, so failures can be debugged."""
+    from app.semantic.batch import BatchResult
+
+    async def failing_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60):
+        return [BatchResult([], [], False, "the batch timed out") for _ in sqls]
+
+    monkeypatch.setattr(query_runs, "run_many", failing_run_many)
+    project = await _project(db, tmp_path)
+    url = f"/api/projects/{project.id}/semantic/query/batch"
+    queries = [{"metrics": ["revenue"]}]
+
+    stored = (await client.post(url, json={"queries": queries})).json()["results"][0]
+    assert stored["status"] == "not_run" and stored["sql"]
+
+    ran = (await client.post(url, json={"queries": queries, "run": True})).json()["results"][0]
+    assert ran["status"] == "running" and ran["sql"] == stored["sql"]
+    await query_runs.wait_idle()
+
+    # the failure is kept: reading again shows it (and doesn't run it again) …
+    failed = (await client.post(url, json={"queries": queries})).json()["results"][0]
+    assert failed["status"] == "error" and failed["error"] == "the batch timed out"
+    assert failed["sql"] == stored["sql"]
+    # … until Run asks for it
+    rerun = (await client.post(url, json={"queries": queries, "run": True})).json()["results"][0]
+    assert rerun["status"] == "running"
+    await query_runs.wait_idle()
+
+
+async def _next_event(queue, event_type: str):
+    while True:
+        event = await asyncio.wait_for(queue.get(), timeout=2.0)
+        if event.type == event_type:
+            return event

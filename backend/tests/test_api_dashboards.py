@@ -14,7 +14,7 @@ from app.db.engine import get_session
 from app.db.models import Base, Project, ProjectEnvVar
 from app.events.bus import bus
 from app.main import app
-from app.semantic import dashboard_refresh, service, status
+from app.semantic import dashboard_refresh, query_runs, service, status
 from app.semantic.batch import BatchResult
 
 FIXTURES = Path(__file__).parent / "fixtures" / "semantic"
@@ -83,12 +83,13 @@ def worker(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict]]:
 def batches(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     calls: list[list[str]] = []
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60):
         calls.append(sqls)
         return [BatchResult([], [], False, "Database Error: boom") if "order_count" in s
                 else BatchResult(["revenue"], [[42]], False) for s in sqls]
 
     monkeypatch.setattr(dashboard_refresh, "run_many", fake_run_many)
+    monkeypatch.setattr(query_runs, "run_many", fake_run_many)
     return calls
 
 
@@ -244,14 +245,37 @@ async def test_explore_preview_needs_no_dashboard(db, client, tmp_path, worker, 
     stored = (await client.post(url, json={"widget": widget, "run": False})).json()
     assert stored["widget"]["status"] == "not_run" and not batches
 
+    # answers at once with the planned queries (the Debug tab needs them) and runs in the background
+    started = (await client.post(url, json={"widget": widget})).json()["widget"]
+    assert started["status"] == "running" and started["queries"]["current"]["sql"]
+    assert started["queries"]["current"]["query"]["start"] == "2026-01-01"
+    await query_runs.wait_idle()
+    assert len(batches) == 1
+
     ran = (await client.post(url, json={"widget": widget})).json()["widget"]
     assert ran["status"] == "ok" and set(ran["queries"]) == {"current"}  # its own period: no comparison
-    assert ran["queries"]["current"]["query"]["start"] == "2026-01-01" and len(batches) == 1
-
-    await client.post(url, json={"widget": widget})
     assert len(batches) == 1  # stored: not run again
+
+    refreshed = (await client.post(url, json={"widget": widget, "refresh": True})).json()["widget"]
+    assert refreshed["status"] == "running"  # Refresh runs it anyway
+    await query_runs.wait_idle()
+    assert len(batches) == 2
+
+
+async def test_explore_preview_keeps_a_failure_until_refresh(db, client, tmp_path, worker, batches) -> None:
+    project = await _project(db, tmp_path)
+    url = f"/api/projects/{project.id}/semantic/widget/preview"
+    widget = {"id": "explore", "type": "timeseries", "metrics": ["order_count"],
+              "period": {"current": {"start": "2026-01-01", "end": "2026-01-31"}, "compare": "none"}}
+    await client.post(url, json={"widget": widget})
+    await query_runs.wait_idle()
+    failed = (await client.post(url, json={"widget": widget})).json()["widget"]
+    assert failed["status"] == "error" and failed["error"] == "Database Error: boom"
+    assert failed["queries"]["current"]["sql"]  # View SQL still has it
+    assert len(batches) == 1  # a refetch shows the failure; it doesn't run it again
     await client.post(url, json={"widget": widget, "refresh": True})
-    assert len(batches) == 2  # Refresh runs it anyway
+    await query_runs.wait_idle()
+    assert len(batches) == 2
 
     assert (await client.post(url, json={"widget": {"id": "Bad Id!"}})).status_code == 400
 

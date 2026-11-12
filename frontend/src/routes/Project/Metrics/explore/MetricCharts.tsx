@@ -59,7 +59,7 @@ function ChartState({ loading, running, error, result, children }: {
 }) {
   if (loading) return <Message>Loading…</Message>;
   if (error) return <Message tone="error">{errorText(error)}</Message>;
-  if ((!result || result.status === 'not_run') && running) {
+  if (result?.status === 'running' || ((!result || result.status === 'not_run') && running)) {
     return <Message><Loader2 className="inline w-3.5 h-3.5 mr-1.5 animate-spin" />Running on the warehouse…</Message>;
   }
   if (!result || result.status === 'not_run') return <Message>Not run for this period yet — Run to see it.</Message>;

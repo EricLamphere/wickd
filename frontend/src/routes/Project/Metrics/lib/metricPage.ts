@@ -102,7 +102,7 @@ export function pageResult(q: PageQueries, items: QueryBatchItemDto[], roles: Re
     if (!found) continue;
     const { body, item } = found;
     queries[widgetRole] = {
-      status: item?.status ?? 'not_run', query: body, sql: item?.result?.sql ?? null, columns: item?.result?.columns ?? [],
+      status: item?.status ?? 'not_run', query: body, sql: item?.result?.sql ?? item?.sql ?? null, columns: item?.result?.columns ?? [],
       rows: item?.result?.rows ?? [], truncated: item?.result?.truncated ?? false, ran_at: item?.result?.ran_at ?? null, error: item?.error ?? null,
     };
   }
@@ -110,7 +110,8 @@ export function pageResult(q: PageQueries, items: QueryBatchItemDto[], roles: Re
   const error = all.find((x) => x.status === 'error')?.error ?? null;
   const ran = all.map((x) => x.ran_at).filter((x): x is string => !!x).sort();
   return {
-    widget_id: 'metric-page', status: error ? 'error' : all.some((x) => x.status === 'not_run') ? 'not_run' : 'ok', error, notes: [],
+    widget_id: 'metric-page', status: error ? 'error' : all.some((x) => x.status === 'running') ? 'running'
+      : all.some((x) => x.status === 'not_run') ? 'not_run' : 'ok', error, notes: [],
     grain: q.grain, current: q.current, previous: q.previous, ran_at: ran[0] ?? null, queries,
   };
 }

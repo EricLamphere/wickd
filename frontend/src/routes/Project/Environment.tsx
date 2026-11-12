@@ -276,6 +276,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const monitorSchedule = envVars.find((v) => v.key === 'MONITOR_SCHEDULE')?.value ?? '';
   const diffBaseTarget = envVars.find((v) => v.key === 'DIFF_BASE_TARGET')?.value ?? '';
   const stateSource = envVars.find((v) => v.key === 'STATE_SOURCE')?.value ?? '';
+  const metricQueryTimeout = envVars.find((v) => v.key === 'METRIC_QUERY_TIMEOUT')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
@@ -391,6 +392,18 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['compare-options', projectId] });
   };
 
+  // Seconds each metric query may take before it's stopped (backend: semantic/batch.py query_timeout)
+  const handleSaveMetricQueryTimeout = async (val: string) => {
+    const raw = val.trim();
+    const seconds = Number(raw);
+    if (raw && !(Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600)) {
+      throw new Error('METRIC_QUERY_TIMEOUT must be a whole number of seconds between 1 and 3600, e.g. 300');
+    }
+    if (raw) await api.init.setEnvVar(projectId, 'METRIC_QUERY_TIMEOUT', String(seconds));
+    else await api.init.deleteEnvVar(projectId, 'METRIC_QUERY_TIMEOUT');
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+  };
+
   // Slim builds' production manifest: git:<ref> or path:<folder>; empty = git, the base branch
   const handleSaveStateSource = async (val: string) => {
     const source = val.trim();
@@ -474,6 +487,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               onResizeLabel={handleResizeLabel}
             />
             <ProjectSettingRow
+              label="METRIC_QUERY_TIMEOUT"
+              value={metricQueryTimeout}
+              placeholder="120 (seconds each metric query may run on the warehouse before it's stopped)"
+              kind="default"
+              onSave={handleSaveMetricQueryTimeout}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
               label="MONITOR_INTERVAL_HOURS"
               value={monitorInterval}
               placeholder="6 (metric monitors' auto-check while wickd is open; empty = off)"
@@ -518,7 +540,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'state_defer', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'METRIC_QUERY_TIMEOUT', 'state_defer', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

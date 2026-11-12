@@ -82,7 +82,10 @@ export function useDashboardResults(projectId: number, slug: string | null, enab
       qc.setQueryData<StampedResults>(key, (prev) => {
         if (!widgetIds || !prev) return data;
         const fresh = new Map(data.widgets.map((w) => [w.widget_id, w]));
-        return { ...data, widgets: prev.widgets.map((w) => fresh.get(w.widget_id) ?? w),
+        const known = new Set(prev.widgets.map((w) => w.widget_id));
+        // a widget added since the results were read (its own run) isn't in `prev` yet: keep it
+        const added = data.widgets.filter((w) => !known.has(w.widget_id));
+        return { ...data, widgets: [...prev.widgets.map((w) => fresh.get(w.widget_id) ?? w), ...added],
           signatures: { ...prev.signatures, ...data.signatures } };
       });
     },

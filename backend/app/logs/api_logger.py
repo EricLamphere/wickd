@@ -23,6 +23,27 @@ def configure_api_log(data_dir: Path) -> Path:
     return _api_log_path
 
 
+# Backend log keys not worth repeating in an API Logs line (the line has its own timestamp)
+_SKIP_KEYS = {"event", "level", "timestamp", "logger", "exc_info", "stack_info", "api_log"}
+_MAX_VALUE = 1000
+
+
+def _value(v: object) -> str:
+    text = " ".join(str(v).split())
+    if len(text) > _MAX_VALUE:
+        text = text[:_MAX_VALUE] + "…"
+    return f'"{text}"' if " " in text or not text else text
+
+
+def format_log_event(level: str, event_dict: dict) -> tuple[str, int | None]:
+    """A backend log event as one API Logs line (`WARNING event · key=value …`) and its project."""
+    raw = event_dict.get("project_id", event_dict.get("project"))
+    project_id = raw if isinstance(raw, int) and not isinstance(raw, bool) else None
+    fields = " ".join(f"{k}={_value(v)}" for k, v in event_dict.items() if k not in _SKIP_KEYS)
+    head = f"{level.upper()} {event_dict.get('event') or 'log'}"
+    return (f"{head} · {fields}" if fields else head), project_id
+
+
 def get_api_log_path() -> Path | None:
     return _api_log_path
 

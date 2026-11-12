@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project
 from app.logging_setup import get_logger
-from app.semantic import query_cache, service
+from app.semantic import query_cache, query_runs, service
 from app.semantic.batch import run_many
 from app.semantic.dashboard_plan import WidgetBroken, WidgetPlan, plan_widget
 from app.semantic.dashboards import Dashboard, Widget
@@ -32,7 +32,7 @@ log = get_logger(__name__)
 
 @dataclass(frozen=True)
 class QueryResult:
-    status: str  # ok | not_run | error
+    status: str  # ok | not_run | running | error
     query: dict[str, Any]
     sql: str | None = None
     columns: list[str] = field(default_factory=list)
@@ -51,7 +51,7 @@ class QueryResult:
 @dataclass(frozen=True)
 class WidgetResult:
     widget_id: str
-    status: str  # ok | not_run | error | empty (no metric yet)
+    status: str  # ok | not_run | running | error | empty (no metric yet)
     error: str | None = None
     notes: tuple[str, ...] = ()
     grain: str | None = None
@@ -86,7 +86,8 @@ def _message(exc: Exception) -> str:
 def _widget(plan: WidgetPlan, queries: dict[str, QueryResult]) -> WidgetResult:
     statuses = {q.status for q in queries.values()}
     error = next((q.error for q in queries.values() if q.status == "error"), None)
-    status = "empty" if plan.empty else "error" if error else "not_run" if "not_run" in statuses else "ok"
+    status = ("empty" if plan.empty else "error" if error else "running" if "running" in statuses
+              else "not_run" if "not_run" in statuses else "ok")
     return WidgetResult(
         plan.widget_id, status, error=error, notes=plan.notes, grain=plan.grain,
         current=plan.current.to_dict() if plan.current else None,
@@ -203,6 +204,35 @@ async def preview(
     ctx, ran = await refresh(session, project, board, adapter_type, missing, today=today)
     by_id = {r.widget_id: r for r in ran}
     return ctx, [by_id.get(r.widget_id, r) for r in results]
+
+
+async def preview_in_background(
+    session: AsyncSession, project: Project, dashboard: Dashboard, adapter_type: str | None,
+    widgets: list[Widget], *, refresh_all: bool = False, today: date | None = None,
+) -> tuple[QueryContext, list[WidgetResult]]:
+    """preview() for the metric explorer, without waiting on the warehouse: stored results, a
+    recent failure as `error`, and the rest started in one background run (query_runs.py) and
+    answered `running` — with their planned queries and SQL, so the Debug tab and View SQL work
+    meanwhile. `refresh_all` reruns every query, stored or failed."""
+    board = dashboard.model_copy(update={"widgets": widgets})
+    ctx = await query_context(session, project.id, Path(project.path))
+    plans, ready, by_query, broken = await _explain_all(project, board, adapter_type, ctx, None, today or date.today())
+    to_run: list[query_runs.PendingQuery] = []
+    for e in ready:
+        hit = None if refresh_all else await query_cache.lookup(session, e.key)
+        state = query_runs.status(e.key)
+        if hit is not None:
+            result = _cached(e, hit)
+        elif isinstance(state, query_runs.Failure) and not refresh_all:
+            result = QueryResult("error", e.query, sql=e.sql, error=state.error)
+        else:
+            if state != query_runs.RUNNING:
+                to_run.append(query_runs.PendingQuery(e.key, e.sql, e.metrics, tuple(e.query.get("group_by") or ())))
+            result = QueryResult("running", e.query, sql=e.sql)
+        by_query[(e.widget_id, e.role)] = result
+    if to_run:
+        query_runs.start(project.id, Path(project.path), to_run, ctx)
+    return ctx, _assemble(board, plans, by_query, broken)
 
 
 async def _store(

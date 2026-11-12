@@ -118,8 +118,10 @@ function relative(text: string, today: Date): DateRange | PeriodPreset | null {
     const unit = m[2];
     if (unit === 'day' && PRESET_DAYS[n]) return PRESET_DAYS[n];
     if (unit === 'month' && n === 12) return 'last_12_months';
-    if (unit in UNIT_DAYS) return span(addDays(t, -(n * UNIT_DAYS[unit] - 1)), t);
-    return span(addDays(addMonths(t, -(unit === 'year' ? 12 * n : n)), 1), t);
+    // like the presets, "last N …" ends yesterday (today is still filling in)
+    const end = addDays(t, -1);
+    if (unit in UNIT_DAYS) return span(addDays(end, -(n * UNIT_DAYS[unit] - 1)), end);
+    return span(addDays(addMonths(end, -(unit === 'year' ? 12 * n : n)), 1), end);
   }
   if (text === 'this week') return span(monday(t), t);
   if (text === 'last week') {

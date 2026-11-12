@@ -33,6 +33,9 @@ export function SqlDialog({ queries, onClose }: { queries: Record<string, Widget
                   </button>
                 )}
               </div>
+              {q.sql && q.error && (
+                <p className="px-2 py-1.5 text-[11px] text-red-300 whitespace-pre-wrap bg-red-950/30 rounded border border-red-900/60">{q.error}</p>
+              )}
               <pre className="p-2 text-[11px] font-mono text-gray-300 whitespace-pre-wrap bg-surface-app rounded border border-gray-800">
                 {q.sql ?? q.error ?? 'Not explained'}
               </pre>

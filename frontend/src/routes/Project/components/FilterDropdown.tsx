@@ -5,7 +5,7 @@ import { ChevronDown } from 'lucide-react';
 interface FilterDropdownProps {
   label: string;
   options: string[];
-  selected: Set<string>;
+  selected: ReadonlySet<string>;
   onChange: (next: Set<string>) => void;
   closeSignal?: number;
   /** One value at most (radio buttons; picking closes the menu, picking it again clears it). */

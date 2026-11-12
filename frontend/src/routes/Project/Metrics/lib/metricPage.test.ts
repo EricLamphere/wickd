@@ -54,7 +54,7 @@ describe('metricPage', () => {
   it('wraps the batch answers as a widget result', () => {
     const q = pageQueries('revenue', { current: 'last_30_days', compare: 'previous_period' }, null, new Date(2026, 9, 29));
     const chartResult = (_q: typeof q, items: QueryBatchItemDto[]) => pageResult(_q, items, WIDGET_ROLES.timeseries);
-    const ok = (ran_at: string) => ({ status: 'ok' as const, error: null, result: {
+    const ok = (ran_at: string) => ({ status: 'ok' as const, error: null, sql: 's', result: {
       sql: 's', sql_hash: 'h', columns: ['metric_time__day', 'revenue'], rows: [['2026-10-01', 1]], truncated: false,
       ran_at, elapsed_ms: 1, target: null, profile_name: null, source: 'cache' as const } });
     const r = chartResult(q, [ok('2026-10-29T10:00:00Z'), ok('2026-10-28T10:00:00Z')]);
@@ -63,8 +63,8 @@ describe('metricPage', () => {
     expect(Object.keys(r.queries)).toEqual(['current', 'current_previous']);
     expect(r.queries.current.rows).toEqual([['2026-10-01', 1]]);
     expect(r.ran_at).toBe('2026-10-28T10:00:00Z');
-    expect(chartResult(q, [ok('x'), { status: 'not_run', result: null, error: null }]).status).toBe('not_run');
-    expect(chartResult(q, [{ status: 'error', result: null, error: 'boom' }]).error).toBe('boom');
+    expect(chartResult(q, [ok('x'), { status: 'not_run', result: null, error: null, sql: null }]).status).toBe('not_run');
+    expect(chartResult(q, [{ status: 'error', result: null, error: 'boom', sql: null }]).error).toBe('boom');
   });
 
   it('traces where a metric comes from, through input metrics', () => {
@@ -170,6 +170,26 @@ describe('metric page queries', () => {
     const summary = pageResult(q, [ok('2026-11-01T00:00:00Z')], WIDGET_ROLES.summary);
     expect(summary.status).toBe('not_run');
     expect(summary.queries.trend.status).toBe('ok');
+  });
+
+  it('is running while a background run has any of its queries (an error still wins)', () => {
+    const q = pageQueries('revenue', { current: 'last_30_days', compare: 'none' }, null, today);
+    const item = (status: QueryBatchItemDto['status'], error: string | null = null) =>
+      ({ status, result: null, error, sql: 'select 1' }) as QueryBatchItemDto;
+    expect(pageResult(q, [item('running'), item('not_run')], WIDGET_ROLES.summary).status).toBe('running');
+    expect(pageResult(q, [item('running'), item('error', 'boom')], WIDGET_ROLES.summary).status).toBe('error');
+  });
+
+  it('keeps the SQL of queries that have not run or failed, so the SQL dialog can show it', () => {
+    const q = pageQueries('revenue', { current: 'last_30_days', compare: 'none' }, null, today);
+    const items = [
+      { status: 'not_run', result: null, error: null, sql: 'select trend' },
+      { status: 'error', result: null, error: 'the batch timed out', sql: 'select total' },
+    ] as QueryBatchItemDto[];
+    const summary = pageResult(q, items, WIDGET_ROLES.summary);
+    expect(summary.queries.trend.sql).toBe('select trend');
+    expect(summary.queries.total.sql).toBe('select total');
+    expect(summary.queries.total.error).toBe('the batch timed out');
   });
 });
 

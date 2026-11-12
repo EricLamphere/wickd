@@ -170,9 +170,12 @@ export interface MetricQueryResultDto {
 
 /** One query of a batch: its stored (or, when run, fresh) result, or why it couldn't answer. */
 export interface QueryBatchItemDto {
-  status: 'ok' | 'not_run' | 'error';
+  /** running: a background run has it (metric_queries_finished says when it's done) */
+  status: 'ok' | 'not_run' | 'running' | 'error';
   result: MetricQueryResultDto | null;
   error: string | null;
+  /** the explained SQL, also when not run or failed (null when it couldn't be explained) */
+  sql: string | null;
 }
 
 // ── Metric compare (plan 14, Pro) ──

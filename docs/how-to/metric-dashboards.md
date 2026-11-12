@@ -56,7 +56,7 @@ Select a widget (click it) and the right rail switches to **Configure**:
 
 The bar under the title applies to every widget:
 
-- **Current period**: last 7 / 30 / 90 days, last 12 months, month, quarter or year to date, last month, last quarter, all time, or pick dates on the calendar: click one end, then the other (in either order; the range previews as you hover) in the calendar. Presets are stored as presets, so "Last 30 days" stays current.
+- **Current period**: last 7 / 30 / 90 days, last 12 months, month, quarter or year to date, last month, last quarter, all time, or pick dates on the calendar: click one end, then the other (in either order; the range previews as you hover) in the calendar. Presets are stored as presets, so "Last 30 days" stays current. They end **yesterday**, since today is still filling in and would drag totals down: "Last 30 days" is the 30 days before today, and "Month to date" runs from the 1st through yesterday (on the 1st itself, just today). The same goes for "last N days / weeks / months" typed in the query composer; "today", "this week" and "since …" include today.
 - **vs**: the previous period (same length, right before), the same period last year, no comparison, or custom dates. Both buttons show the actual dates ("Sep 29 – Oct 28, 2026").
 - **Grain**: Auto follows the period's length (day up to a month, week up to six months, month up to three years, else quarter), or pick one.
 - **Filters**: the value box suggests the dimension's values (largest first). A filter applies to every widget whose metrics all have that dimension; elsewhere the widget skips it and says so under the chart.

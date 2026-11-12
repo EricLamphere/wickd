@@ -38,6 +38,7 @@ const DROP_ANIMATION: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.25' } } }),
 };
 import { METRICS_RAIL, useRailWidth, WIDGETS_RAIL } from './RailResize';
+import { anyRunning, endRun, isRunning, newRunId, NO_RUNS, startRun, type WidgetRuns } from './runningWidgets';
 
 interface Props {
   projectId: number;
@@ -70,7 +71,8 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<RailTab>('widgets');
   const [present, setPresent] = useState(false);
-  const [running, setRunning] = useState<Set<string> | null>(null);
+  // each Run / Refresh in flight on its own (one finishing mustn't clear another's spinner)
+  const [runs, setRuns] = useState<WidgetRuns>(NO_RUNS);
   const [notice, setNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   // Register as exposure: the proposal under review (nothing is written until it's accepted)
@@ -84,13 +86,14 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
   const monitorStatuses = useMemo(() => statusesByMetric(monitors), [monitors]);
 
   const run = useCallback(async (ids?: string[]) => {
-    setRunning(new Set(ids ?? []));
+    const runId = newRunId();
+    setRuns((prev) => startRun(prev, runId, ids));
     try {
       await refresh.mutateAsync(ids);
     } catch (err) {
       setNotice(errorText(err) ?? 'Refresh failed');
     } finally {
-      setRunning(null);
+      setRuns((prev) => endRun(prev, runId));
     }
   }, [refresh]);
 
@@ -238,7 +241,8 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
     };
     return {
       projectId, slug, doc, widget, result, labels, catalog, title: widgetTitle(widget, labels), selected: selected === widget.id, present,
-      loading: results.isLoading, refreshing: !!running && (running.size === 0 || running.has(widget.id)), monitors,
+      // a widget not in the results yet was just added: its save (then its run) is on the way
+      loading: results.isLoading || (!!results.data && !byId.has(widget.id)), refreshing: isRunning(runs, widget.id), monitors,
       // results computed for other settings: show "Updating…" rather than old data under the new settings
       updating: !!result && results.data?.signatures[widget.id] !== undefined && results.data.signatures[widget.id] !== querySignature(doc, widget),
       monitorStatus: status, filtered: !!ranQuery?.where?.length, dropHint: dnd.hintFor(widget),
@@ -279,7 +283,7 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
                 ? `Unlinked. The exposure is still in ${detail.data.exposure_path ?? 'your YAML'}; delete it there if you don't need it.`
                 : 'Unlinked the exposure from this dashboard.');
             }}
-            canUndo={editor.canUndo} canRedo={editor.canRedo} running={!!running} target={results.data?.target ?? target}
+            canUndo={editor.canUndo} canRedo={editor.canRedo} running={anyRunning(runs)} target={results.data?.target ?? target}
             hasMetrics={hasMetrics} hasWidgets={doc.widgets.length > 0} onBack={onBack} onRename={rename} onUndo={editor.undo}
             onRedo={editor.redo} onPresent={() => { setPresent((p) => !p); setSelected(null); }} onExposure={registerExposure}
             onExport={() => setExporting(true)} onDelete={remove} onRefresh={() => run()}

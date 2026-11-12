@@ -1,5 +1,6 @@
 """semantic/batch.py: parsing a batch's output and resuming after a failing statement."""
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -52,31 +53,37 @@ def test_build_batch_sql_limits_and_tags_each_statement() -> None:
 
 @pytest.fixture
 def fake_dbt(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
-    """Each statement `select <n>` returns [[n]]; `select fail` ends the compile there."""
+    """Each statement `select <n>` returns [[n]]; `select fail` ends the compile there;
+    `select hang` never answers (the batch's per-query timeout ends it). Output is streamed
+    line by line, like runner.run_lines()."""
     batches: list[list[str]] = []
 
     async def fake_env(project_id):
         return {"DBT_TARGET": "dev"}
 
-    async def fake_run(req):
+    async def fake_run_lines(req):
         inline = req.extra[1]
         sqls = json.loads(inline.split("set wickd_sqls = ", 1)[1].split(" -%}", 1)[0])
         start = int(inline.split("loop.index0 + ", 1)[1].split(")", 1)[0])
         batches.append(sqls)
-        lines = []
+        yield "12:00:00  Running with dbt=1.10.13"
         for i, sql in enumerate(sqls):
             body = sql.split("\n")[1]
             if body == "select fail":
-                lines.append("Encountered an error:\nDatabase Error: boom")
-                return 1, "\n".join(lines).encode(), b""
+                yield "Encountered an error:"
+                yield "Database Error: boom"
+                return
+            if body == "select hang":
+                await asyncio.sleep(3600)
             n = int(body.removeprefix("select "))
             rows = [[n]] * (3 if n == 3 else 1)
-            lines.append(f"{BATCH_MARKER}{start + i}:{json.dumps({'columns': ['n'], 'rows': rows})}")
-        return 0, "\n".join(lines).encode(), b""
+            yield f"{BATCH_MARKER}{start + i}:{json.dumps({'columns': ['n'], 'rows': rows})}"
 
     monkeypatch.setattr(batch, "load_project_env", fake_env)
-    monkeypatch.setattr(runner, "run", fake_run)
+    monkeypatch.setattr(runner, "run_lines", fake_run_lines)
     monkeypatch.setattr(runner, "is_project_busy", lambda project_id: False)
+    monkeypatch.setattr(batch, "STARTUP_ALLOWANCE_S", 0.0)
+    monkeypatch.setattr(batch, "query_timeout", lambda env: 0.2)
     return batches
 
 
@@ -95,7 +102,7 @@ async def test_run_many_marks_everything_when_dbt_stays_busy(fake_dbt, monkeypat
     assert all(r.error and "busy" in r.error for r in results) and fake_dbt == []
 
 
-async def _never_free(project_id: int) -> bool:
+async def _never_free(project_id: int, seconds: float = 0) -> bool:
     return False
 
 
@@ -106,13 +113,13 @@ async def test_another_target_parses_outside_the_project(fake_dbt, monkeypatch, 
 
     monkeypatch.setattr(settings, "data_dir", tmp_path)
     extras: list[tuple] = []
-    real = runner.run
+    real = runner.run_lines
 
-    async def recording(req):
+    def recording(req):
         extras.append(req.extra)
-        return await real(req)
+        return real(req)
 
-    monkeypatch.setattr(runner, "run", recording)
+    monkeypatch.setattr(runner, "run_lines", recording)
     await run_many(4, Path("/p"), ["select 1"], target="prod")
     await run_many(4, Path("/p"), ["select 1"], target="dev")  # the active target (DBT_TARGET)
     await run_many(4, Path("/p"), ["select 1"])
@@ -120,3 +127,28 @@ async def test_another_target_parses_outside_the_project(fake_dbt, monkeypatch, 
     assert "--target-path" in prod and prod[prod.index("--target-path") + 1] == str(tmp_path / "targets" / "4" / "prod")
     assert "--target-path" not in dev and "--target-path" not in active
 
+
+
+async def test_a_slow_query_times_out_alone_and_keeps_the_finished_ones(fake_dbt) -> None:
+    """The timeout is per query: results printed before it are kept, and the rest still run."""
+    results = await run_many(1, Path("/p"), ["select 1", "select 2", "select hang", "select 4"])
+    assert [r.rows for r in results] == [[[1]], [[2]], [], [[4]]]
+    assert results[2].error and "Query 3 of 4" in results[2].error and "METRIC_QUERY_TIMEOUT" in results[2].error
+    assert len(fake_dbt) == 2  # [1, 2, hang, 4] → [4]
+
+
+async def test_dbt_hanging_before_any_result_stops_the_batch(fake_dbt) -> None:
+    """Two batches in a row without a single result: dbt itself is stuck, so stop retrying."""
+    results = await run_many(1, Path("/p"), ["select hang", "select hang", "select hang", "select 4"])
+    assert all(r.error for r in results)
+    assert "timed out" in results[3].error.lower() or "took longer" in results[3].error
+    assert len(fake_dbt) == 2
+
+
+def test_query_timeout_reads_the_project_setting() -> None:
+    assert batch.query_timeout({}) == batch.DEFAULT_QUERY_TIMEOUT_S
+    assert batch.query_timeout({"METRIC_QUERY_TIMEOUT": "300"}) == 300
+    assert batch.query_timeout({"METRIC_QUERY_TIMEOUT": " 45 "}) == 45
+    for bad in ("", "abc", "-5", "0"):
+        assert batch.query_timeout({"METRIC_QUERY_TIMEOUT": bad}) == batch.DEFAULT_QUERY_TIMEOUT_S
+    assert batch.query_timeout({"METRIC_QUERY_TIMEOUT": "999999"}) == batch.MAX_QUERY_TIMEOUT_S

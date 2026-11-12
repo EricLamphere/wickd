@@ -1,16 +1,16 @@
 // The dashboard being edited: an undo history in memory, saved to the file a moment after
 // each change (there's no Edit/Done). If the file changes on disk (git pull, another editor)
 // while nothing is waiting to be saved, the editor follows it; a conflicting save is
-// reported instead of overwriting the newer file.
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ApiError } from '../../../../../lib/api';
+// reported instead of overwriting the newer file. Saves go one at a time (saveQueue.ts).
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DashboardDetailDto, DashboardDoc } from '../../../../../lib/dashboardsApi';
 import { historyOf, record, redo as redoHistory, undo as undoHistory, type History } from '../dashboardModel';
 import { errorText, useSaveDashboard } from '../useDashboards';
+import { createSaveQueue, type SaveState } from './saveQueue';
 
 const SAVE_DELAY_MS = 700;
 
-export type SaveState = { kind: 'saved' } | { kind: 'pending' } | { kind: 'saving' } | { kind: 'error'; message: string; conflict: boolean };
+export type { SaveState } from './saveQueue';
 
 const same = (a: DashboardDoc | null, b: DashboardDoc | null) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -38,26 +38,28 @@ export function useDashboardEditor(
   }, [detail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const present = history?.present ?? null;
+  const latest = useRef(present);
+  latest.current = present;
+  const saveRef = useRef(save.mutateAsync);
+  saveRef.current = save.mutateAsync;
+
+  const queue = useMemo(() => createSaveQueue<DashboardDoc>({
+    save: (doc, base) => saveRef.current({ doc, base }),
+    latest: () => latest.current,
+    saved: () => saved.current,
+    setSaved: (next) => { saved.current = next; },
+    same,
+    onSaved: (before, after) => onSavedRef.current(before, after),
+    onState: setState,
+    message: (err) => errorText(err) ?? 'Saving failed',
+  }), []);
 
   useEffect(() => {
     if (!present || !saved.current || same(present, saved.current.doc)) return;
-    setState((s) => (s.kind === 'error' && s.conflict ? s : { kind: 'pending' }));
-    const timer = setTimeout(async () => {
-      const before = saved.current;
-      if (!before) return;
-      setState({ kind: 'saving' });
-      try {
-        const result = await save.mutateAsync({ doc: present, base: before.modifiedAt });
-        saved.current = { doc: present, modifiedAt: result.modified_at };
-        setState({ kind: 'saved' });
-        onSavedRef.current(before.doc, present);
-      } catch (err) {
-        const conflict = err instanceof ApiError && err.status === 409;
-        setState({ kind: 'error', conflict, message: errorText(err) ?? 'Saving failed' });
-      }
-    }, SAVE_DELAY_MS);
+    setState((s) => (s.kind === 'error' && s.conflict ? s : queue.isSaving() ? s : { kind: 'pending' }));
+    const timer = setTimeout(() => { void queue.flush(); }, SAVE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [present]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [present, queue]);
 
   const apply = useCallback((change: (doc: DashboardDoc) => DashboardDoc) => {
     setHistory((h) => (h ? record(h, change(h.present)) : h));

@@ -70,6 +70,7 @@ export function WidgetBody(props: BodyProps) {
   }
   if (!result) return <Message>{loading ? 'Loading…' : 'No result'}</Message>;
   if (updating) return <Message><Loader2 className="w-4 h-4 animate-spin" />Updating…</Message>;
+  if (result.status === 'running') return <Message><Loader2 className="w-4 h-4 animate-spin" />Running on the warehouse…</Message>;
   if (result.status === 'error') {
     return <Message tone="error"><AlertTriangle className="w-4 h-4" /><span className="whitespace-pre-wrap line-clamp-6">{result.error}</span></Message>;
   }

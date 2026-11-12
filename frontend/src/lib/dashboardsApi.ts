@@ -88,7 +88,8 @@ export interface DashboardListDto {
   dashboards: DashboardSummaryDto[];
 }
 
-export type QueryStatus = 'ok' | 'not_run' | 'error';
+/** running: a background run has it (metric_queries_finished says when it's done) */
+export type QueryStatus = 'ok' | 'not_run' | 'running' | 'error';
 
 /** One of a widget's queries: `current`, `current_previous`, `total`, `total_previous`, `trend`, `trend_previous`. */
 export interface WidgetQueryDto {

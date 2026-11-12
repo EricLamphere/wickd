@@ -13,7 +13,8 @@ and booleans stay, anything else (dates, timestamps) becomes its string form.
 
 import asyncio
 import json
-from dataclasses import dataclass
+from contextlib import aclosing
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.api.init import load_project_env
@@ -25,8 +26,12 @@ from app.semantic.execute import LOCK_WAIT_S, MAX_ROW_LIMIT, error_detail, wait_
 log = get_logger(__name__)
 
 BATCH_MARKER = "WICKD_METRIC_BATCH:"
-BASE_TIMEOUT_S = 120
-SECONDS_PER_QUERY = 30
+# Each query gets METRIC_QUERY_TIMEOUT seconds (a project setting) from the previous one's result;
+# the first also gets dbt's startup (parsing the project) on top.
+TIMEOUT_KEY = "METRIC_QUERY_TIMEOUT"
+DEFAULT_QUERY_TIMEOUT_S = 120
+MAX_QUERY_TIMEOUT_S = 3600
+STARTUP_ALLOWANCE_S = 120.0
 _JINJA_TOKENS = ("{{", "}}", "{%", "%}", "{#", "#}")
 
 _ROW_JINJA = (
@@ -89,8 +94,69 @@ def parse_batch_output(text: str) -> dict[int, tuple[list[str], list[list]]]:
     return found
 
 
+def query_timeout(env: dict[str, str]) -> float:
+    """The project's METRIC_QUERY_TIMEOUT in seconds (default 120, capped at an hour)."""
+    raw = (env.get(TIMEOUT_KEY) or "").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_QUERY_TIMEOUT_S
+    return min(value, MAX_QUERY_TIMEOUT_S) if value > 0 else DEFAULT_QUERY_TIMEOUT_S
+
+
 def _with_jinja(sqls: list[str]) -> set[int]:
     return {i for i, s in enumerate(sqls) if any(t in s for t in _JINJA_TOKENS)}
+
+
+@dataclass
+class _BatchRun:
+    """One dbt show over sqls[start:end]: the results it printed, and how it ended."""
+    found: dict[int, tuple[list[str], list[list]]] = field(default_factory=dict)
+    detail: str = ""
+    fatal: bool = False  # nothing ran (dbt busy): retrying the rest would only wait again
+    timed_out: bool = False
+
+
+async def _run_batch(
+    project_id: int, project_path: Path, sqls: list[str], start: int, limit: int,
+    env: dict[str, str], target: str | None, target_path: Path | None, timeout: float, lock_wait: float,
+) -> _BatchRun:
+    if not await wait_for_lock(project_id, lock_wait):
+        return _BatchRun(detail=f"dbt stayed busy with another command for {lock_wait:.0f}s", fatal=True)
+    req = RunRequest(
+        project_id=project_id,
+        project_path=project_path,
+        command="show",
+        extra=("--inline", build_batch_sql(sqls, start, limit), "--limit", "1", "--output", "json")
+        + (("--target", target) if target else ()),
+        env=env,
+    )
+    if target_path:
+        req.extra += ("--target-path", str(target_path))
+    run = _BatchRun()
+    logs: list[str] = []
+    loop = asyncio.get_running_loop()
+    try:
+        async with aclosing(runner.run_lines(req)) as lines, asyncio.timeout(STARTUP_ALLOWANCE_S + timeout) as deadline:
+            async for line in lines:
+                found = parse_batch_output(line)
+                if found:
+                    run.found.update(found)
+                    deadline.reschedule(loop.time() + timeout)  # the next query's clock starts now
+                else:
+                    logs.append(line)
+    except TimeoutError:
+        run.timed_out = True
+    run.detail = error_detail("\n".join(logs))
+    if len(run.found) < len(sqls):
+        log.info("metric_batch_partial", project_id=project_id, start=start, count=len(sqls), done=len(run.found),
+                 timed_out=run.timed_out)
+    return run
+
+
+def _timeout_message(index: int, total: int, timeout: float) -> str:
+    return (f"Query {index + 1} of {total} took longer than {timeout:.0f}s "
+            f"(the project's {TIMEOUT_KEY} setting) and was stopped.")
 
 
 def other_target_path(project_id: int, target: str) -> Path:
@@ -99,68 +165,60 @@ def other_target_path(project_id: int, target: str) -> Path:
 
 
 async def run_many(
-    project_id: int, project_path: Path, sqls: list[str], *, limit: int = MAX_ROW_LIMIT, target: str | None = None
+    project_id: int, project_path: Path, sqls: list[str], *, limit: int = MAX_ROW_LIMIT, target: str | None = None,
+    lock_wait: float = LOCK_WAIT_S,
 ) -> list[BatchResult]:
-    """One BatchResult per SQL, in order; a failing statement gets `error`, the others still run.
+    """One BatchResult per SQL, in order; a failing or timed-out statement gets `error`, the
+    others still run.
 
     `target` overrides the project's active dbt target (a monitor pinned to one, compare mode's
     base target). `dbt show` re-parses and writes target/manifest.json + semantic_manifest.json
     for the target it runs on, so another target writes them under the data dir instead — the
-    project's artifacts (which explains read) keep pointing at the active target's relations."""
+    project's artifacts (which explains read) keep pointing at the active target's relations.
+    `lock_wait`: how long to wait for another dbt command on the project to finish."""
     limit = max(1, min(limit, MAX_ROW_LIMIT))
     results: dict[int, BatchResult] = {
         i: BatchResult([], [], False, "Jinja isn't allowed in a batched query") for i in _with_jinja(sqls)
     }
     env = await load_project_env(project_id)
+    timeout = query_timeout(env)
     active = env.get("DBT_TARGET")
     target_path = other_target_path(project_id, target) if target and target != active else None
     target = target or active
     start = 0
+    stalled = 0  # batches in a row that timed out before printing anything
     while start < len(sqls):
         if start in results:
             start += 1
             continue
         end = next((i for i in range(start, len(sqls)) if i in results), len(sqls))
-        found, detail, fatal = await _run_batch(project_id, project_path, sqls[start:end], start, limit, env, target, target_path)
-        if fatal:  # busy or timed out: retrying the rest would only wait again
-            results.update({i: BatchResult([], [], False, detail) for i in range(start, end)})
+        run = await _run_batch(project_id, project_path, sqls[start:end], start, limit, env, target, target_path,
+                               timeout, lock_wait)
+        if run.fatal:
+            results.update({i: BatchResult([], [], False, run.detail) for i in range(start, end)})
             start = end
             continue
-        for i, (columns, rows) in found.items():
+        for i, (columns, rows) in run.found.items():
             if start <= i < end:
                 results[i] = BatchResult(columns, rows[:limit], len(rows) > limit)
         failed = next((i for i in range(start, end) if i not in results), None)
         if failed is None:
             start = end
             continue
-        results[failed] = BatchResult([], [], False, detail)
+        if run.timed_out:
+            stalled = 0 if run.found else stalled + 1
+            log.warning("metric_query_timeout", project_id=project_id, query=failed + 1, of=len(sqls),
+                        timeout_s=int(timeout), sql=sqls[failed][:2000])
+            results[failed] = BatchResult([], [], False, _timeout_message(failed, len(sqls), timeout))
+            if stalled >= 2:  # dbt itself seems stuck (startup or connection): don't retry the rest
+                stuck = f"Not run: dbt timed out twice in a row without returning any result ({timeout:.0f}s per query)."
+                results.update({i: BatchResult([], [], False, stuck) for i in range(failed + 1, end)})
+                start = end
+                continue
+        else:
+            stalled = 0
+            log.warning("metric_query_failed", project_id=project_id, query=failed + 1, of=len(sqls),
+                        error=run.detail[:2000], sql=sqls[failed][:2000])
+            results[failed] = BatchResult([], [], False, run.detail)
         start = failed + 1
     return [results[i] for i in range(len(sqls))]
-
-
-async def _run_batch(
-    project_id: int, project_path: Path, sqls: list[str], start: int, limit: int,
-    env: dict[str, str], target: str | None, target_path: Path | None = None,
-) -> tuple[dict[int, tuple[list[str], list[list]]], str, bool]:
-    """(results by index, dbt's error message, whether the whole batch failed before running)."""
-    if not await wait_for_lock(project_id):
-        return {}, f"dbt stayed busy with another command for {LOCK_WAIT_S:.0f}s", True
-    req = RunRequest(
-        project_id=project_id,
-        project_path=project_path,
-        command="show",
-        extra=("--inline", build_batch_sql(sqls, start, limit), "--limit", "1", "--output", "json")
-        + (("--target", target) if target else ())
-        + (("--target-path", str(target_path)) if target_path else ()),
-        env=env,
-    )
-    try:
-        async with asyncio.timeout(BASE_TIMEOUT_S + SECONDS_PER_QUERY * len(sqls)):
-            _code, stdout, stderr = await runner.run(req)
-    except TimeoutError:
-        return {}, "the batch timed out", True
-    out, err = stdout.decode(errors="replace"), stderr.decode(errors="replace")
-    found = {**parse_batch_output(err), **parse_batch_output(out)}
-    if len(found) < len(sqls):
-        log.info("metric_batch_partial", project=project_id, start=start, count=len(sqls), done=len(found))
-    return found, error_detail(out + "\n" + err), False

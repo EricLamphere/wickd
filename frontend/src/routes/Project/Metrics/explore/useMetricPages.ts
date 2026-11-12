@@ -1,8 +1,9 @@
 // Data for the metric index and metric pages (plan 13). Both read stored results through
 // POST /semantic/query/batch; a metric page then runs whatever's missing by itself (the index
-// never runs on open: Run all). Run sends the same queries with `run`.
+// never runs on open: Run all). Run sends the same queries with `run`: they answer `running` at
+// once and run in the background (backend semantic/query_runs.py) until metric_queries_finished.
 // Keys: ['metric-chart', id, …] (a page's charts) and ['metric-index', id, …] (sparklines), both
-// invalidated on graph_changed (new definitions → new SQL). The chart period is remembered per
+// invalidated on graph_changed (new definitions → new SQL) and metric_queries_finished. The chart period is remembered per
 // project in localStorage.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -43,7 +44,8 @@ export function useMetricPeriod(projectId: number): [MetricPeriod, (next: Metric
 function useInvalidateOnDefinitions(projectId: number) {
   const qc = useQueryClient();
   useProjectEvents(projectId, useCallback((event) => {
-    if (event.type === 'graph_changed') {
+    // new definitions → new SQL; a background run finished → its results (or failures) are in
+    if (event.type === 'graph_changed' || event.type === 'metric_queries_finished') {
       qc.invalidateQueries({ queryKey: ['metric-chart', projectId] });
       qc.invalidateQueries({ queryKey: ['metric-index', projectId] });
     }
@@ -92,7 +94,9 @@ function useBatch(projectId: number, key: string, queries: MetricQueryBody[], en
     run();
   }, [autoRun, missing, keyText, runner.isPending, run]);
 
-  return { stored, run, running: runner.isPending, runError: runner.error };
+  // Run answers at once; the queries run in the background until metric_queries_finished
+  const inBackground = !!stored.data?.some((item) => item.status === 'running');
+  return { stored, run, running: runner.isPending || inBackground, runError: runner.error };
 }
 
 /** A metric page's charts (over time, the total, the top values of `dimension`), each with its comparison. */

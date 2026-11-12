@@ -49,6 +49,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
 | `MONITOR_SCHEDULE` | `ProjectEnvVar` (saved through PUT …/metric-monitors/settings, which validates it) | (empty = off) | `0 9 * * 1-5` |
 | `DIFF_BASE_TARGET` | `ProjectEnvVar` (metric compare's "before" side; data diff's prod side, required there; the target a `git:` STATE_SOURCE is parsed for) | (empty = the active target) | `prod` |
+| `METRIC_QUERY_TIMEOUT` | `ProjectEnvVar` (seconds each metric query may run before it's stopped; 1–3600; read by `semantic/batch.py` `query_timeout()`) | `120` | `300` |
 | `STATE_SOURCE` | `ProjectEnvVar` (slim builds' production manifest: `git:<ref>` or `path:<folder>`; Test link resolves it) | (empty = git, the repo's base branch) | `git:main` |
 | `state_defer` | `ProjectEnvVar`, internal (sticky "Defer to prod": `defer` / `favor`; set from the side pane toggle / Header chip, not shown as a setting row) | (empty = off) | `defer` |
 

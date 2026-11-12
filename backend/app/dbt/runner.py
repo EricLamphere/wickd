@@ -1,5 +1,7 @@
 import asyncio
+import os
 import shlex
+import signal
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -12,6 +14,12 @@ from app.logging_setup import get_logger
 from app.logs.project_logger import append_project_log
 
 log = get_logger(__name__)
+
+# run_lines(): one output line may hold a whole result set (a metric batch prints each query's
+# rows as one JSON line), far past asyncio's 64 KiB default
+RUN_LINES_LIMIT = 256 * 1024 * 1024
+STOP_ATTEMPTS = 5
+STOP_WAIT_S = 1.0
 
 
 @dataclass
@@ -56,6 +64,28 @@ class CurrentRun:
     started_at: str
     invocation_id: int | None = None
     command_line: str = ""  # command_line(req): the command as typed, for copying
+
+
+async def _stop(proc: asyncio.subprocess.Process) -> None:
+    """Kill dbt's process group and wait for it; a child forked mid-kill gets a second kill."""
+    for _ in range(STOP_ATTEMPTS):
+        _kill_group(proc)
+        try:
+            await asyncio.wait_for(proc.wait(), STOP_WAIT_S)
+            return
+        except TimeoutError:
+            continue
+    log.warning("dbt_stop_slow", pid=proc.pid)
+
+
+def _kill_group(proc: asyncio.subprocess.Process) -> None:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
 
 
 class DbtRunner:
@@ -155,6 +185,36 @@ class DbtRunner:
             status = "OK" if rc == 0 else f"FAILED (rc={rc})"
             append_project_log(str(req.project_path), f"<<< dbt {req.command} {status}", pid)
             return rc, stdout_bytes, stderr_bytes
+
+    async def run_lines(self, req: RunRequest) -> AsyncIterator[str]:
+        """Like run(), but yields each output line (stdout and stderr merged) as dbt prints it,
+        so a caller can use results that arrive before a timeout. No bus events.
+
+        Closing the generator early (a caller's timeout, break) kills dbt before the lock is released."""
+        lock = self._lock_for(req.project_id)
+        async with lock:
+            pid = req.project_id
+            append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
+            proc = await asyncio.create_subprocess_exec(
+                *self.build_args(req),
+                cwd=str(req.project_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=req.env,
+                limit=RUN_LINES_LIMIT,
+                start_new_session=True,  # its own process group, so stopping it stops its children too
+            )
+            assert proc.stdout is not None
+            try:
+                while raw := await proc.stdout.readline():
+                    yield raw.decode(errors="replace").rstrip("\n")
+                rc = await proc.wait()
+            finally:
+                if proc.returncode is None:  # stopped early: don't leave dbt (or its children) running
+                    await _stop(proc)
+                    append_project_log(str(req.project_path), f"<<< dbt {req.command} CANCELLED", pid)
+            status = "OK" if rc == 0 else f"FAILED (rc={rc})"
+            append_project_log(str(req.project_path), f"<<< dbt {req.command} {status}", pid)
 
     async def stream(self, req: RunRequest) -> AsyncIterator[tuple[str, str]]:
         lock = self._lock_for(req.project_id)

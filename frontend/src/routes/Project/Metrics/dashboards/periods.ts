@@ -79,18 +79,22 @@ function yearAgo(d: Date): Date {
 
 const quarterStart = (d: Date) => utc(d.getUTCFullYear(), 3 * Math.floor(d.getUTCMonth() / 3), 1);
 
-/** Explicit dates for the current period (null = all time), relative to `today` (local date). */
+/** Explicit dates for the current period (null = all time), relative to `today` (local date).
+ *  Presets end yesterday: today is still filling in and would drag totals down (a to-date preset
+ *  on its period's first day is today alone). */
 export function resolveCurrent(current: CurrentPeriod, today: Date = new Date()): DateRange | null {
   if (isRange(current)) return current;
   const t = utc(today.getFullYear(), today.getMonth(), today.getDate());
-  const range = (start: Date, end: Date = t) => ({ start: iso(start), end: iso(end) });
+  const yesterday = addDays(t, -1);
+  const range = (start: Date, end: Date = yesterday) => ({ start: iso(start), end: iso(end) });
+  const toDate = (start: Date) => range(start, start > yesterday ? start : yesterday);
   const days: Record<string, number> = { last_7_days: 7, last_30_days: 30, last_90_days: 90 };
-  if (current in days) return range(addDays(t, -(days[current] - 1)));
+  if (current in days) return range(addDays(yesterday, -(days[current] - 1)));
   switch (current) {
-    case 'last_12_months': return range(addDays(yearAgo(t), 1));
-    case 'month_to_date': return range(utc(t.getUTCFullYear(), t.getUTCMonth(), 1));
-    case 'quarter_to_date': return range(quarterStart(t));
-    case 'year_to_date': return range(utc(t.getUTCFullYear(), 0, 1));
+    case 'last_12_months': return range(addDays(yearAgo(yesterday), 1));
+    case 'month_to_date': return toDate(utc(t.getUTCFullYear(), t.getUTCMonth(), 1));
+    case 'quarter_to_date': return toDate(quarterStart(t));
+    case 'year_to_date': return toDate(utc(t.getUTCFullYear(), 0, 1));
     case 'last_month': {
       const end = addDays(utc(t.getUTCFullYear(), t.getUTCMonth(), 1), -1);
       return range(utc(end.getUTCFullYear(), end.getUTCMonth(), 1), end);

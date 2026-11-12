@@ -93,6 +93,7 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `semantic_check_finished` | project | `semantic/check.py` — includes `snapshot_id`, `ok`, `errors`, `warnings` |
 | `metric_monitor_started` | project | `semantic/monitors.py` — a monitor check started; includes `run_id`, `count`, `trigger` (build/manual/interval) |
 | `metric_monitor_progress` | project | `semantic/monitors.py` — includes `run_id`, `step` (slices/querying/detecting), `total` |
+| `metric_queries_finished` | project | `semantic/query_runs.py` — a background run of metric queries finished (POST …/semantic/query/batch with `run`, POST …/semantic/widget/preview); includes `run_id`, `count`, `errors`, `elapsed_ms`. Results are stored in the query cache; failures are kept in memory for 10 minutes |
 | `metric_monitor_finished` | project | `semantic/monitors.py` — includes `run_id`, `ok`, `counts` by monitor status |
 | `contract_check_started` | project | `api/contracts.py` — a contract check (Pro, plan 05) started; includes `snapshot_id`, `scope`, `types` |
 | `contract_check_progress` | project | `api/contracts.py` — includes `snapshot_id`, `phase` (compiling_head/compiling_base/types/checking) |

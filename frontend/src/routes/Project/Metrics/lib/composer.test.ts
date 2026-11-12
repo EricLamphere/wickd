@@ -119,9 +119,10 @@ describe('date phrases', () => {
   it('turns the rest into dates', () => {
     expect(d('today')).toEqual({ start: '2026-11-04', end: '2026-11-04' });
     expect(d('yesterday')).toEqual({ start: '2026-11-03', end: '2026-11-03' });
-    expect(d('last 14 days')).toEqual({ start: '2026-10-22', end: '2026-11-04' });
-    expect(d('last 2 weeks')).toEqual({ start: '2026-10-22', end: '2026-11-04' });
-    expect(d('last 3 months')).toEqual({ start: '2026-08-05', end: '2026-11-04' });
+    // "last N …" ends yesterday, like the presets; "today", "this week", "since …" include today
+    expect(d('last 14 days')).toEqual({ start: '2026-10-21', end: '2026-11-03' });
+    expect(d('last 2 weeks')).toEqual({ start: '2026-10-21', end: '2026-11-03' });
+    expect(d('last 3 months')).toEqual({ start: '2026-08-04', end: '2026-11-03' });
     expect(d('this week')).toEqual({ start: '2026-11-02', end: '2026-11-04' });
     expect(d('last week')).toEqual({ start: '2026-10-26', end: '2026-11-01' });
     expect(d('last year')).toEqual({ start: '2025-01-01', end: '2025-12-31' });
@@ -145,7 +146,7 @@ describe('date phrases', () => {
     expect(parseComparePhrase('last year')).toBe('previous_year');
     expect(parseComparePhrase('nothing')).toBe('none');
     expect(parseComparePhrase('2025', TODAY)).toEqual({ start: '2025-01-01', end: '2025-12-31' });
-    expect(parseComparePhrase('last 7 days', TODAY)).toEqual({ start: '2026-10-29', end: '2026-11-04' });
+    expect(parseComparePhrase('last 7 days', TODAY)).toEqual({ start: '2026-10-28', end: '2026-11-03' });
     expect(parseComparePhrase('whenever')).toBeNull();
   });
   it('writes periods back as text that parses', () => {

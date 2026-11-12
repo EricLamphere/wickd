@@ -154,18 +154,26 @@ def test_slugify() -> None:
 # ── periods ──────────────────────────────────────────────────────────────────
 
 
+# Relative presets end yesterday: today is still filling in, so it would drag every total down
 @pytest.mark.parametrize(("preset", "start", "end"), [
-    ("last_7_days", "2026-10-22", "2026-10-28"),
-    ("last_30_days", "2026-09-29", "2026-10-28"),
-    ("last_12_months", "2025-10-29", "2026-10-28"),
-    ("month_to_date", "2026-10-01", "2026-10-28"),
-    ("quarter_to_date", "2026-10-01", "2026-10-28"),
-    ("year_to_date", "2026-01-01", "2026-10-28"),
+    ("last_7_days", "2026-10-21", "2026-10-27"),
+    ("last_30_days", "2026-09-28", "2026-10-27"),
+    ("last_12_months", "2025-10-28", "2026-10-27"),
+    ("month_to_date", "2026-10-01", "2026-10-27"),
+    ("quarter_to_date", "2026-10-01", "2026-10-27"),
+    ("year_to_date", "2026-01-01", "2026-10-27"),
     ("last_month", "2026-09-01", "2026-09-30"),
     ("last_quarter", "2026-07-01", "2026-09-30"),
 ])
 def test_current_presets(preset: str, start: str, end: str) -> None:
     assert resolve_current(preset, TODAY).to_dict() == {"start": start, "end": end}
+
+
+@pytest.mark.parametrize("preset", ["month_to_date", "quarter_to_date", "year_to_date"])
+def test_to_date_on_the_first_day_is_just_today(preset: str) -> None:
+    """No full day has passed yet: rather than an empty range, today alone."""
+    first = date(2027, 1, 1)
+    assert resolve_current(preset, first).to_dict() == {"start": "2027-01-01", "end": "2027-01-01"}
 
 
 def test_all_time_has_no_dates_or_comparison() -> None:
@@ -203,10 +211,10 @@ def test_summary_total_and_trend_with_comparison() -> None:
     plan = _plan({"type": "summary", "metrics": ["revenue"]}, filters=[REGION])
     q = _roles(plan)
     assert list(q) == ["total", "total_previous", "trend", "trend_previous"]
-    assert q["total"] == {"metrics": ["revenue"], "where": [REGION], "start": "2026-09-29", "end": "2026-10-28"}
-    assert q["total_previous"]["start"] == "2026-08-30" and q["total_previous"]["end"] == "2026-09-28"
+    assert q["total"] == {"metrics": ["revenue"], "where": [REGION], "start": "2026-09-28", "end": "2026-10-27"}
+    assert q["total_previous"]["start"] == "2026-08-29" and q["total_previous"]["end"] == "2026-09-27"
     assert q["trend"]["group_by"] == ["metric_time__day"]
-    assert plan.grain == "day" and plan.current.to_dict()["start"] == "2026-09-29"
+    assert plan.grain == "day" and plan.current.to_dict()["start"] == "2026-09-28"
 
 
 def test_summary_without_trend_or_comparison() -> None:
@@ -228,8 +236,8 @@ def test_summary_parts_drop_their_previous_queries() -> None:
 def test_widget_period_override_per_key() -> None:
     plan = _plan({"type": "timeseries", "metrics": ["revenue"], "period": {"current": "last_7_days"}},
                  period={"current": "last_90_days", "compare": "previous_year"})
-    assert plan.current.to_dict() == {"start": "2026-10-22", "end": "2026-10-28"}
-    assert plan.previous.to_dict() == {"start": "2025-10-22", "end": "2025-10-28"}
+    assert plan.current.to_dict() == {"start": "2026-10-21", "end": "2026-10-27"}
+    assert plan.previous.to_dict() == {"start": "2025-10-21", "end": "2025-10-27"}
     assert plan.grain == "day"  # auto follows the widget's current period
 
 

@@ -290,8 +290,12 @@ async def preview_explore_widget(
         raise _http_error(400, "invalid_widget", store.validation_message(exc)) from exc
     status = await _require_available(session, project, query=True)
     try:
-        ctx, results = await dashboard_refresh.preview(
-            session, project, EXPLORE_DASHBOARD, status.adapter_type, [widget], run=dto.run, refresh_all=dto.refresh)
+        if dto.run or dto.refresh:  # the warehouse part runs in the background (metric_queries_finished)
+            ctx, results = await dashboard_refresh.preview_in_background(
+                session, project, EXPLORE_DASHBOARD, status.adapter_type, [widget], refresh_all=dto.refresh)
+        else:
+            ctx, results = await dashboard_refresh.preview(
+                session, project, EXPLORE_DASHBOARD, status.adapter_type, [widget], run=False)
     except (service.SemanticError, RuntimeUnavailable, QueryInvalid, ExecutionError) as exc:
         raise _semantic_http(exc) from exc
     return {"target": ctx.target or None, "profile_name": ctx.profile_name, "widget": results[0].to_dict()}

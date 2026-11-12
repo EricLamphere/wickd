@@ -222,17 +222,22 @@ describe('monitor overlay', () => {
 
 describe('period resolution (mirrors the backend)', () => {
   const today = new Date(2026, 9, 28);
+  // relative presets end yesterday (today is still filling in)
   it.each([
-    ['last_7_days', '2026-10-22', '2026-10-28'],
-    ['last_30_days', '2026-09-29', '2026-10-28'],
-    ['last_12_months', '2025-10-29', '2026-10-28'],
-    ['month_to_date', '2026-10-01', '2026-10-28'],
-    ['quarter_to_date', '2026-10-01', '2026-10-28'],
-    ['year_to_date', '2026-01-01', '2026-10-28'],
+    ['last_7_days', '2026-10-21', '2026-10-27'],
+    ['last_30_days', '2026-09-28', '2026-10-27'],
+    ['last_12_months', '2025-10-28', '2026-10-27'],
+    ['month_to_date', '2026-10-01', '2026-10-27'],
+    ['quarter_to_date', '2026-10-01', '2026-10-27'],
+    ['year_to_date', '2026-01-01', '2026-10-27'],
     ['last_month', '2026-09-01', '2026-09-30'],
     ['last_quarter', '2026-07-01', '2026-09-30'],
   ] as const)('%s', (preset, start, end) => {
     expect(resolveCurrent(preset, today)).toEqual({ start, end });
+  });
+
+  it.each(['month_to_date', 'quarter_to_date', 'year_to_date'] as const)('%s on the first day is just today', (preset) => {
+    expect(resolveCurrent(preset, new Date(2027, 0, 1))).toEqual({ start: '2027-01-01', end: '2027-01-01' });
   });
 
   it('resolves comparisons', () => {

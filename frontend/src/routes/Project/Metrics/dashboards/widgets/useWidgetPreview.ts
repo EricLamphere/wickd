@@ -7,9 +7,12 @@
 // whose runs rewrite the manifest again: a loop. Only `dashboards_changed` (a new period or
 // filters) refetches the drafts (useDashboards.ts). Edits that don't change the queries (title,
 // format) don't refetch; others wait a moment so typing in a field doesn't run a query per key.
-import { useEffect, useState } from 'react';
+// The explorer's preview runs in the background (it answers `running` at once):
+// metric_queries_finished refetches it, which never reruns a failure (the backend keeps it).
+import { useCallback, useEffect, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dashboardsApi, type DashboardWidget, type WidgetResultDto } from '../../../../../lib/dashboardsApi';
+import { useProjectEvents } from '../../../../../lib/sse';
 
 const SETTLE_MS = 400;
 const DISPLAY_OPTIONS = new Set(['format', 'decimals', 'currency', 'higher_is_better']);
@@ -49,6 +52,10 @@ export function useExplorePreview(projectId: number, widget: DashboardWidget) {
   const qc = useQueryClient();
   const settled = useSettled(widget);
   const queryKey = ['explore-widget', projectId, settled.key];
+  // the preview answers at once (`running`) and runs in the background: read it again when that's done
+  useProjectEvents(projectId, useCallback((event) => {
+    if (event.type === 'metric_queries_finished') qc.invalidateQueries({ queryKey: ['explore-widget', projectId] });
+  }, [projectId, qc]));
   const query = useQuery({
     queryKey,
     queryFn: async () => (await dashboardsApi.previewExplore(projectId, settled.widget!)).widget,

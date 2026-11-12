@@ -39,6 +39,10 @@ interface Props extends Omit<WidgetSettingsProps, 'widget'> {
   rail: Rail;
   canvasWidth: number;
   onCanvasWidth: (px: number) => void;
+  /** Configure edits a draft: Apply saves it (and runs the widget), Discard drops it */
+  dirty: boolean;
+  onApply: () => void;
+  onDiscard: () => void;
 }
 
 /** The dashboard's fixed width: edited as text, applied on Enter or blur (clamped). */
@@ -60,7 +64,26 @@ function CanvasWidth({ value, onChange }: { value: number; onChange: (px: number
   );
 }
 
-export function WidgetsRail({ tab, onTab, widget, onAddType, rail, canvasWidth, onCanvasWidth, ...config }: Props) {
+function ApplyBar({ dirty, onApply, onDiscard }: Pick<Props, 'dirty' | 'onApply' | 'onDiscard'>) {
+  // buttons on the left: the app's status bubble floats over the rail's bottom-right corner
+  return (
+    <div className="flex items-center gap-2 shrink-0 px-3 py-2 border-t border-gray-800">
+      <button type="button" onClick={onApply} disabled={!dirty} title="Save these settings and update the widget (⌘Enter)"
+        className="px-2.5 py-1 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
+        Apply
+      </button>
+      <button type="button" onClick={onDiscard} disabled={!dirty}
+        className="px-2.5 py-1 text-xs rounded border border-gray-700 text-gray-300 hover:bg-gray-800 disabled:opacity-40">
+        Discard
+      </button>
+      <span className={`min-w-0 text-[11px] truncate ${dirty ? 'text-amber-300' : 'text-gray-600'}`}>
+        {dirty ? 'Unapplied changes' : 'No changes'}
+      </span>
+    </div>
+  );
+}
+
+export function WidgetsRail({ tab, onTab, widget, onAddType, rail, canvasWidth, onCanvasWidth, dirty, onApply, onDiscard, ...config }: Props) {
   const shown = widget ? tab : 'widgets';
   return (
     <FloatingRail side="right" rail={rail}>
@@ -69,6 +92,7 @@ export function WidgetsRail({ tab, onTab, widget, onAddType, rail, canvasWidth, 
           <button key={t} role="tab" aria-selected={shown === t} disabled={t === 'configure' && !widget} onClick={() => onTab(t)}
             className={`px-2 py-2 text-xs border-b-2 -mb-px disabled:opacity-40 ${shown === t ? 'border-brand-500 text-gray-100' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
             {t === 'widgets' ? 'Widgets' : 'Configure'}
+            {t === 'configure' && dirty && <span className="inline-block w-1.5 h-1.5 ml-1 align-middle rounded-full bg-amber-400" title="Unapplied changes" />}
           </button>
         ))}
       </div>
@@ -83,6 +107,7 @@ export function WidgetsRail({ tab, onTab, widget, onAddType, rail, canvasWidth, 
           <WidgetSettings {...config} widget={widget} />
         )}
       </div>
+      {shown === 'configure' && widget && <ApplyBar dirty={dirty} onApply={onApply} onDiscard={onDiscard} />}
     </FloatingRail>
   );
 }

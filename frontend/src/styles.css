@@ -247,6 +247,27 @@ html[data-theme="light"] .cmd-badge-seed  { background-color: rgb(204 251 241); 
 }
 .prose-readme th { background: rgb(var(--bg-elevated)); color: rgb(var(--gray-100)); }
 
+/* Dashboard text widget: README styles at dashboard size. List markers are text
+   (.widget-li-marker, from rehypeListMarkers) so PNG exports keep them. */
+.prose-widget { font-size: 0.75rem; line-height: 1.5; }
+.prose-widget h1 { font-size: 1.125rem; }
+.prose-widget h2 { font-size: 1rem; }
+.prose-widget h3 { font-size: 0.875rem; }
+.prose-widget h4, .prose-widget h5, .prose-widget h6 { font-size: 0.75rem; }
+.prose-widget h1, .prose-widget h2, .prose-widget h3,
+.prose-widget h4, .prose-widget h5, .prose-widget h6 { margin-top: 0.75em; margin-bottom: 0.35em; }
+.prose-widget p { margin-bottom: 0.5em; }
+.prose-widget > :last-child { margin-bottom: 0; }
+.prose-widget ul, .prose-widget ol { list-style: none; padding-left: 0.25em; margin-bottom: 0.5em; }
+.prose-widget li ul, .prose-widget li ol { padding-left: 0; margin-bottom: 0; margin-top: 0.15em; }
+.prose-widget li { display: flex; gap: 0.4em; margin-bottom: 0.15em; }
+.prose-widget li > div > p { margin-bottom: 0.25em; }
+.prose-widget .widget-li-marker { flex: none; min-width: 0.8em; color: rgb(var(--gray-500)); font-variant-numeric: tabular-nums; }
+.prose-readme.prose-widget blockquote { border-left: 2px solid rgb(var(--gray-700)); padding-left: 0.75em; margin: 0 0 0.5em; }
+.prose-widget strong { color: rgb(var(--gray-100)); font-weight: 600; }
+.prose-widget pre { padding: 0.6em; margin-bottom: 0.5em; }
+.prose-widget table { font-size: 0.7rem; margin-bottom: 0.5em; }
+
 /* React Flow overrides */
 .react-flow__background {
   background-color: rgb(var(--bg-app)) !important;

@@ -1,4 +1,6 @@
-// Metrics sidebar filtering: search text plus multi-select semantic model and metric type filters.
+// Metric search everywhere a metric is searched or picked (sidebar, All metrics, dashboard rail,
+// Add a metric, monitors, compare): search text (name, label, description, type, semantic model)
+// plus multi-select semantic model and metric type filters.
 import type { CatalogMetric, CatalogSavedQuery } from '../../../../lib/semanticApi';
 
 export interface SidebarFilter {
@@ -37,7 +39,7 @@ function passesFacets(m: CatalogMetric, f: SidebarFilter): boolean {
 
 export function filterMetrics(metrics: readonly CatalogMetric[], f: SidebarFilter): CatalogMetric[] {
   const needle = f.search.trim().toLowerCase();
-  return metrics.filter((m) => textMatches(needle, m.name, m.label) && passesFacets(m, f));
+  return metrics.filter((m) => textMatches(needle, m.name, m.label, m.description, m.type, ...m.semantic_models) && passesFacets(m, f));
 }
 
 /** Saved queries matching the search; with a model or type filter, only those using a metric that passes it. */

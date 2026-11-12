@@ -16,7 +16,7 @@ Compare mode lives in the URL with the widget (`cmp=` / `cmp_base=`), so a compa
 | **Uncommitted changes vs HEAD** | your working copy | the last commit |
 | **This branch vs its base** | your working copy | the merge base with the base branch (default `origin/main`, `main` or `master`; type another) — what your branch changed, not what landed on main since |
 | **Two targets** | your active target | another dbt target (e.g. `prod`), same definitions |
-| **Two metrics** | the query's metric | another metric, same query otherwise (e.g. `revenue` vs `revenue_v2`) |
+| **Two metrics** | the query's metric | another metric, picked with the usual metric search and Model / Type filters; same query otherwise (e.g. `revenue` vs `revenue_v2`) |
 
 Nothing runs until you've chosen what to compare with and clicked **Run comparison** (each compare is two warehouse queries). After changing the widget or the options, the result is marked out of date; run it again.
 

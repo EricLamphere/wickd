@@ -2,16 +2,19 @@
 // Option names match the backend's dashboard_plan.py *Options models.
 import type { DashboardWidget } from '../../../../../lib/dashboardsApi';
 import { opt, withOption } from '../dashboardModel';
+import { MarkdownEditor } from './MarkdownEditor';
 
 export const FIELD = 'w-full px-2 py-1 bg-surface-app border border-gray-700 rounded text-xs text-gray-200 outline-none focus:border-brand-600';
 
-export function Row({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+/** A labelled setting. `group` renders a div instead of a <label>, for rows holding several controls. */
+export function Row({ label, children, hint, group = false }: { label: string; children: React.ReactNode; hint?: string; group?: boolean }) {
+  const Tag = group ? 'div' : 'label';
   return (
-    <label className="flex flex-col gap-1">
+    <Tag className="flex flex-col gap-1">
       <span className="text-[11px] text-gray-500">{label}</span>
       {children}
       {hint && <span className="text-[10px] text-gray-600">{hint}</span>}
-    </label>
+    </Tag>
   );
 }
 
@@ -177,8 +180,8 @@ export function TypeOptions({ widget, dimensions, onChange }: Props) {
     }
     case 'text':
       return (
-        <Row label="Text" hint="# Heading, ## Smaller heading, - bullet, **bold**">
-          <textarea value={opt(widget, 'body', '')} rows={8} onChange={(e) => set('body', e.target.value)} className={`${FIELD} font-mono resize-y`} />
+        <Row group label="Text" hint="Markdown: Tab indents a list item (sub-bullets), Enter continues the list, ⌘B bold, ⌘I italic, ⌘K link.">
+          <MarkdownEditor value={opt(widget, 'body', '')} onChange={(v) => set('body', v)} />
         </Row>
       );
     default:

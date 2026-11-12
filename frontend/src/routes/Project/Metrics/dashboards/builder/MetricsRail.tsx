@@ -4,8 +4,10 @@
 // dot shows their monitor status.
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
-import { Bookmark, ChevronDown, ChevronRight, Search } from 'lucide-react';
+import { Bookmark, ChevronDown, ChevronRight } from 'lucide-react';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
+import { MetricFilterBar, useMetricFilter } from '../../MetricFilterBar';
+import { filterMetrics, filterSavedQueries } from '../../lib/sidebarFilter';
 import { statusStyle, type MetricMonitorState } from '../../monitors/monitorView';
 import { FloatingRail, type Rail } from './RailResize';
 
@@ -39,31 +41,24 @@ function Item({ item, label, type, used, monitor, onAdd }: {
 }
 
 export function MetricsRail({ catalog, labels, inUse, monitorStatuses, onAdd, rail }: Props) {
-  const [query, setQuery] = useState('');
+  const { filter, update } = useMetricFilter();
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const groups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const match = (name: string, label?: string | null) => !q || name.toLowerCase().includes(q) || !!label?.toLowerCase().includes(q);
     const byModel = new Map<string, SemanticCatalogDto['metrics']>();
-    for (const m of catalog.metrics) {
-      if (!match(m.name, m.label)) continue;
+    for (const m of filterMetrics(catalog.metrics, filter)) {
       const group = m.semantic_models[0] ?? 'Derived metrics';
       byModel.set(group, [...(byModel.get(group) ?? []), m]);
     }
     return [...byModel.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [catalog, query]);
-  const saved = catalog.saved_queries.filter((s) => !query.trim() || s.name.includes(query.trim().toLowerCase()));
+  }, [catalog, filter]);
+  const saved = useMemo(() => filterSavedQueries(catalog.saved_queries, catalog.metrics, filter), [catalog, filter]);
   const toggle = (g: string) => setClosed((c) => { const n = new Set(c); if (n.has(g)) n.delete(g); else n.add(g); return n; });
 
   return (
     <FloatingRail side="left" rail={rail}>
       <div className="px-3 pt-3 pb-2">
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Metrics</h2>
-        <label className="flex items-center gap-1.5 px-2 py-1 rounded border border-gray-700 bg-surface-app">
-          <Search className="w-3 h-3 text-gray-500" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search metrics"
-            className="flex-1 min-w-0 bg-transparent text-xs text-gray-200 outline-none placeholder-gray-600" />
-        </label>
+        <MetricFilterBar metrics={catalog.metrics} filter={filter} onChange={update} />
       </div>
       <div className="flex-1 min-h-0 overflow-auto px-1.5 pb-3">
         {groups.map(([group, metrics]) => (

@@ -13,6 +13,8 @@ export interface DialogOptions {
   title?: string;
   /** Label of the OK button (e.g. "Delete"). */
   confirmLabel?: string;
+  /** Label of the Cancel button (e.g. "Discard"); Escape and clicking outside also answer it. */
+  cancelLabel?: string;
   /** Red OK button, for destructive actions. */
   danger?: boolean;
 }

@@ -1,26 +1,38 @@
-// Text: a heading or a note. A small subset of Markdown: #/##/### headings, - bullets and
-// **bold**; everything is shown as text (no HTML, no links), so a file can't inject markup.
-import { Fragment } from 'react';
+// Text: headings, notes and lists in GitHub-flavored Markdown (nested lists, bold, italic,
+// strikethrough, code, quotes, tables, task lists, links). Raw HTML stays off (react-markdown's
+// default) so a dashboard file can't inject markup; links open in the system browser (a bare domain as https) and
+// images show their alt text, so a dashboard never loads remote content.
+import { memo, type MouseEvent } from 'react';
+import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { openExternal } from '../../../../../lib/openExternal';
+import { rehypeListMarkers, type HastNode } from '../../lib/listMarkers';
+import { widgetLinkHref } from '../../lib/widgetLinks';
 
-function inline(text: string) {
-  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => (part.startsWith('**') && part.endsWith('**') && part.length > 4
-    ? <strong key={i} className="font-semibold text-gray-100">{part.slice(2, -2)}</strong>
-    : <Fragment key={i}>{part}</Fragment>));
-}
+const components: Components = {
+  a: ({ href, children }) => {
+    const url = widgetLinkHref(href);
+    if (!url) return <a title={`Not a web address: ${href ?? ''}`} className="cursor-default">{children}</a>;
+    const open = (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); openExternal(url); };
+    return <a href={url} onClick={open} title={url}>{children}</a>;
+  },
+  img: ({ alt }) => <span className="italic text-gray-500">{alt}</span>,
+  li: ({ node, children }) => {
+    const marker = (node as HastNode | undefined)?.properties?.dataMarker;
+    return (
+      <li>
+        {typeof marker === 'string' && marker && <span className="widget-li-marker" aria-hidden>{marker}</span>}
+        <div className="min-w-0">{children}</div>
+      </li>
+    );
+  },
+};
 
-export function TextWidget({ body }: { body: string }) {
-  const lines = body.split('\n');
+export const TextWidget = memo(function TextWidget({ body }: { body: string }) {
   if (!body.trim()) return <p className="text-xs text-gray-500">Write a heading or a note in the widget's settings.</p>;
   return (
-    <div className="flex flex-col gap-1 h-full overflow-auto text-xs text-gray-300">
-      {lines.map((line, i) => {
-        const t = line.trimEnd();
-        if (t.startsWith('### ')) return <h4 key={i} className="text-sm font-semibold text-gray-100">{inline(t.slice(4))}</h4>;
-        if (t.startsWith('## ')) return <h3 key={i} className="text-base font-semibold text-gray-100">{inline(t.slice(3))}</h3>;
-        if (t.startsWith('# ')) return <h2 key={i} className="text-lg font-semibold text-gray-100">{inline(t.slice(2))}</h2>;
-        if (t.startsWith('- ')) return <p key={i} className="flex gap-1.5 pl-1"><span className="text-gray-500">•</span><span>{inline(t.slice(2))}</span></p>;
-        return t ? <p key={i}>{inline(t)}</p> : <div key={i} className="h-1" />;
-      })}
+    <div className="h-full overflow-auto prose-readme prose-widget">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeListMarkers]} components={components}>{body}</ReactMarkdown>
     </div>
   );
-}
+});

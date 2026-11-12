@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import type { ComparePeriod, CurrentPeriod, DashboardDoc, DashboardWidget, WidgetType } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { FilterEditor } from '../../FilterEditor';
+import { MetricChooser } from '../../MetricChooser';
 import { groupByOptions } from '../../lib/metricQuery';
 import {
   addMetric, changeType, COMPARE_PRESETS, compareLabel, CURRENT_PRESETS, currentLabel, removeMetric, resolveCompare, resolveCurrent,
@@ -60,7 +61,7 @@ export function WidgetSettings({ projectId, doc, widget, catalog, labels, onChan
 
       {info.maxMetrics > 0 && (
         <>
-          <Row label={`Metrics${info.maxMetrics > 1 ? ` (up to ${info.maxMetrics})` : ''}`}>
+          <Row group label={`Metrics${info.maxMetrics > 1 ? ` (up to ${info.maxMetrics})` : ''}`}>
             <div className="flex flex-wrap gap-1">
               {metrics.map((m) => (
                 <span key={m} className="flex items-center gap-1 px-1.5 py-0.5 text-[11px] rounded border border-gray-700 bg-gray-800/60 text-gray-200">
@@ -72,12 +73,7 @@ export function WidgetSettings({ projectId, doc, widget, catalog, labels, onChan
               ))}
             </div>
             {metrics.length < info.maxMetrics && (
-              <select value="" onChange={(e) => { if (e.target.value) add(e.target.value); }} className={FIELD}>
-                <option value="">Add a metric…</option>
-                {catalog.metrics.filter((m) => !metrics.includes(m.name)).map((m) => (
-                  <option key={m.name} value={m.name}>{labels.get(m.name) ?? m.name}</option>
-                ))}
-              </select>
+              <MetricChooser variant="add" placeholder="Add a metric…" catalog={catalog} labels={labels} exclude={metrics} onPick={add} />
             )}
           </Row>
           <Row label="Filters" hint={standalone ? undefined : "Added to the dashboard's filters for this widget only."}>

@@ -12,6 +12,7 @@ import { ScheduleFailureToast } from '../../components/schedule/ScheduleFailureT
 import { WickyPane } from './components/Wicky/WickyPane';
 import { useStatePreviewCache } from './components/slim/useStatePreviewCache';
 import { CommandPaletteContext } from './lib/commandPaletteContext';
+import { ownsShortcuts } from '../../lib/keyboardOwner';
 import {
   SelectedNodeContext,
   SelectedColumnsContext,
@@ -60,6 +61,8 @@ export default function ProjectLayout() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        // an editor with its own ⌘K (the dashboard text widget's Markdown link) keeps it
+        if (ownsShortcuts(e.target)) return;
         e.preventDefault();
         setPaletteOpen((open) => {
           if (open) {

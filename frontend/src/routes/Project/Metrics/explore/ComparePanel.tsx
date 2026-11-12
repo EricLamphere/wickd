@@ -17,6 +17,7 @@ import { formatChange, formatMetric } from '../dashboards/dashboardModel';
 import { AXIS_TICK, GRID, PREVIOUS, seriesColor, TooltipBox } from '../dashboards/widgets/chartTheme';
 import { compareFields, compareSeries, differencesTable, MODE_LABELS, COMPARE_MODES, sideLabel, sideNames, type CompareState } from '../lib/compareView';
 import { formatTime } from '../lib/metricSeries';
+import { MetricChooser } from '../MetricChooser';
 
 interface Props {
   projectId: number;
@@ -101,7 +102,6 @@ export function ComparePanel({ projectId, catalog, labels, query, grain, state: 
   const metric = result?.metrics[0] ?? '';
   const table = useMemo(() => (result ? differencesTable(result, labels, onlyChanged) : null), [result, labels, onlyChanged]);
   const stale = !!result && ranKey !== key;
-  const otherMetrics = catalog.metrics.filter((m) => !query?.metrics?.includes(m.name));
 
   const basePicker = state.mode === 'branch' ? (
     <input value={state.base} onChange={(e) => onChange({ ...state, base: e.target.value })} placeholder={options.data?.branch_base ?? 'main'}
@@ -113,10 +113,10 @@ export function ComparePanel({ projectId, catalog, labels, query, grain, state: 
       {(targets.data?.targets ?? []).filter((t) => t !== options.data?.active_target).map((t) => <option key={t} value={t}>{t}</option>)}
     </select>
   ) : state.mode === 'metrics' ? (
-    <select value={state.base} onChange={(e) => onChange({ ...state, base: e.target.value })} aria-label="Metric to compare with" className={FIELD}>
-      <option value="">Pick a metric…</option>
-      {otherMetrics.map((m) => <option key={m.name} value={m.name}>{m.label || m.name}</option>)}
-    </select>
+    <div className="w-56">
+      <MetricChooser catalog={catalog} labels={labels} value={state.base || null} exclude={query?.metrics ?? []} popover
+        onPick={(base) => onChange({ ...state, base })} ariaLabel="Metric to compare with" />
+    </div>
   ) : null;
 
   return (

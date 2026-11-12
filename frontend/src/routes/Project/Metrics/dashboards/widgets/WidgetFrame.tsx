@@ -285,8 +285,8 @@ export function WidgetFrame(props: Props) {
             <GripVertical className="w-4 h-4" />
           </button>
         )}
-        {!text && <h3 className="flex-1 min-w-0 text-xs font-medium text-gray-200 truncate" title={title}>{title}</h3>}
-        {text && <div className="flex-1" />}
+        {(!text || widget.title) && <h3 className="flex-1 min-w-0 text-xs font-medium text-gray-200 truncate" title={title}>{title}</h3>}
+        {text && !widget.title && <div className="flex-1" />}
         {pill && monitorStatus && <MonitorPill projectId={props.projectId} state={monitorStatus} label={pill.label} cls={pill.pill} />}
         {result?.ran_at && (
           <span className="shrink-0 text-[10px] text-gray-500" title={new Date(result.ran_at).toLocaleString()} data-export-asof={result.ran_at}>

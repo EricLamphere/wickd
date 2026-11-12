@@ -50,13 +50,17 @@ const collision: CollisionDetection = (args) => {
   return widget ? [widget] : hits.filter((h) => h.id === CANVAS_ID);
 };
 
-export function useBuilderDnd({ doc, catalog, labels, apply, onCreated, onNotice }: {
+export function useBuilderDnd({ doc, catalog, labels, apply, onCreated, onNotice, editing = (w) => w, addTo }: {
   doc: DashboardDoc | null;
   catalog: SemanticCatalogDto;
   labels: Map<string, string>;
   apply: (change: (doc: DashboardDoc) => DashboardDoc) => void;
   onCreated: (widget: DashboardWidget) => void;
   onNotice: (message: string) => void;
+  /** a widget as its Configure draft has it (the drop hint checks against that) */
+  editing?: (widget: DashboardWidget) => DashboardWidget;
+  /** adds a dropped metric to a widget (into its draft while it's being configured); the error, or null */
+  addTo?: (widget: DashboardWidget, metric: string) => string | null;
 }) {
   const [active, setActive] = useState<DragItem | null>(null);
   const [overWidget, setOverWidget] = useState<string | null>(null);
@@ -72,7 +76,7 @@ export function useBuilderDnd({ doc, catalog, labels, apply, onCreated, onNotice
     if (!active || active.kind === 'widget' || overWidget !== widget.id) return null;
     if (active.kind === 'type') return { ok: true, text: `Insert ${widgetInfo(active.type).label} here` };
     if (active.kind === 'saved') return { ok: false, text: 'Drop saved queries on empty space' };
-    const result = addMetric(widget, active.name, catalog);
+    const result = addMetric(editing(widget), active.name, catalog);
     return result.widget ? { ok: true, text: `Add ${labels.get(active.name) ?? active.name}` } : { ok: false, text: result.error };
   };
 
@@ -104,8 +108,10 @@ export function useBuilderDnd({ doc, catalog, labels, apply, onCreated, onNotice
     }
     if (target) {
       const widget = doc.widgets.find((w) => w.id === target);
-      const result = widget ? addMetric(widget, item.name, catalog) : null;
-      if (result?.widget) apply((d) => replaceWidget(d, result.widget)); else if (result?.error) onNotice(result.error);
+      if (!widget) return;
+      if (addTo) { const error = addTo(widget, item.name); if (error) onNotice(error); return; }
+      const result = addMetric(widget, item.name, catalog);
+      if (result.widget) apply((d) => replaceWidget(d, result.widget)); else onNotice(result.error);
       return;
     }
     create(newWidget('summary', ids(), [item.name], catalog), null);

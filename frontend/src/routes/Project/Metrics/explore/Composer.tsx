@@ -18,6 +18,7 @@ import { ComposerChip } from './ComposerChip';
 import { ComposerSuggestions } from './ComposerSuggestions';
 import { useComposer } from './useComposer';
 import { useComposerWicky, WICKY_PREFIX } from './useComposerWicky';
+import { NO_AUTOCORRECT } from '../lib/searchInput';
 
 interface Props {
   projectId: number;
@@ -184,7 +185,7 @@ export function Composer({
             onEdit={() => { c.edit(i); inputRef.current?.focus(); }} onRemove={() => c.remove(i)} onPeriod={c.setPeriod} />
         ))}
         <input ref={inputRef} value={c.input} onChange={(e) => c.type(e.target.value)} onKeyDown={onKeyDown}
-          placeholder={c.chips.some((chip) => !isPeriodChip(chip)) ? '' : hint} aria-label="Query" spellCheck={false} autoComplete="off"
+          placeholder={c.chips.some((chip) => !isPeriodChip(chip)) ? '' : hint} aria-label="Query" {...NO_AUTOCORRECT}
           aria-autocomplete="list" aria-expanded={open}
           className="flex-1 min-w-[8rem] py-0.5 bg-transparent text-xs text-gray-200 outline-none placeholder:text-gray-600" />
         {wicky.asking && <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-brand-300" />}

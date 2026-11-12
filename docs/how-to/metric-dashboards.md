@@ -8,13 +8,13 @@ Dashboards are on **Metrics → Dashboards**. Like the rest of the Metrics page,
 
 Open a dashboard (or **New dashboard**) and you get three panes:
 
-- **Metrics** (left): every metric grouped by semantic model, plus saved queries. Metrics already on the dashboard have a teal dot; with wickd Pro, a second dot shows a monitor's status.
+- **Metrics** (left): every metric grouped by semantic model, plus saved queries, with the same search and **Model** / **Type** filters as the Metrics tab's sidebar. Metrics already on the dashboard have a teal dot; with wickd Pro, a second dot shows a monitor's status.
 - **The canvas** (middle): your widgets, flowing left to right, each at the size you drag it to. The dashboard has a fixed width (1200 px unless you change it), so widgets keep their size whatever the window or the rails do.
 - **Widgets** (right): the widget types. When a widget is selected, the **Configure** tab shows its settings.
 
 The rails float over the canvas. Drag a rail's inner edge to make it wider or narrower (double-click the edge to reset); wickd remembers the widths, and the widgets don't move or resize. When the dashboard is wider than the space between the rails, scroll it out from under them. Change the dashboard's width under **Widgets → Dashboard width**, or drag the dashboard's right edge.
 
-There's no Edit button. Every change is saved to the file a moment later ("Saving… / Saved" next to the title), and **⌘Z** / **⇧⌘Z** (or the arrows) undo and redo. **Present** hides both rails for a clean view; **Esc** brings them back.
+There's no Edit button. Every change is saved to the file a moment later (except a widget's settings, which wait for **Apply**; see Configure a widget) ("Saving… / Saved" next to the title), and **⌘Z** / **⇧⌘Z** (or the arrows) undo and redo. **Present** hides both rails for a clean view; **Esc** brings them back.
 
 ### Add metrics
 
@@ -34,7 +34,7 @@ Drag a widget type from the right rail onto the canvas (it's inserted before the
 | **Bar chart** | One bar per value of a dimension, with a gray bar for the previous period beside each. Vertical or horizontal, sorted by value or name, top N, or stacked by a second dimension: the previous period's bar stands beside each stacked bar, split the same way in the same colors, faded; with several metrics, each gets its own stacked chart. |
 | **Top N** | A dimension's top values for one metric, with an inline bar and the change vs the previous period ("new" when it wasn't there before). |
 | **Table** | Metrics by period (optional) and up to five dimensions, with "previous" and "change" columns per metric. |
-| **Text** | A heading or a note: `#`, `##`, `###` headings, `-` bullets and `**bold**`. |
+| **Text** | Headings and notes in Markdown (GitHub-flavored): headings, nested bullet and numbered lists, checklists, **bold**, _italic_, ~~strikethrough~~, `code`, quotes, tables and links (they open in your browser; `www.example.com` or `example.com` without `https://` works too). Its title, when set, shows above the text. |
 
 With several metrics, a time series or bar chart draws them on one chart when their scales are close, and gives each its own chart when one is 10× the other (revenue next to a conversion rate). **Several metrics** in the settings forces either.
 
@@ -47,10 +47,14 @@ With several metrics, a time series or bar chart draws them on one chart when th
 Widgets flow left to right in the order they're listed in the file. A widget that doesn't fit on the rest of a row starts the next row (widths that add up to 100% fill a row exactly). 
 ### Configure a widget
 
-Select a widget (click it) and the right rail switches to **Configure**:
+Select a widget (click it) and the right rail switches to **Configure**. Changes there are a draft: the widget on the canvas, the file and the warehouse see nothing until you click **Apply** (or press **⌘Enter**), so you can swap a metric or try a type without the widget re-running at each step. **Discard** drops the draft. A dot on the Configure tab marks unapplied changes, and selecting another widget, pressing Escape or leaving the dashboard asks whether to apply them. Metrics you click or drag onto the widget you're configuring go into the draft too. Resizing applies at once.
 
-- **Shared**: title, type, metrics, filters (added to the dashboard's filters, for this widget only), and a **period** and **compare to** that override the dashboard's. The first option in each, **Use the dashboard's …**, goes back to following the dashboard. Changing the type keeps what fits: a Bar chart or Top N picks a dimension, and Top N keeps the first metric.
-- **Type-specific**: number format (number, currency with a currency code, percent) and decimals; higher is better; the change %, the previous period's value and dates, the trend and the previous period on the trend, each on/off (summary; all on by default); style, grain, split by, top N, start the y-axis at zero (time series); bars by, stack by, orientation, sort, top N, show the previous period (bar chart); rank by, top N, show the change (Top N); rows by period (the dashboard's grain or its own; oldest first, compared period by period), rows by, row count, comparison columns (table); the text (text).
+When you remove a widget's only metric and add another, breakdowns the new metric can't use (bars by, stack by, split by, table rows) are dropped, and a bar chart or Top N picks one it shares; ones it can use are kept.
+
+The settings:
+
+- **Shared**: title, type, metrics (**Add a metric…** opens a search box with the Model and Type filters; Enter adds the first match), filters (added to the dashboard's filters, for this widget only), and a **period** and **compare to** that override the dashboard's. The first option in each, **Use the dashboard's …**, goes back to following the dashboard. Changing the type keeps what fits: a Bar chart or Top N picks a dimension, and Top N keeps the first metric.
+- **Type-specific**: number format (number, currency with a currency code, percent) and decimals; higher is better; the change %, the previous period's value and dates, the trend and the previous period on the trend, each on/off (summary; all on by default); style, grain, split by, top N, start the y-axis at zero (time series); bars by, stack by, orientation, sort, top N, show the previous period (bar chart); rank by, top N, show the change (Top N); rows by period (the dashboard's grain or its own; oldest first, compared period by period), rows by, row count, comparison columns (table); the text (text), edited with a formatting toolbar and shortcuts: **⌘B** bold, **⌘I** italic, **⇧⌘X** strikethrough, **⌘E** code, **⌘K** link, **Tab** / **⇧Tab** to indent or outdent a list item (sub-bullets), and **Enter** to continue a list (Enter on an empty item ends it).
 
 ## Period, comparison and filters
 

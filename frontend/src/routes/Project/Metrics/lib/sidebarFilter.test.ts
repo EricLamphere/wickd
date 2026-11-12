@@ -46,6 +46,15 @@ describe('filterMetrics', () => {
     expect(names(filterMetrics(METRICS, { ...EMPTY_SIDEBAR_FILTER, search: '  REVENUE ' }))).toEqual(['revenue', 'revenue_per_customer']);
   });
 
+  it('also matches descriptions, types and semantic models', () => {
+    const described = [...METRICS, { ...metric('users', 'simple', ['people']), description: 'Active buyers' }];
+    const search = (q: string) => names(filterMetrics(described, { ...EMPTY_SIDEBAR_FILTER, search: q }));
+    expect(search('BUYERS')).toEqual(['users']);
+    expect(search('ratio')).toEqual(['aov']);
+    expect(search('people')).toEqual(['users']);
+    expect(search(' ')).toHaveLength(described.length);
+  });
+
   it('keeps metrics in any selected semantic model', () => {
     const f = { ...EMPTY_SIDEBAR_FILTER, models: new Set(['customers']) };
     expect(names(filterMetrics(METRICS, f))).toEqual(['signups', 'revenue_per_customer']);

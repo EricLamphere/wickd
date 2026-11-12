@@ -250,13 +250,6 @@ export function metricGroup(m: CatalogMetric): string {
   return m.semantic_models.length ? 'Across models' : 'Other';
 }
 
-export function searchMetrics(metrics: CatalogMetric[], query: string): CatalogMetric[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return metrics;
-  return metrics.filter((m) => [m.name, m.label ?? '', m.description ?? '', m.type, ...m.semantic_models]
-    .some((t) => t.toLowerCase().includes(q)));
-}
-
 /** Metrics grouped for the index, groups and metrics by name ("Across models" / "Other" last). */
 export function groupMetrics(metrics: CatalogMetric[]): [string, CatalogMetric[]][] {
   const groups = new Map<string, CatalogMetric[]>();

@@ -6,7 +6,7 @@ The page is always in the left nav. Until the project defines metrics, it says n
 
 ## Browse your metrics
 
-The **Metrics** tab (first on the Metrics page) opens on **All metrics**: a card per metric, grouped by semantic model, with its type, a sparkline of its last result for the chosen period, how many places use it, and a warning count when the last semantic check found issues (Pro: a monitor badge when a monitor flagged it). Nothing runs when the page opens; the sparklines are stored results. **Run all** runs every metric's chart for the period on your warehouse in one batch. Search matches names, labels, descriptions, types and semantic models. In the sidebar, the **Model** and **Type** filters under the search box narrow the list to metrics from the chosen semantic models and of the chosen types (simple, ratio, cumulative, derived, conversion); pick several of each, and **Clear** resets both. Saved queries stay listed only when they use a metric that passes. Drag the sidebar's right edge to widen it so long metric names fit (double-click the edge to reset); the width is remembered.
+The **Metrics** tab (first on the Metrics page) opens on **All metrics**: a card per metric, grouped by semantic model, with its type, a sparkline of its last result for the chosen period, how many places use it, and a warning count when the last semantic check found issues (Pro: a monitor badge when a monitor flagged it). Nothing runs when the page opens; the sparklines are stored results. **Run all** runs every metric's chart for the period on your warehouse in one batch. Search matches names, labels, descriptions, types and semantic models, here and everywhere you search for or pick a metric (the sidebar, a dashboard's metrics rail, **Add a metric…**, **New monitor**, Compare's **Two metrics**). The **Model** and **Type** filters beside the search box (in the sidebar, under it) narrow the list to metrics from the chosen semantic models and of the chosen types (simple, ratio, cumulative, derived, conversion); pick several of each, and **Clear** resets both. Saved queries stay listed only when they use a metric that passes. Drag the sidebar's right edge to widen it so long metric names fit (double-click the edge to reset); the width is remembered.
 
 ## A metric's page
 
@@ -54,7 +54,7 @@ The box above the metric index takes the same line: Enter opens the query view w
 
 ### Or click it
 
-1. **Metrics**: it starts with the page's metric; **Add a metric…** in Configure to put others beside it.
+1. **Metrics**: it starts with the page's metric; **Add a metric…** in Configure to put others beside it (search, with the Model and Type filters).
 2. **Type**: time series, bar chart, Top N, table or metric summary.
 3. **Break it down** with the type's settings: a time series' **Split by** (one line per value, top N), a bar chart's **Bars by** and **Stack by**, a table's **Rows by** dimensions and **Rows by period**, Top N's **Rank**. Only dimensions every picked metric has are offered.
 4. **Filters**: **+ Filter** opens a builder (dimension, operator, value), or write a raw MetricFlow `where`.

@@ -107,7 +107,7 @@ function Builder({ options, grain, onAdd, onClose, suggest, anchor, popupRef }: 
           </select>
           {!NO_VALUE.has(op) && (
             <>
-              <input autoFocus value={value} onChange={(e) => setValue(e.target.value)} list={suggestions.length ? listId : undefined}
+              <input autoFocus value={value} onChange={(e) => setValue(e.target.value)} autoCorrect="off" autoCapitalize="off" spellCheck={false} list={suggestions.length ? listId : undefined}
                 placeholder={op.includes('in') ? 'a, b, c' : option?.kind === 'time' ? 'YYYY-MM-DD' : 'value'}
                 className={`${FIELD_CLS} w-32`} />
               {suggestions.length > 0 && (

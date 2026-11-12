@@ -4,7 +4,7 @@ import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import {
   addMetric, alignPrevious, canvasWidthOf, orderWidgets, placeWidget, widthLockLines, changeType, clampCanvasWidth, querySignature, signatures, railWidth, requiredRole, categories, changeRatio, changeTone, currentLabel, duplicateWidget, filterFor, formatChange,
   formatMetric, historyOf, insertWidget, monitorForWidget, moveWidget, newWidget, newWidgetId, overlayFromPoints, rangeLabel,
-  pxToWidth, record, redo, removeMetric, resized, resolveCompare, snapHeight, snapWidth, widthCss, widthToPx, resolveCurrent, separateCharts, series, sortCategories, toCsv, undo, widgetFromQuery,
+  pxToWidth, record, redo, removeMetric, sameConfig, resized, resolveCompare, snapHeight, snapWidth, widthCss, widthToPx, resolveCurrent, separateCharts, series, sortCategories, toCsv, undo, widgetFromQuery,
   withDashboardFilter, withOption,
 } from './dashboardModel';
 
@@ -42,6 +42,32 @@ describe('widgets', () => {
       .toBe("orders can't be broken down by order__channel");
     expect(addMetric(w('a', { type: 'bar', metrics: [] }), 'orders', CATALOG).widget?.options).toEqual({ dimension: 'customer__region' });
     expect(removeMetric(w('a', { metrics: ['revenue', 'orders'] }), 'revenue').metrics).toEqual(['orders']);
+  });
+
+  it('replacing the only metric drops breakdowns the new one lacks, keeping the rest', () => {
+    // remove revenue, then add orders: order__channel was revenue's, so it goes and a shared dimension is picked
+    const emptied = removeMetric(w('a', { type: 'bar', options: { dimension: 'order__channel', stack_by: 'customer__region', top_n: 5 } }), 'revenue');
+    expect(addMetric(emptied, 'orders', CATALOG).widget?.options).toEqual({ dimension: 'customer__region', top_n: 5 });
+    const split = removeMetric(w('a', { type: 'timeseries', options: { split_by: 'order__channel' } }), 'revenue');
+    expect(addMetric(split, 'orders', CATALOG).widget?.options).toEqual({});
+    const table = removeMetric(w('a', { type: 'table', options: { dimensions: ['order__channel', 'customer__region'] } }), 'revenue');
+    expect(addMetric(table, 'orders', CATALOG).widget?.options).toEqual({ dimensions: ['customer__region'] });
+    // a breakdown the new metric has is kept
+    const kept = removeMetric(w('a', { type: 'bar', options: { dimension: 'customer__region' } }), 'revenue');
+    expect(addMetric(kept, 'orders', CATALOG).widget?.options).toEqual({ dimension: 'customer__region' });
+  });
+
+  it('compares widget settings ignoring size, key order and empty fields', () => {
+    const a = w('a', { options: { top_n: 5, dimension: 'x' } });
+    expect(sameConfig(a, { ...a, width: 90, height: 400, options: { dimension: 'x', top_n: 5 } })).toBe(true);
+    expect(sameConfig(a, { ...a, title: undefined })).toBe(true);
+    expect(sameConfig(a, { ...a, options: { dimension: 'y', top_n: 5 } })).toBe(false);
+    expect(sameConfig(a, { ...a, metrics: ['orders'] })).toBe(false);
+  });
+
+  it("refuses a second metric that can't take a table's row dimensions", () => {
+    expect(addMetric(w('a', { type: 'table', options: { dimensions: ['order__channel'] } }), 'orders', CATALOG).error)
+      .toBe("orders can't be broken down by order__channel");
   });
 
   it('sets and clears options', () => {

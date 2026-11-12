@@ -14,6 +14,8 @@ build, they tell you whether the change you just made moved a metric.
 1. Open **Metrics → Monitors** and click **New monitor**, or click **Monitor** on a
    metric's page (the metric and the page's grain carry over).
 2. Choose:
+   - **Metric**: click it to search, with the same **Model** and **Type** filters as the
+     Metrics sidebar (↑/↓ and Enter work too).
    - **Grain**: day, week or month.
    - **Slice by** (optional): one categorical dimension. wickd watches its top 10
      values separately (by total over the history window), recomputed weekly.

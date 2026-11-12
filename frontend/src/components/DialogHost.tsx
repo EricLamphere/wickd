@@ -79,7 +79,7 @@ function Dialog({ dialog }: { dialog: DialogRequest }) {
               onClick={cancel}
               className="px-3 py-1.5 text-xs rounded border border-gray-700 bg-surface-elevated text-gray-300 hover:bg-gray-700"
             >
-              Cancel
+              {dialog.cancelLabel ?? 'Cancel'}
             </button>
           )}
           <button ref={okRef} onClick={ok} className={`px-3 py-1.5 text-xs rounded font-medium ${okClass}`}>

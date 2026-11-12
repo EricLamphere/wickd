@@ -3,7 +3,7 @@ import type { GraphDto, ModelNode } from '../../../../lib/api';
 import type { DashboardSummaryDto } from '../../../../lib/dashboardsApi';
 import type { CatalogMetric, QueryBatchItemDto, SemanticCatalogDto, SemanticIssue } from '../../../../lib/semanticApi';
 import {
-  autoGrain, calculationParts, chartQueries, dimensionGroups, pageQueries, pageResult, readableFilter, WIDGET_ROLES, groupMetrics, metricIssues, metricLineage, metricPageSearch, metricUsage, searchMetrics, usageCount,
+  autoGrain, calculationParts, chartQueries, dimensionGroups, pageQueries, pageResult, readableFilter, WIDGET_ROLES, groupMetrics, metricIssues, metricLineage, metricPageSearch, metricUsage, usageCount,
 } from './metricPage';
 
 const node = (uid: string, resource_type: string): ModelNode => ({
@@ -102,7 +102,7 @@ describe('metricPage', () => {
     expect(metricIssues(issues, 'revenue', ['sm_orders']).map((i) => i.message)).toEqual(['revenue', 'sm_orders']);
   });
 
-  it('groups and searches the index', () => {
+  it('groups the index', () => {
     const metrics = [
       metric('ratio', ['a', 'b'], { type: 'ratio' }), metric('z_rev', ['orders'], { label: 'Revenue' }),
       metric('count', ['orders']), metric('lonely', []), metric('users', ['customers'], { description: 'Active buyers' }),
@@ -110,10 +110,6 @@ describe('metricPage', () => {
     expect(groupMetrics(metrics).map(([g, list]) => [g, list.map((m) => m.name)])).toEqual([
       ['customers', ['users']], ['orders', ['count', 'z_rev']], ['Across models', ['ratio']], ['Other', ['lonely']],
     ]);
-    expect(searchMetrics(metrics, 'revenue').map((m) => m.name)).toEqual(['z_rev']);
-    expect(searchMetrics(metrics, 'BUYERS').map((m) => m.name)).toEqual(['users']);
-    expect(searchMetrics(metrics, 'ratio').map((m) => m.name)).toEqual(['ratio']);
-    expect(searchMetrics(metrics, ' ')).toHaveLength(5);
   });
 
   it('groups dimensions by entity, time last', () => {

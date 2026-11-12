@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { MonitorCreateBody, MonitorGrain, MonitorSensitivity } from '../../../../lib/monitorsApi';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
+import { MetricChooser } from '../MetricChooser';
 
 export interface MonitorDraft {
   metric: string;
@@ -65,12 +66,10 @@ export function CreateMonitorDialog({ catalog, initial, targets, busy, error, on
           <button onClick={onClose} aria-label="Close" className="text-gray-500 hover:text-gray-200"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex flex-col gap-3 px-5 py-4 text-xs">
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="text-gray-400">Metric</span>
-            <select value={metric} onChange={(e) => setMetric(e.target.value)} className={FIELD_CLS}>
-              {catalog.metrics.map((m) => <option key={m.name} value={m.name}>{m.label || m.name}</option>)}
-            </select>
-          </label>
+            <MetricChooser catalog={catalog} value={metric || null} onPick={setMetric} ariaLabel="Metric" />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-gray-400">Grain</span>

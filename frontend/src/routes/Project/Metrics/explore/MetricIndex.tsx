@@ -2,20 +2,22 @@
 // a sparkline of its stored result for the chosen period (never runs on open; "Run all" runs
 // every card in one dbt show), where it's used and whether it has issues. Click → its page.
 // Above the cards, the query composer as an entry box: Enter opens the query view with the line.
-import { useMemo, useState } from 'react';
-import { AlertTriangle, Loader2, Play, Search } from 'lucide-react';
+import { useMemo } from 'react';
+import { AlertTriangle, Loader2, Play } from 'lucide-react';
 import { Sparkline } from '../../../../components/charts/Sparkline';
 import type { DashboardWidget } from '../../../../lib/dashboardsApi';
 import type { CatalogMetric, QueryBatchItemDto, SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { relativeTime } from '../../lib/relativeTime';
 import { statusStyle } from '../monitors/monitorView';
 import { formatTime, formatValue, parseTime, toNumber } from '../lib/metricSeries';
-import { chartQueries, groupMetrics, metricIssues, metricUsage, searchMetrics, usageCount, type MetricPeriod } from '../lib/metricPage';
+import { chartQueries, groupMetrics, metricIssues, metricUsage, usageCount, type MetricPeriod } from '../lib/metricPage';
 import { TYPE_CLS } from '../MetricsSidebar';
 import { emptyExploreWidget } from '../lib/exploreWidget';
 import { Composer } from './Composer';
 import { PeriodControl } from './PeriodControl';
 import { useMetricContext, useMetricSparklines } from './useMetricPages';
+import { filterMetrics } from '../lib/sidebarFilter';
+import { MetricFilterBar, useMetricFilter } from '../MetricFilterBar';
 
 interface Props {
   projectId: number;
@@ -78,8 +80,8 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
 }
 
 export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onExplore, labels }: Props) {
-  const [search, setSearch] = useState('');
-  const shown = useMemo(() => searchMetrics(catalog.metrics, search), [catalog.metrics, search]);
+  const { filter, update } = useMetricFilter();
+  const shown = useMemo(() => filterMetrics(catalog.metrics, filter), [catalog.metrics, filter]);
   const names = useMemo(() => catalog.metrics.map((m) => m.name), [catalog.metrics]);
   const spark = useMetricSparklines(projectId, names, period);
   const ctx = useMetricContext(projectId);
@@ -91,11 +93,7 @@ export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onEx
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-sm font-semibold text-gray-100">Metrics</h2>
         <span className="text-[11px] text-gray-500">{catalog.metrics.length}</span>
-        <label className="flex items-center gap-1.5 flex-1 min-w-[12rem] max-w-sm px-2 py-1 rounded border border-gray-700 bg-surface-app">
-          <Search className="w-3.5 h-3.5 text-gray-500" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search metrics" aria-label="Search metrics"
-            className="flex-1 min-w-0 bg-transparent text-xs text-gray-200 outline-none" />
-        </label>
+        <MetricFilterBar metrics={catalog.metrics} filter={filter} onChange={update} row />
         <div className="flex-1" />
         <PeriodControl period={period} onChange={onPeriod} compare={false} />
         <button onClick={() => spark.run()} disabled={spark.running || !names.length}
@@ -108,7 +106,7 @@ export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onEx
       <Composer projectId={projectId} catalog={catalog} labels={labels} widget={ENTRY_WIDGET} onCommit={onExplore}
         showPeriod={false} clearOnCommit className="w-full max-w-3xl" placeholder="Ask your metrics: revenue by customer__region last 90 days vs last year — Enter opens it" />
       {spark.runError && <p className="text-xs text-red-300">{String((spark.runError as Error).message ?? spark.runError)}</p>}
-      {shown.length === 0 && <p className="text-xs text-gray-500">No metric matches “{search}”.</p>}
+      {shown.length === 0 && <p className="text-xs text-gray-500">No metrics match.</p>}
       {groupMetrics(shown).map(([group, metrics]) => (
         <section key={group} className="flex flex-col gap-2">
           <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{group}</h3>

@@ -102,7 +102,27 @@ export function newWidget(type: WidgetType, taken: Iterable<string>, metrics: st
   return widget;
 }
 
-export type AddResult = { widget: DashboardWidget; error?: undefined } | { widget?: undefined; error: string };
+const BREAKDOWN_KEYS = ['dimension', 'stack_by', 'split_by'] as const;
+
+/** The dimensions a widget's options break it down by (bar / Top N / split / stack / table rows). */
+function breakdowns(options: Record<string, unknown>): string[] {
+  const single = BREAKDOWN_KEYS.map((k) => options[k]).filter((d): d is string => typeof d === 'string');
+  const rows = Array.isArray(options.dimensions) ? options.dimensions.filter((d): d is string => typeof d === 'string') : [];
+  return [...single, ...rows];
+}
+
+/** `options` without breakdowns outside `dims`. */
+function withoutBreakdowns(options: Record<string, unknown>, dims: Set<string>): Record<string, unknown> {
+  const next = Object.fromEntries(Object.entries(options).filter(([k, v]) =>
+    !(BREAKDOWN_KEYS as readonly string[]).includes(k) || typeof v !== 'string' || dims.has(v)));
+  if (Array.isArray(options.dimensions)) {
+    const rows = options.dimensions.filter((d) => typeof d === 'string' && dims.has(d));
+    if (rows.length) next.dimensions = rows; else delete next.dimensions;
+  }
+  return next;
+}
+
+export type AddResult ={ widget: DashboardWidget; error?: undefined } | { widget?: undefined; error: string };
 
 /** `widget` with `metric` added, or why it can't take it. */
 export function addMetric(widget: DashboardWidget, metric: string, catalog: SemanticCatalogDto): AddResult {
@@ -113,17 +133,22 @@ export function addMetric(widget: DashboardWidget, metric: string, catalog: Sema
   if (metrics.length >= info.maxMetrics) {
     return { error: info.maxMetrics === 1 ? `${info.label} shows one metric` : `${info.label} shows up to ${info.maxMetrics} metrics` };
   }
-  const options = widget.options ?? {};
   const dims = metricDimensions(catalog, metric);
-  for (const key of ['dimension', 'stack_by', 'split_by'] as const) {
-    const dim = options[key];
-    if (typeof dim === 'string' && !dims.has(dim)) return { error: `${metric} can't be broken down by ${dim}` };
-  }
-  const next = { ...widget, metrics: [...metrics, metric] };
+  const missing = breakdowns(widget.options ?? {}).find((d) => !dims.has(d));
+  // With other metrics left, the breakdowns were chosen for them; with none (the metric is being
+  // replaced) they're leftovers: drop the ones the new metric can't use
+  if (missing && metrics.length) return { error: `${metric} can't be broken down by ${missing}` };
+  const options = metrics.length ? widget.options ?? {} : withoutBreakdowns(widget.options ?? {}, dims);
+  const next = { ...widget, metrics: [...metrics, metric], ...(widget.options ? { options } : {}) };
   // A bar or Top N without a dimension picks one once it has a metric
   if ((widget.type === 'bar' || widget.type === 'leaderboard') && !options.dimension) {
-    const dimension = sharedDimensions(catalog, next.metrics)[0];
-    if (dimension) return { widget: { ...next, options: { ...options, dimension } } };
+    const shared = sharedDimensions(catalog, next.metrics);
+    const dimension = shared.find((d) => d !== options.stack_by) ?? shared[0];
+    if (dimension) {
+      // stacked by its own bars makes no sense: the stack goes
+      const { stack_by: stack, ...rest } = options;
+      return { widget: { ...next, options: { ...(stack === dimension ? rest : options), dimension } } };
+    }
   }
   return { widget: next };
 }
@@ -153,6 +178,21 @@ export function withOption(widget: DashboardWidget, key: string, value: unknown)
 }
 
 // ── layout ───────────────────────────────────────────────────────────────────
+
+/** The same settings, ignoring size (resizing applies at once; settings wait for Apply). */
+export function sameConfig(a: DashboardWidget, b: DashboardWidget): boolean {
+  return canonical({ ...a, width: 0, height: 0 }) === canonical({ ...b, width: 0, height: 0 });
+}
+
+/** JSON with object keys sorted, and undefined fields left out, so key order doesn't matter. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value).filter(([, v]) => v !== undefined).sort(([x], [y]) => x.localeCompare(y));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
 
 export function replaceWidget(doc: DashboardDoc, widget: DashboardWidget): DashboardDoc {
   return { ...doc, widgets: doc.widgets.map((w) => (w.id === widget.id ? widget : w)) };

@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DndContext, DragOverlay, defaultDropAnimationSideEffects, type DropAnimation } from '@dnd-kit/core';
 import { dashboardsApi, type DashboardDoc, type DashboardWidget, type WidgetType } from '../../../../../lib/dashboardsApi';
-import { alertDialog, confirmDialog, promptDialog } from '../../../../../lib/dialogs';
+import { alertDialog, confirmDialog, currentDialog, promptDialog } from '../../../../../lib/dialogs';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
 import { statusesByMetric, widgetMonitorState } from '../../monitors/monitorView';
@@ -24,6 +24,7 @@ import { MetricsRail, type RailItem } from './MetricsRail';
 import { PeriodBar } from './PeriodBar';
 import { useBuilderDnd } from './useBuilderDnd';
 import { useDashboardEditor } from './useDashboardEditor';
+import { useWidgetDraft } from './useWidgetDraft';
 import { WidgetsRail, type RailTab } from './WidgetsRail';
 import { WidgetFrame } from '../widgets/WidgetFrame';
 import { aiApi, type AiProposalDto } from '../../../../../lib/aiApi';
@@ -109,8 +110,28 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
   const editor = useDashboardEditor(projectId, slug, detail.data, onSaved);
   savedDocRef.current = editor.savedDoc;
   const { doc, apply } = editor;
-  const select = useCallback((widget: DashboardWidget) => { setSelected(widget.id); setTab('configure'); }, []);
-  const dnd = useBuilderDnd({ doc, catalog, labels, apply, onCreated: select, onNotice: setNotice });
+  const savedSelected = doc?.widgets.find((w) => w.id === selected) ?? null;
+  const commitWidget = useCallback((w: DashboardWidget) => apply((d) => replaceWidget(d, w)), [apply]);
+  const draft = useWidgetDraft(savedSelected, savedSelected ? widgetTitle(savedSelected, labels) : '', commitWidget);
+  const { settle } = draft;
+  /** Move the selection (or leave): unapplied Configure changes are applied or discarded first. */
+  const leave = useCallback(async (then: () => void) => { await settle(); then(); }, [settle]);
+  const select = useCallback((widget: DashboardWidget) => {
+    if (widget.id === selected) { setTab('configure'); return; }
+    void leave(() => { setSelected(widget.id); setTab('configure'); });
+  }, [selected, leave]);
+  /** A metric added to a widget: into the draft while it's being configured, else saved at once. */
+  const addTo = (widget: DashboardWidget, metric: string): string | null => {
+    const editing = widget.id === selected;
+    const result = addMetric(editing && draft.shown ? draft.shown : widget, metric, catalog);
+    if (!result.widget) return result.error;
+    if (editing) draft.edit(result.widget); else commitWidget(result.widget);
+    return null;
+  };
+  const dnd = useBuilderDnd({
+    doc, catalog, labels, apply, onCreated: select, onNotice: setNotice, addTo,
+    editing: (w) => (w.id === selected && draft.shown ? draft.shown : w),
+  });
 
   useEffect(() => {
     if (!notice) return;
@@ -118,17 +139,21 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
     return () => clearTimeout(t);
   }, [notice]);
 
+  const { dirty: draftDirty, apply: applyDraft } = draft;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (present) setPresent(false); else setSelected(null); return; }
-      if (typing(e.target) || present) return;
+      if (currentDialog()) return;
       const mod = e.metaKey || e.ctrlKey;
+      if (e.key === 'Escape') { if (present) setPresent(false); else void leave(() => setSelected(null)); return; }
+      // ⌘Enter applies the Configure tab's changes, from any of its fields
+      if (mod && e.key === 'Enter' && draftDirty) { e.preventDefault(); applyDraft(); return; }
+      if (typing(e.target) || present) return;
       if (mod && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) editor.redo(); else editor.undo(); }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { e.preventDefault(); apply((d) => removeWidget(d, selected)); setSelected(null); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editor, apply, present, selected]);
+  }, [editor, apply, present, selected, leave, draftDirty, applyDraft]);
 
   const byId = useMemo(() => new Map((results.data?.widgets ?? []).map((r) => [r.widget_id, r])), [results.data]);
 
@@ -153,9 +178,9 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
   const addFromRail = (item: RailItem) => {
     if (item.kind === 'saved') { const w = widgetFromQuery({ saved_query: item.name }, catalog, ids); apply((d) => insertWidget(d, w)); select(w); return; }
     if (selectedWidget) {
-      const result = addMetric(selectedWidget, item.name, catalog);
-      if (result.widget) { apply((d) => replaceWidget(d, result.widget)); return; }
-      setNotice(`${result.error} — added a new widget instead`);
+      const error = addTo(selectedWidget, item.name);
+      if (!error) return;
+      setNotice(`${error} — added a new widget instead`);
     }
     const w = newWidget('summary', ids, [item.name], catalog);
     apply((d) => insertWidget(d, w));
@@ -284,8 +309,8 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
                 : 'Unlinked the exposure from this dashboard.');
             }}
             canUndo={editor.canUndo} canRedo={editor.canRedo} running={anyRunning(runs)} target={results.data?.target ?? target}
-            hasMetrics={hasMetrics} hasWidgets={doc.widgets.length > 0} onBack={onBack} onRename={rename} onUndo={editor.undo}
-            onRedo={editor.redo} onPresent={() => { setPresent((p) => !p); setSelected(null); }} onExposure={registerExposure}
+            hasMetrics={hasMetrics} hasWidgets={doc.widgets.length > 0} onBack={() => void leave(onBack)} onRename={rename} onUndo={editor.undo}
+            onRedo={editor.redo} onPresent={() => void leave(() => { setPresent((p) => !p); setSelected(null); })} onExposure={registerExposure}
             onExport={() => setExporting(true)} onDelete={remove} onRefresh={() => run()}
             onReload={async () => { const latest = await detail.refetch(); if (latest.data) editor.reload(latest.data); }} />
           <PeriodBar projectId={projectId} doc={doc} catalog={catalog} onChange={(next) => apply(() => next)}
@@ -298,15 +323,16 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
               <p className="sticky top-0 z-20 px-4 py-2 text-xs text-center text-red-300 bg-red-950/60">{errorText(results.error)}</p>
             )}
             <Canvas widgets={dnd.ordered(doc.widgets)} present={present} frameProps={frameProps} gridRef={gridRef}
-              onClearSelection={() => { setSelected(null); setTab('widgets'); }}
+              onClearSelection={() => void leave(() => { setSelected(null); setTab('widgets'); })}
               dropping={!!dnd.active && dnd.active.kind !== 'widget'}
               canvasWidth={canvasWidthOf(doc)} onCanvasWidth={(px) => apply((d) => ({ ...d, canvas_width: px }))}
               insetLeft={present ? 0 : leftRail.width} insetRight={present ? 0 : rightRail.width} />
           </div>
           {!present && <MetricsRail catalog={catalog} labels={labels} inUse={metricsInUse(doc)} monitorStatuses={monitorStatuses} onAdd={addFromRail} rail={leftRail} />}
           {!present && (
-            <WidgetsRail tab={tab} onTab={setTab} widget={selectedWidget} onAddType={addType} projectId={projectId} doc={doc}
-              catalog={catalog} labels={labels} onNotice={setNotice} onChange={(w) => apply((d) => replaceWidget(d, w))} rail={rightRail}
+            <WidgetsRail tab={tab} onTab={setTab} widget={draft.shown} onAddType={addType} projectId={projectId} doc={doc}
+              catalog={catalog} labels={labels} onNotice={setNotice} onChange={draft.edit} rail={rightRail}
+              dirty={draft.dirty} onApply={draft.apply} onDiscard={draft.discard}
               canvasWidth={canvasWidthOf(doc)} onCanvasWidth={(px) => apply((d) => ({ ...d, canvas_width: px }))} />
           )}
         </div>

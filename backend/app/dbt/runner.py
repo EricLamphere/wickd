@@ -44,6 +44,20 @@ def command_line(req: RunRequest) -> str:
     return shlex.join(parts)
 
 
+# `dbt show` only reads: skip populating the relation cache, which lists every schema's relations
+# first (on Athena/Glue that took over a minute before a 1-second query). Ignored before dbt 1.5.
+_NO_CACHE_COMMANDS = frozenset({"show"})
+
+
+def process_env(req: RunRequest) -> dict[str, str] | None:
+    """The environment dbt runs with: the request's (None = inherit), plus DBT_POPULATE_CACHE=false
+    for read-only commands unless the user set it themselves. Never changes `req.env`."""
+    if req.command not in _NO_CACHE_COMMANDS:
+        return req.env
+    base = dict(os.environ if req.env is None else req.env)
+    return {**base, "DBT_POPULATE_CACHE": base.get("DBT_POPULATE_CACHE", "false")}
+
+
 def command_label(req: RunRequest) -> str:
     """The operation's name for the UI: the command and its subcommand words, up to the first flag
     (`source freshness`, `run-operation my_macro`, `compile`)."""
@@ -171,7 +185,7 @@ class DbtRunner:
                 cwd=str(req.project_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env=req.env,
+                env=process_env(req),
             )
             try:
                 stdout_bytes, stderr_bytes = await proc.communicate()
@@ -200,7 +214,7 @@ class DbtRunner:
                 cwd=str(req.project_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                env=req.env,
+                env=process_env(req),
                 limit=RUN_LINES_LIMIT,
                 start_new_session=True,  # its own process group, so stopping it stops its children too
             )
@@ -279,7 +293,7 @@ class DbtRunner:
                 cwd=str(req.project_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                env=req.env,
+                env=process_env(req),
             )
         except FileNotFoundError:
             await bus.publish(

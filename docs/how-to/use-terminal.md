@@ -1,6 +1,6 @@
 # How to Use the Integrated Terminal
 
-wickd includes an integrated bash/zsh terminal available from any project page. Use it to run dbt commands manually, inspect files, or run any shell command in the context of your project.
+wickd includes an integrated bash/zsh terminal available from any project page, and from the home page's bottom pane (where it opens in your first projects folder, or your home folder if none is set). Use it to run dbt commands manually, inspect files, or run any shell command in the context of your project.
 
 ## Opening the terminal
 

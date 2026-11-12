@@ -56,6 +56,9 @@ export const workspaceApi = {
   generateDocs: (projectIds: number[]) =>
     post<{ queued: number[] }>('/workspace/docs/generate', { project_ids: projectIds }),
   profile: () => get<{ profile_id: number | null }>('/workspace/docs/profile'),
+  /** Home page bottom pane: Project Logs (combined docs runs only) and API Logs. */
+  logs: (kind: 'project' | 'api', tail = 500) => get<{ lines: string[] }>(`/workspace/logs/${kind}?tail=${tail}`),
+  clearLogs: (kind: 'project' | 'api') => del<{ ok: boolean }>(`/workspace/logs/${kind}`),
   setProfile: (profileId: number | null) =>
     put<{ profile_id: number | null }>('/workspace/docs/profile', { profile_id: profileId }),
 

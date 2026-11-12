@@ -433,3 +433,25 @@ async def test_pipeline_reports_the_failed_step(tmp_path, monkeypatch):
     failure = await init_api.run_init_for_docs(pid)
 
     assert failure == init_api.InitFailure(step="custom: creds", log_lines=("login refused",))
+
+
+async def test_generation_writes_the_home_page_project_log(client, tmp_path):
+    from app.logs.project_logger import append_project_log
+    from app.logs.workspace_logger import read_workspace_log_tail
+
+    a = await _project("alpha", tmp_path)
+
+    async def fake_generate(project_id: int, path: str, env: dict | None = None):
+        append_project_log(path, ">>> dbt docs generate", project_id)
+        return True, []
+
+    with patch.object(workspace_docs, "_generate_docs", side_effect=fake_generate):
+        await client.post("/api/workspace/docs/generate", json={"project_ids": [a]})
+        await workspace_docs.wait_for_generation()
+
+    bodies = [line.split("  ", 1)[1] for line in read_workspace_log_tail()]
+    assert bodies == [
+        "=== alpha: init steps + docs generate ===",
+        "[alpha] >>> dbt docs generate",
+        "=== alpha: finished ===",
+    ]

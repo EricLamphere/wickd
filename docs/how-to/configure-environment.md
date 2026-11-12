@@ -141,7 +141,7 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 Global settings are shown for reference but can only be edited in the Global Settings modal:
 
-- **WICKD_PROJECTS_PATH** — the workspace directory scanned for dbt projects
+- **WICKD_PROJECTS_PATH** — the workspace directory scanned for dbt projects. List several folders separated by commas (`~/dbt-projects, ~/work/dbt`) and wickd treats them as one: every folder is scanned, and new projects are created in the first
 - **WICKD_GLOBAL_REQUIREMENTS_PATH** — a global `requirements.txt` installed for every project
 - **WICKD_DBT_CORE_VERSION** — the dbt-core release **Run global setup** installs when there's no global requirements file (blank = latest)
 - **WICKD_LOG_LEVEL** — logging verbosity

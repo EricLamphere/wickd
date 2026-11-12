@@ -15,7 +15,8 @@ import {
   connectorState, laneCenterPct, laneOffsetPct,
   seedStepStates, type StepRunState, type StepStatus,
 } from './components/InitPipeline/flow';
-import { alertDialog, alertError, confirmDialog } from '../../lib/dialogs';
+import { alertDialog, alertError, confirmDialog, confirmWithOptionDialog } from '../../lib/dialogs';
+import { bareStepName, ownsScript, removeStepMessage } from './components/InitPipeline/removeStep';
 
 // Stable reference for the "no data yet" default below — `data: steps = []`
 // would otherwise allocate a brand-new empty array on every render where the
@@ -125,11 +126,10 @@ export default function InitScriptsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (name: string) => {
-      const bareName = name.replace(/^custom:\s*/, '');
-      return api.init.deleteStep(id, bareName);
-    },
+    mutationFn: ({ name, deleteScript }: { name: string; deleteScript: boolean }) =>
+      api.init.deleteStep(id, bareStepName(name), deleteScript),
     onSuccess: invalidate,
+    onError: alertError,
   });
 
   const [newStepOpen, setNewStepOpen] = useState(false);
@@ -328,8 +328,18 @@ export default function InitScriptsPage() {
   const statusOf = (name: string): StepStatus => stepStates[name]?.status ?? 'idle';
 
   const handleDelete = async (step: InitStepDto) => {
-    if (!await confirmDialog(`Delete script "${step.name.replace(/^custom:\s*/, '')}"? This cannot be undone.`, { confirmLabel: 'Delete', danger: true })) return;
-    deleteMutation.mutate(step.name);
+    const owned = ownsScript(step, project?.path ?? '', project?.init_script_path ?? '');
+    const message = removeStepMessage(step, owned);
+    if (!owned) {
+      if (await confirmDialog(message, { title: 'Remove step', confirmLabel: 'Remove' })) {
+        deleteMutation.mutate({ name: step.name, deleteScript: false });
+      }
+      return;
+    }
+    const answer = await confirmWithOptionDialog(message, 'Also delete the script file (cannot be undone)', {
+      title: 'Remove step', confirmLabel: 'Remove',
+    });
+    if (answer) deleteMutation.mutate({ name: step.name, deleteScript: answer.checked });
   };
 
   // Persisted status (survives navigation + restarts); local SSE-driven state

@@ -21,6 +21,7 @@ from app.api.init import load_project_env, run_init_for_docs
 from app.db.engine import get_session
 from app.db.models import AppSetting, GlobalProfile, Project
 from app.logging_setup import get_logger
+from app.logs.workspace_logger import append_workspace_log, workspace_log_scope
 from app.projects import docs_state
 from app.projects.service import wait_for_startup_scan
 
@@ -183,25 +184,31 @@ async def put_profile(
     return dto
 
 
-async def _init_then_generate(project_id: int, path: str, profile_id: int | None) -> None:
-    await docs_state.mark(project_id, "initializing")
-    failure = await run_init_for_docs(project_id, profile_id=profile_id)
-    if failure is not None:
-        tail = docs_state.failure_summary(list(failure.log_lines))
-        await docs_state.mark(project_id, "error", f"Init step '{failure.step}' failed:\n{tail}")
-        return
-    # Loaded after the pipeline, so vars its scripts just captured are included
-    env = await load_project_env(project_id, profile_id=profile_id)
-    await _generate_docs(project_id, path, env=env)
+async def _init_then_generate(project_id: int, path: str, profile_id: int | None, name: str) -> None:
+    # Everything this project's run logs is mirrored to the home page's Project Logs
+    with workspace_log_scope(name):
+        append_workspace_log(f"=== {name}: init steps + docs generate ===")
+        await docs_state.mark(project_id, "initializing")
+        failure = await run_init_for_docs(project_id, profile_id=profile_id)
+        if failure is not None:
+            tail = docs_state.failure_summary(list(failure.log_lines))
+            await docs_state.mark(project_id, "error", f"Init step '{failure.step}' failed:\n{tail}")
+            append_workspace_log(f"=== {name}: FAILED at init step '{failure.step}' ===")
+            return
+        # Loaded after the pipeline, so vars its scripts just captured are included
+        env = await load_project_env(project_id, profile_id=profile_id)
+        await _generate_docs(project_id, path, env=env)
+        append_workspace_log(f"=== {name}: finished ===")
 
 
-async def _generate_in_turn(targets: list[tuple[int, str]], profile_id: int | None) -> None:
+async def _generate_in_turn(targets: list[tuple[int, str, str]], profile_id: int | None) -> None:
     async with _generation_lock:
-        for project_id, path in targets:
+        for project_id, path, name in targets:
             try:
-                await _init_then_generate(project_id, path, profile_id)
+                await _init_then_generate(project_id, path, profile_id, name)
             except Exception as exc:  # noqa: BLE001 — one project's failure must not stop the rest
                 log.warning("combined_docs_generate_failed", project_id=project_id, error=str(exc))
+                append_workspace_log(f"=== {name}: FAILED: {exc} ===")
                 await docs_state.mark(project_id, "error", str(exc))
 
 
@@ -213,7 +220,9 @@ async def generate(dto: GenerateDto, session: AsyncSession = Depends(get_session
     for project_id in wanted:
         await docs_state.mark(project_id, "queued")
     if wanted:
-        task = asyncio.create_task(_generate_in_turn([(i, by_id[i].path) for i in wanted], profile_id))
+        task = asyncio.create_task(
+            _generate_in_turn([(i, by_id[i].path, by_id[i].name) for i in wanted], profile_id)
+        )
         _generation_tasks.add(task)
         task.add_done_callback(_generation_tasks.discard)
     return GenerateResultDto(queued=wanted)

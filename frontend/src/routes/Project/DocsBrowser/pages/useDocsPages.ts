@@ -7,6 +7,7 @@ import { openExternal } from '../../../../lib/openExternal';
 import { useProjectEvents } from '../../../../lib/sse';
 import { pageNodeId } from '../../lib/docsLastView';
 import { buildNodeResolver, type LinkTarget, type NodeRefKind } from '../../lib/docsPageLinks';
+import { useDocsScope } from '../docsScope';
 
 /** The project's docs pages, kept fresh by `docs_pages_changed` (and manifest changes for docs block usage). */
 export function useDocsPagesList(projectId: number) {
@@ -57,10 +58,12 @@ export function scrollToAnchor(root: HTMLElement | null, id: string): void {
 export function useMarkdownLinkHandler(projectId: number, containerRef: RefObject<HTMLElement | null>, inDocs: boolean) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // Combined docs (home page) address nodes and pages with their project
+  const { nodeParam } = useDocsScope();
   return useCallback((target: LinkTarget) => {
     const openDocs = (node: string, browse: string | null, anchor: string | null) => {
       const params = inDocs ? new URLSearchParams(searchParams) : new URLSearchParams();
-      params.set('node', node);
+      params.set('node', inDocs ? nodeParam(node) : node);
       params.delete('view');
       if (browse) params.set('browse', browse);
       const hash = anchor ? `#${encodeURIComponent(anchor)}` : '';
@@ -74,5 +77,5 @@ export function useMarkdownLinkHandler(projectId: number, containerRef: RefObjec
       case 'node': openDocs(target.uid, searchParams.get('browse') === 'pages' || !inDocs ? 'project' : null, null); return;
       default: return;
     }
-  }, [containerRef, inDocs, navigate, projectId, searchParams]);
+  }, [containerRef, inDocs, navigate, nodeParam, projectId, searchParams]);
 }

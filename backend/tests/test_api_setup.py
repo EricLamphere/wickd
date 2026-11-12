@@ -529,3 +529,35 @@ async def test_dbt_core_versions_unreachable_is_502(client: AsyncClient, monkeyp
     resp = await client.get("/api/setup/dbt-core-versions")
     assert resp.status_code == 502
     assert resp.json()["detail"] == "offline"
+
+
+# ---- several projects folders (comma separated) ----
+
+
+async def test_several_projects_folders_saved_and_scanned(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    a, b = tmp_path / "a", tmp_path / "b"
+    for root, name in ((a, "alpha"), (b, "beta")):
+        (root / name).mkdir(parents=True)
+        (root / name / "dbt_project.yml").write_text(f"name: {name}\nprofile: {name}\n")
+
+    resp = await client.post("/api/setup/complete", json=_body(Path(f"{a} , {b},")))
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dbt_projects_path"] == f"{a}, {b}"
+    names = {p["name"] for p in (await client.get("/api/projects")).json()}
+    assert {"alpha", "beta"} <= names
+
+
+async def test_any_missing_folder_rejected_before_creating(
+    client: AsyncClient, tmp_path: Path, python_changes: list[str]
+) -> None:
+    new_dir = tmp_path / "new"
+    resp = await client.post(
+        "/api/setup/complete", json=_body(Path(f"{new_dir}, relative/path"), create_projects_dir=True)
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["field"] == "dbt_projects_path"
+    assert not new_dir.exists()

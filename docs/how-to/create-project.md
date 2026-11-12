@@ -47,7 +47,7 @@ Once the pipeline finishes, the project compiles automatically and the DAG becom
 
 **`dbt init` prompts seem stuck** — Try pressing Enter. Some adapters have optional prompts that require an explicit confirmation.
 
-**Project doesn't appear after close** — Click **Rescan** on the Home page to re-discover projects. If the project directory is outside `WICKD_PROJECTS_PATH`, update the path in Global Settings.
+**Project doesn't appear after close** — Click **Rescan** on the Home page to re-discover projects. If the project directory is outside `WICKD_PROJECTS_PATH`, update the path in Global Settings (or add its folder to the list, comma separated).
 
 **`profiles.yml` is missing or incorrect** — Navigate to the project's Environment tab to view the active `profiles.yml`. You can edit it directly in the File Explorer.
 

@@ -32,14 +32,15 @@ export function ProjectsStep({ form, update, error, onEnter }: StepProps) {
     <>
       <StepHeading title="Where are your dbt projects?">
         wickd scans this folder (and its subfolders) for <InlineCode className="text-gray-300">dbt_project.yml</InlineCode> files.
-        New projects you create in wickd go here too.
+        New projects you create in wickd go here too. Projects in several places? List the folders separated by
+        commas; the first is where new projects go.
       </StepHeading>
       <PathInput
         label="Projects folder"
         value={form.projectsPath}
         onChange={(projectsPath) => update({ projectsPath })}
         onEnter={onEnter}
-        placeholder="~/dbt-projects"
+        placeholder="~/dbt-projects, ~/work/dbt"
         error={error}
       />
       <label className="flex items-center gap-2 mt-3 text-xs text-gray-400 cursor-pointer">
@@ -49,7 +50,7 @@ export function ProjectsStep({ form, update, error, onEnter }: StepProps) {
           onChange={(e) => update({ createProjectsDir: e.target.checked })}
           className="accent-brand-500"
         />
-        Create this folder if it doesn't exist
+        Create missing folders
       </label>
     </>
   );

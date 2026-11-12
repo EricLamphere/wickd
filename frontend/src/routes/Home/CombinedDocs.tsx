@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
-import { BookOpen, ChevronsDownUp, Database, ExternalLink, LayoutGrid, Loader2, RefreshCw, Search } from 'lucide-react';
+import { BookOpen, ChevronsDownUp, Database, ExternalLink, FileText, LayoutGrid, Loader2, RefreshCw, Search } from 'lucide-react';
 import { api, type DocsDataDto } from '../../lib/api';
 import { isDocsRunActive } from '../../lib/workspaceApi';
 import { useUrlTab } from '../../lib/useUrlTab';
@@ -14,22 +14,25 @@ import { NodeDetail } from '../Project/DocsBrowser/NodeDetail';
 import { ProjectOverview } from '../Project/DocsBrowser/ProjectOverview';
 import { useExpandedSet } from '../Project/DocsBrowser/useExpandedSet';
 import { useListWidth } from '../Project/DocsBrowser/useListWidth';
-import { readSessionValue, restorableDocsView } from '../Project/lib/docsLastView';
+import { pagePathOf, readSessionValue, restorableDocsView } from '../Project/lib/docsLastView';
 import { macroCallName } from '../Project/lib/macroCall';
 import {
   buildCombinedTrees, buildProjectDocs, lookupMaps, nodeKey, parseNodeKey, PROJECT_OVERVIEW, resolveNodeKey,
   type ProjectDocs,
 } from './docsJoin';
 import { CombinedDocsOverview, NoProjectsSelected } from './CombinedDocsOverview';
+import { CombinedPageDetail, CombinedPagesTree, isKnownPageKey, useCombinedPages } from './CombinedPages';
 import { useWorkspaceDocs } from './useWorkspaceDocs';
 
-const BROWSE_TABS = ['project', 'database', 'group'] as const;
+const BROWSE_TABS = ['project', 'database', 'group', 'pages'] as const;
+const BROWSE_TABS_NO_PAGES = ['project', 'database', 'group'] as const;
 type BrowseTab = (typeof BROWSE_TABS)[number];
 
 const BROWSE: { id: BrowseTab; label: string; icon: React.ReactNode }[] = [
   { id: 'project', label: 'Project', icon: <BookOpen className="w-3.5 h-3.5" /> },
   { id: 'database', label: 'Database', icon: <Database className="w-3.5 h-3.5" /> },
   { id: 'group', label: 'Group', icon: <LayoutGrid className="w-3.5 h-3.5" /> },
+  { id: 'pages', label: 'Pages', icon: <FileText className="w-3.5 h-3.5" /> },
 ];
 
 const LAST_VIEW_KEY = 'combined-docs-last-view';
@@ -145,7 +148,6 @@ function CombinedDetail({ projects, selectedKey, onShowAll }: {
 export function CombinedDocs() {
   const { projects, selection, isLoading, error, setSelection, generate } = useWorkspaceDocs();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [browse, setBrowse] = useUrlTab<BrowseTab>('browse', BROWSE_TABS, 'project');
   const [filter, setFilter] = useState('');
   const [collapseSignal, setCollapseSignal] = useState(0);
   const { listWidth, startResize } = useListWidth();
@@ -156,6 +158,11 @@ export function CombinedDocs() {
     () => selection.flatMap((id) => projects.filter((p) => p.id === id)),
     [selection, projects],
   );
+
+  // Markdown pages: the Pages tab exists when a selected project has a docs folder (kept while loading)
+  const { pages, isLoading: pagesLoading } = useCombinedPages(selectedProjects);
+  const hasPagesTab = pagesLoading || pages.length > 0;
+  const [browse, setBrowse] = useUrlTab<BrowseTab>('browse', hasPagesTab ? BROWSE_TABS : BROWSE_TABS_NO_PAGES, 'project');
 
   const queries = useQueries({
     queries: selectedProjects.map((p) => ({
@@ -184,6 +191,11 @@ export function CombinedDocs() {
   const q = filter.toLowerCase().trim();
 
   const selectedKey = searchParams.get('node');
+  const selectedPage = useMemo(() => {
+    const parsed = selectedKey ? parseNodeKey(selectedKey) : null;
+    const path = parsed ? pagePathOf(parsed.uid) : null;
+    return parsed && path ? { projectId: parsed.projectId, path } : null;
+  }, [selectedKey]);
 
   const selectNode = useCallback((key: string) => {
     if (searchParams.get('node') === key) return;
@@ -218,6 +230,7 @@ export function CombinedDocs() {
     const view = restorableDocsView(readSessionValue(LAST_VIEW_KEY), (key) => {
       const parsed = parseNodeKey(key);
       const docs = parsed && loaded.find((p) => p.projectId === parsed.projectId);
+      if (isKnownPageKey(pages, key)) return true;
       return !!parsed && !!docs && (parsed.uid === PROJECT_OVERVIEW || docs.nodes.has(parsed.uid) || docs.macros.has(parsed.uid));
     });
     if (!view) return;
@@ -226,7 +239,7 @@ export function CombinedDocs() {
       view.forEach((value, key) => { if (key !== 'browse') next.set(key, value); });
       return next;
     }, { replace: true });
-  }, [stillLoading, loaded, selectedKey, setSearchParams]);
+  }, [stillLoading, loaded, pages, selectedKey, setSearchParams]);
 
   // Reveal the selection in the merged views
   useEffect(() => {
@@ -240,7 +253,7 @@ export function CombinedDocs() {
   useEffect(() => { setFilter(''); }, [browse]);
 
   const collapseAll = () => {
-    if (browse === 'project') setCollapseSignal((n) => n + 1);
+    if (browse === 'project' || browse === 'pages') setCollapseSignal((n) => n + 1);
     else if (browse === 'database') collapseDatabase();
     else collapseGroup();
   };
@@ -304,7 +317,7 @@ export function CombinedDocs() {
           <div style={{ width: listWidth }} className="relative flex flex-col shrink-0 overflow-hidden border-r border-gray-800 bg-surface-app">
             <div className="flex flex-col gap-2 px-3 py-2 border-b border-gray-800 shrink-0">
               <div className="flex items-center gap-0.5">
-                {BROWSE.map((t) => (
+                {BROWSE.filter((t) => t.id !== 'pages' || hasPagesTab).map((t) => (
                   <button
                     key={t.id}
                     onClick={() => setBrowse(t.id)}
@@ -335,8 +348,18 @@ export function CombinedDocs() {
             </div>
 
             <div className="flex-1 py-1 overflow-auto select-none">
-              {stillLoading && <div className="px-3 py-2 text-xs text-gray-600">Loading…</div>}
-              {!stillLoading && loaded.length === 0 && (
+              {browse === 'pages' && (
+                <CombinedPagesTree
+                  pages={pages}
+                  isLoading={pagesLoading}
+                  selectedKey={selectedKey}
+                  onSelect={selectNode}
+                  filterQ={q}
+                  collapseSignal={collapseSignal}
+                />
+              )}
+              {browse !== 'pages' && stillLoading && <div className="px-3 py-2 text-xs text-gray-600">Loading…</div>}
+              {browse !== 'pages' && !stillLoading && loaded.length === 0 && (
                 <p className="px-3 py-4 text-xs text-gray-600">None of the selected projects have docs yet.</p>
               )}
               {browse === 'project' && loaded.map((docs) => (
@@ -377,7 +400,15 @@ export function CombinedDocs() {
 
           {/* Detail */}
           <div className="flex-1 min-w-0 overflow-auto bg-surface-app">
-            {selectedKey ? (
+            {selectedPage ? (
+              <CombinedPageDetail
+                pages={pages}
+                loaded={loaded}
+                projectId={selectedPage.projectId}
+                path={selectedPage.path}
+                onShowAll={showAll}
+              />
+            ) : selectedKey ? (
               <CombinedDetail projects={loaded} selectedKey={selectedKey} onShowAll={showAll} />
             ) : (
               <CombinedDocsOverview

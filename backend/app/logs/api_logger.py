@@ -1,6 +1,6 @@
 """
 Append API request/response log lines to {data_dir}/logs/wickd/api_logs.log
-and publish them as `api_log` SSE events on the relevant project bus topic.
+and publish them as `api_log` SSE events (global stream, plus the project's).
 """
 
 import asyncio
@@ -30,8 +30,8 @@ def get_api_log_path() -> Path | None:
 def append_api_log(line: str, project_id: int | None = None) -> None:
     """Append a timestamped line to the API log file.
 
-    Pass project_id to also publish an `api_log` SSE event so the frontend
-    updates the API log panel in real time without polling.
+    Every line is published as an `api_log` SSE event on the global stream (the
+    home page's bottom pane), and on the project's stream when project_id is given.
     """
     if _api_log_path is None:
         return
@@ -41,19 +41,15 @@ def append_api_log(line: str, project_id: int | None = None) -> None:
         with _api_log_path.open("a", encoding="utf-8") as f:
             f.write(formatted + "\n")
 
-        if project_id is not None:
-            from app.events.bus import Event, bus
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(
-                    bus.publish(Event(
-                        topic=f"project:{project_id}",
-                        type="api_log",
-                        data={"line": formatted},
-                    ))
-                )
-            except RuntimeError:
-                pass  # No running loop — skip publish
+        from app.events.bus import Event, bus
+        # The project's stream (its bottom pane), and the global one (the home page's)
+        topics = ["global"] if project_id is None else [f"project:{project_id}", "global"]
+        try:
+            loop = asyncio.get_running_loop()
+            for topic in topics:
+                loop.create_task(bus.publish(Event(topic=topic, type="api_log", data={"line": formatted})))
+        except RuntimeError:
+            pass  # No running loop — skip publish
 
     except OSError as exc:
         log.warning("api_log_write_failed", error=str(exc))

@@ -161,8 +161,13 @@ async def _smoke(project_id: int, project_path: Path, smoke: dict) -> dict[str, 
 
 
 def _spine_relation(node: dict) -> dict:
+    """The time spine the draft will add, as MetricFlow sees it. `relation_name` must be a
+    string (MetricFlow's manifest parser rejects None); the spine isn't built yet, so it's
+    the relation the new model will get, next to the drafted one."""
+    parts = [p for p in (node.get("database"), node.get("schema"), TIME_SPINE_MODEL) if p]
     return {"node_relation": {"alias": TIME_SPINE_MODEL, "schema_name": node.get("schema"), "database": node.get("database"),
-                              "relation_name": None}, "primary_column": {"name": "date_day", "time_granularity": "day"}}
+                              "relation_name": ".".join(parts)},
+            "primary_column": {"name": "date_day", "time_granularity": "day"}}
 
 
 async def _validate(project_path: Path, node: dict, semantic_manifest: dict, draft: dict, spine_missing: bool) -> dict:

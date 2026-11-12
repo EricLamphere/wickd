@@ -313,6 +313,12 @@ class WatcherManager:
         page_paths = docs_page_paths(docs_dir, changed_files)
         if page_paths:
             await bus.publish(Event(topic=topic, type="docs_pages_changed", data={"paths": page_paths}))
+            # Also on the global stream: the home page's combined docs show every project's pages
+            await bus.publish(Event(
+                topic="global",
+                type="docs_pages_changed",
+                data={"project_id": project_id, "paths": page_paths},
+            ))
 
         for slug in dashboard_slugs(dashboards_dir, changed_files):
             await bus.publish(Event(topic=topic, type="dashboards_changed", data={"slug": slug}))

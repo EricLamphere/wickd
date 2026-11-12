@@ -4,6 +4,7 @@ them as `project_log` SSE events on the project bus topic.
 """
 
 import asyncio
+import contextvars
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,6 +40,10 @@ def append_project_log(project_path: str, line: str, project_id: int | None = No
         with log_file.open("a", encoding="utf-8") as f:
             f.write(formatted + "\n")
 
+        # Home page Project Logs, while combined docs generation runs this project
+        from app.logs.workspace_logger import mirror_project_line
+        mirror_project_line(line)
+
         if project_id is not None:
             # Fire-and-forget: publish to the bus without blocking the caller.
             # Import here to avoid a circular import at module load time.
@@ -62,7 +67,9 @@ def append_project_log(project_path: str, line: str, project_id: int | None = No
 async def append_project_log_async(project_path: str, line: str, project_id: int | None = None) -> None:
     """Async wrapper — runs the blocking file write in a thread."""
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, append_project_log, project_path, line, project_id)
+    # copy_context: run_in_executor doesn't carry ContextVars (the workspace log scope) over
+    ctx = contextvars.copy_context()
+    await loop.run_in_executor(None, ctx.run, append_project_log, project_path, line, project_id)
 
 
 def read_project_log_tail(project_path: str, lines: int = 500) -> list[str]:

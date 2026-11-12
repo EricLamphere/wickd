@@ -250,8 +250,8 @@ export function StepTile({ step, index, offsetPct, projectId, runState, onToggle
             </button>
           )}
           {onDelete && (
-            <button onClick={onDelete} className="text-xs text-gray-500 hover:text-red-400 transition-colors">
-              Delete
+            <button onClick={onDelete} title="Remove this step from the pipeline (you choose whether to keep its script)" className="text-xs text-gray-500 hover:text-red-400 transition-colors">
+              Remove
             </button>
           )}
         </div>

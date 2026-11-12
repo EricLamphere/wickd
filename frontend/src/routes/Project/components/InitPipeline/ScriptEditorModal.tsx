@@ -94,7 +94,7 @@ export function ScriptEditorModal({ projectId, initScriptPath, existing, onClose
         if (capturedVars.length > 0) {
           await api.init.setCapturedVars(projectId, trimmed, capturedVars);
         }
-        if (nameChanged) await api.init.deleteStep(projectId, bareExistingName);
+        if (nameChanged) await api.init.deleteStep(projectId, bareExistingName, true); // a rename: the old file goes
       }
       onClose();
     } catch (err) {

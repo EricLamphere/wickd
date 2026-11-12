@@ -22,9 +22,13 @@ export interface DialogRequest extends DialogOptions {
   kind: DialogKind;
   message: string;
   defaultValue?: string;
+  /** A confirm with a checkbox (e.g. "Also delete the file"); OK answers `{ checked }`. */
+  checkboxLabel?: string;
 }
 
-type Answer = boolean | string | null;
+export interface CheckboxAnswer { checked: boolean }
+
+type Answer = boolean | string | CheckboxAnswer | null;
 interface Pending { request: DialogRequest; resolve: (answer: Answer) => void }
 
 let queue: readonly Pending[] = [];
@@ -67,6 +71,16 @@ export async function alertDialog(message: string, opts: DialogOptions = {}): Pr
 
 export async function confirmDialog(message: string, opts: DialogOptions = {}): Promise<boolean> {
   return (await open({ kind: 'confirm', message, ...opts })) === true;
+}
+
+/** A confirm with one opt-in checkbox: null if cancelled, else whether it was ticked. */
+export async function confirmWithOptionDialog(
+  message: string,
+  checkboxLabel: string,
+  opts: DialogOptions = {},
+): Promise<CheckboxAnswer | null> {
+  const answer = await open({ kind: 'confirm', message, checkboxLabel, ...opts });
+  return typeof answer === 'object' && answer !== null ? answer : null;
 }
 
 export async function promptDialog(message: string, defaultValue = '', opts: DialogOptions = {}): Promise<string | null> {

@@ -50,7 +50,7 @@ def _user_shell() -> str:
 @router.post("/start", response_model=TerminalSessionDto)
 async def start_terminal(dto: TerminalStartDto) -> TerminalSessionDto:
     from pathlib import Path
-    cwd = Path(dto.cwd)
+    cwd = Path(dto.cwd).expanduser()  # the home page's terminal may start in ~
     if not cwd.exists():
         raise HTTPException(status_code=400, detail=f"directory does not exist: {cwd}")
 

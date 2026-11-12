@@ -170,3 +170,17 @@ async def test_handle_changes_publishes_docs_pages_changed(tmp_path: Path) -> No
         assert (event.type, event.data) == ("docs_pages_changed", {"paths": ["a.md"]})
     finally:
         await bus.unsubscribe(topic, queue)
+
+
+async def test_handle_changes_mirrors_docs_pages_changed_on_global_stream(tmp_path: Path) -> None:
+    docs = tmp_path.resolve() / "proj" / "docs"
+    docs.mkdir(parents=True)
+    queue = await bus.subscribe("global")
+    try:
+        await WatcherManager()._handle_changes(
+            9902, docs.parent, None, "project:9902", {(Change.modified, str(docs / "b.md"))}, None, docs,
+        )
+        event = await asyncio.wait_for(queue.get(), timeout=2.0)
+        assert (event.type, event.data) == ("docs_pages_changed", {"project_id": 9902, "paths": ["b.md"]})
+    finally:
+        await bus.unsubscribe("global", queue)

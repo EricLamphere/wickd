@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../../../lib/api';
+import { alertError } from '../../../../lib/dialogs';
 import { useProjectEvents } from '../../../../lib/sse';
-import { logLineTone, type LogTone } from '../../../../lib/logLineTone';
-import { Trash2 } from 'lucide-react';
+import { LogView } from './LogView';
 
 interface LogPanelProps {
   projectId: number;
@@ -29,20 +29,16 @@ const API_REFETCH_EVENTS = new Set([
   'docs_generated',
 ]);
 
+/** A project's Project Logs / API Logs tab. */
 export function LogPanel({ projectId, logType }: LogPanelProps) {
   const qc = useQueryClient();
   const queryKey = ['logs', logType, projectId];
-  const logsEndRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
   // Extra lines accumulated in real time from SSE (flushed on refetch)
   const [liveLines, setLiveLines] = useState<string[]>([]);
 
   const { data, isLoading } = useQuery({
     queryKey,
-    queryFn: () =>
-      logType === 'project'
-        ? api.logs.projectLogs(projectId)
-        : api.logs.apiLogs(projectId),
+    queryFn: () => (logType === 'project' ? api.logs.projectLogs(projectId) : api.logs.apiLogs(projectId)),
     refetchInterval: false,
     staleTime: 0,
   });
@@ -52,33 +48,15 @@ export function LogPanel({ projectId, logType }: LogPanelProps) {
     if (data) setLiveLines([]);
   }, [data]);
 
-  const persistedLines = data?.lines ?? [];
-  // Dedupe: only show live lines that aren't already in the fetched set
-  // Simple approach: just append — the refetch clears liveLines anyway
-  const lines = [...persistedLines, ...liveLines];
-
   const refetchEvents = logType === 'project' ? PROJECT_REFETCH_EVENTS : API_REFETCH_EVENTS;
 
   useProjectEvents(projectId, useCallback((event) => {
-    // Real-time project log lines — emitted by append_project_log for every dbt/init call
-    if (logType === 'project' && event.type === 'project_log') {
+    // Real-time lines: project_log from append_project_log, api_log from every HTTP request
+    if (event.type === (logType === 'project' ? 'project_log' : 'api_log')) {
       const line = (event.data as { line: string }).line;
       setLiveLines((prev) => [...prev, line]);
       return;
     }
-
-    // Real-time API log lines — emitted by append_api_log for every HTTP request
-    if (logType === 'api' && event.type === 'api_log') {
-      const line = (event.data as { line: string }).line;
-      setLiveLines((prev) => [...prev, line]);
-      return;
-    }
-
-    // Legacy real-time: run_log lines (runner emits these individually; also covered by project_log now)
-    if (logType === 'project' && event.type === 'run_log') {
-      return; // project_log handles this — no double-append
-    }
-
     // On completion events, do a full refetch to get the authoritative log
     if (refetchEvents.has(event.type)) {
       setTimeout(() => {
@@ -88,93 +66,24 @@ export function LogPanel({ projectId, logType }: LogPanelProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [logType, projectId, qc]));
 
-  // Auto-scroll to bottom when new lines arrive
-  useEffect(() => {
-    if (autoScroll) {
-      logsEndRef.current?.scrollIntoView({ behavior: 'instant' });
-    }
-  }, [lines.length, autoScroll]);
-
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    setAutoScroll(atBottom);
-  };
-
   const handleClear = async () => {
-    if (logType === 'project') {
-      await api.logs.clearProjectLogs(projectId);
-    } else {
-      await api.logs.clearApiLogs(projectId);
+    try {
+      await (logType === 'project' ? api.logs.clearProjectLogs(projectId) : api.logs.clearApiLogs(projectId));
+    } catch (err) {
+      alertError(err);
+      return;
     }
     setLiveLines([]);
     qc.invalidateQueries({ queryKey });
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-1 border-b border-gray-800 shrink-0">
-        <span className="text-[10px] text-gray-600 font-mono">
-          {logType === 'project'
-            ? 'logs/wickd/project_logs.log'
-            : '{data_dir}/logs/wickd/api_logs.log'}
-        </span>
-        <div className="flex items-center gap-2">
-          {!autoScroll && (
-            <button
-              onClick={() => {
-                setAutoScroll(true);
-                logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="text-[10px] text-brand-400 hover:text-brand-300 transition-colors"
-            >
-              ↓ Scroll to bottom
-            </button>
-          )}
-          <button
-            onClick={handleClear}
-            className="text-gray-600 hover:text-red-400 transition-colors"
-            title="Clear log file"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-          <button
-            onClick={() => qc.invalidateQueries({ queryKey })}
-            className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
-            title="Refresh"
-          >
-            ↺ Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Log content */}
-      <div
-        className="flex-1 overflow-auto font-mono text-xs p-3 bg-surface-app text-gray-400 leading-relaxed"
-        onScroll={handleScroll}
-      >
-        {isLoading && <span className="text-gray-600">Loading…</span>}
-        {!isLoading && lines.length === 0 && (
-          <span className="text-gray-600">No log entries yet.</span>
-        )}
-        {lines.map((line, i) => (
-          <LogLine key={i} line={line} />
-        ))}
-        <div ref={logsEndRef} />
-      </div>
-    </div>
+    <LogView
+      pathLabel={logType === 'project' ? 'logs/wickd/project_logs.log' : '{data_dir}/logs/wickd/api_logs.log'}
+      lines={[...(data?.lines ?? []), ...liveLines]}
+      isLoading={isLoading}
+      onClear={handleClear}
+      onRefresh={() => qc.invalidateQueries({ queryKey })}
+    />
   );
-}
-
-const TONE_CLASS: Record<LogTone, string> = {
-  error: 'text-red-400',
-  warn: 'text-amber-400',
-  success: 'text-green-400',
-  accent: 'text-brand-300',
-};
-
-function LogLine({ line }: { line: string }) {
-  const tone = logLineTone(line);
-  return <div className={tone ? TONE_CLASS[tone] : undefined}>{line}</div>;
 }

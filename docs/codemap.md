@@ -69,7 +69,8 @@ backend/app/
     sse.py        — sse_response(), sse_response_with_replay()
   projects/
     discovery.py  — Walk workspace for dbt_project.yml
-    service.py    — Upsert projects to DB; _effective_workspace() for WICKD_PROJECTS_PATH; begin_startup_scan()/wait_for_startup_scan(): the startup rescan runs in the background (server answers immediately), project-list endpoints await it
+    service.py    — Upsert projects to DB; effective_workspaces() (every comma-separated folder of WICKD_PROJECTS_PATH, discovered as one) / _effective_workspace() (the first: where new projects go); begin_startup_scan()/wait_for_startup_scan(): the startup rescan runs in the background (server answers immediately), project-list endpoints await it
+    workspaces.py — parse_workspaces(): the projects path setting split into folders (comma separated; trimmed, ~ expanded, duplicates and nested folders dropped)
     summary.py    — manifest_node_counts() for GET /projects/summaries (home page cards: one request for all projects; cached by manifest mtime/size)
     search.py     — build_index() / manifest_index() (cached by manifest mtime/size) / search_nodes(): node + column name search across projects for GET /projects/search (home page search box and ⌘K); pure ranking, unit-tested in test_project_search.py
   git/
@@ -99,6 +100,8 @@ frontend/src/
     NodeSearchResults.tsx — Home page "Models & columns" results under the project grid while the search box has 2+ chars; HomeCommandPalette shows the same hits (Enter → DAG, ⌘Enter → Files)
   routes/
     Home.tsx      — Project list (respects WICKD_PROJECTS_PATH configured banner)
+    Home/HomeBottomPane.tsx — home page bottom pane: Terminal (first projects folder, else ~), Project Logs (combined docs runs) and API Logs; WorkspaceLogPanel.tsx reads GET /workspace/logs/{project|api}, live from global `workspace_log` / `api_log`
+    Home/CombinedPages.tsx — Home → Docs Pages tab: every selected project's docs-folder Markdown pages (useCombinedPages(), fresh via global docs_pages_changed), CombinedPageDetail renders PageDetail inside a DocsScope so page/ref links stay in combined docs
     Project/
       ProjectLayout.tsx  — Shared layout wrapper (outlet + BottomPane; outlet has overflow-auto for scrolling, inside a `relative` wrapper that also holds ActivityBubble); global ⌘K listener
       lib/
@@ -159,8 +162,10 @@ frontend/src/
           ImpactPanel.tsx — Impact tab: Selection / Uncommitted / Branch modes (git modes: Contracts and Data diff toggles (Pro), each a collapsible ProCheckSection.tsx; Contracts → ContractsSection.tsx (Check contracts / Check types, phase, summary, notes) + ContractFindings.tsx (per model, consumer chips) over lib/useContractCheck.ts ['contract-check', id, scope] and lib/contractChecks.ts (pure, tested); API in lib/contractsApi.ts; a `breaking` badge in ImpactTable's Flags; the Git page Impact section shows a one-line summary; Data diff (Pro): DataDiffSection.tsx — run/cancel, summary chips, post-build Diff now via lib/buildNudge.ts (tested) — plus the Data column and DataDiffDrawer.tsx, over useImpactDataDiff.ts; the same results on the Git page (Git/components/DataDiffLine.tsx) and side pane (SidePane/DataDiffCard.tsx), pills in components/dataDiff/diffUi.tsx; `openBottomTab('impact', { openDiff })` opens a model's drawer) (mode + base held in BottomPane). Selection = downstream impact of the selected node(s) (multi-selection if any, else SelectedNodeContext); git modes = changed nodes from GET /impact/changes. ImpactToolbar.tsx (mode switch, base picker, Columns (Pro) toggle in Selection mode, selector, counts, flags, unaffected count, Build impacted + Copy selector) + ImpactColumnBar.tsx (unlock / load lineage / per-seed column picker) + useColumnLevelImpact.ts + ImpactNotices.tsx (what was compared, project-wide/unmapped files) over ImpactTable.tsx (depth-0 group "Selected"/"Changed" with per-node change reasons) — sticky column headers (Node/Type/Materialization/Status/Tests/Column coverage/Flags) and sticky per-depth group headers
           NodeSqlPanel.tsx — Node SQL tab: the selected node's uncompiled .sql/.py read from its file (['file-content', id, path], invalidated on files_changed), read-only Monaco
           NodeDagPanel.tsx — Node DAG tab: `+node+` lineage of the selected node (from SelectedNodeContext), centered on it; Type/Materialization/Status filter dropdowns (sessionStorage `node-dag-filter-{id}`); Cmd+click a node to open in Files
-          TerminalPanel.tsx — xterm.js terminals (multi-instance tabs); optimized resize with lastSizeRef to prevent spurious SIGWINCH
-          LogPanel.tsx     — Project and API logs
+          TerminalPanel.tsx — xterm.js terminal (SingleTerminal); optimized resize with lastSizeRef to prevent spurious SIGWINCH
+          TerminalArea.tsx — Terminal tab: multi-instance terminals + VSCode-style tab strip (rename, close); shared with the home page pane
+          PaneTabBar.tsx / usePaneResize.ts — a bottom pane's tab bar and drag-to-resize/open state (height remembered in localStorage); shared with the home page pane
+          LogView.tsx      — log tail view (toolbar, auto-scroll, tones); LogPanel.tsx — a project's Project/API logs over it
         Header.tsx         — Navigation + ProjectSelectors (Profile/Target dropdowns)
         StatusBadge        — Shared UI
       lib/

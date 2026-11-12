@@ -58,7 +58,7 @@ The rules that matter most:
 
 | Variable | Default | Description |
 |---|---|---|
-| `WICKD_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects (overridable in the UI) |
+| `WICKD_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects, or several separated by commas (overridable in the UI) |
 | `WICKD_GLOBAL_REQUIREMENTS_PATH` | _(none)_ | `requirements.txt` installed into the dbt venv on every project open |
 | `WICKD_DBT_CORE_VERSION` | _(latest)_ | dbt-core release Run global setup installs when no global requirements file is set; chosen in the setup wizard, editable in Global Settings (app setting only, not an env var) |
 | `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app) | App storage (SQLite DB, dbt venv, docs, logs). Set automatically — not configurable in the UI |

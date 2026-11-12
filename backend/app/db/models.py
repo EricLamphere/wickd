@@ -59,6 +59,9 @@ class InitStep(Base):
     script_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     is_base: Mapped[bool] = mapped_column(default=False)
     enabled: Mapped[bool] = mapped_column(default=True)
+    # Removed from the pipeline but its script kept in the init dir: the disk sync
+    # mustn't add it back. Hidden from every step list and never run.
+    removed: Mapped[bool] = mapped_column(default=False)
     captured_vars: Mapped[str] = mapped_column(Text, default="")
     last_status: Mapped[str] = mapped_column(String(32), default="idle")
     last_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

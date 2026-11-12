@@ -51,7 +51,7 @@ frontend/src/
 
 All 28 in `backend/app/db/models.py`:
 - `projects` — discovered dbt projects (includes `init_script_path: str` per-project init dir; `ignored: bool` to hide from list; `last_init_status: str` (idle/running/success/error), `last_init_started_at`, `last_init_finished_at`, `last_init_failed_step` — persisted init pipeline status shown on the homepage and Initialization page; `metricflow_mode: str` '' = global default, auto, off — semantic layer; `schedules_paused: bool` Runs → Schedule's Pause all)
-- `init_steps` — ordered init pipeline steps per project (includes `script_path` for linked external scripts; `last_status: str` (idle/running/success/error), `last_started_at`, `last_finished_at`, `last_log: str` (capped at 200 lines) — persisted per-step run status)
+- `init_steps` — ordered init pipeline steps per project (includes `script_path` for linked external scripts; `removed: bool` = removed from the pipeline with its init-dir script kept (hidden, never run, so the disk sync doesn't re-add it); `last_status: str` (idle/running/success/error), `last_started_at`, `last_finished_at`, `last_log: str` (capped at 200 lines) — persisted per-step run status)
 - `model_statuses` — per-node run status (idle/pending/running/success/error/warn/stale); `kind` model / test / unit_test (`parent_model_id` = the tested model)
 - `run_invocations` — historical run records; `custom_args` (JSON list, nullable) holds the user-entered args of a custom dbt command so rerun replays them exactly; `state_json` (nullable) the slim build settings a run used (plan 18: state source/sha/target, state, defer, favor_state), replayed on rerun; `threads`, `elapsed_time` from run_results.json (NULL before timing capture); `trigger` manual/schedule/rerun and `schedule_id` (FK run_schedules, SET NULL) — plan 27
 - `invocation_model_results` — per-node results per invocation (last 20 per node kept; `kind` model / test / unit_test): `execution_time`, `status`, `message`, plus timing from run_results.json — `started_at`/`completed_at` (execute window), `thread_id`, `rows_affected`, `bytes_processed`, `adapter_response_json` (capped ~2 KB); timing columns NULL for older runs
@@ -197,11 +197,13 @@ finally:
 | `data_diff_progress` | project | payload `snapshot_ids`, `phase` (building/resolving/probing/comparing), `round`/`pending` while comparing |
 | `data_diff_finished` | project | payload `snapshot_ids`, `ok`, `counts` (done/error/different) or `cancelled` |
 | `dashboards_changed` | project | dashboard file created/saved/deleted or changed on disk; payload `slug` |
-| `docs_pages_changed` | project | a Markdown page or image in the docs folder changed; payload `paths` |
+| `docs_pages_changed` | project + global | a Markdown page or image in the docs folder changed; payload `paths` (global copy adds `project_id`, for combined docs' Pages tab) |
 | `charts_changed` | project | a dbt Charts board file under `charts/` (or `dbt_charts.yml`) changed on disk |
 | `charts_build_started` | project | static board build started; payload `board` |
 | `charts_build_finished` | project | static board build finished; payload `board`, `ok`, `error` |
 | `run_schedules_changed` | project | a scheduled run's settings or last outcome changed (plan 27); payload `schedule_id`, `outcome`, `name`, `invocation_id` |
+| `workspace_log` | global | home page Project Logs line (combined docs runs only); payload `line` |
+| `api_log` | project + global | one API request log line; payload `line` |
 | `metricflow_env` | global | MetricFlow sidecar setup; payload `state` (installing/ready/error), `phase`, `message` |
 | `charts_env` | global | dbt Charts sidecar setup; payload `state` (installing/ready/error), `phase`, `message` |
 | `ai_model_download` | global | AI model download progress; payload `model_id`, `state`, `bytes_done`, `bytes_total`, `error` |
@@ -312,6 +314,7 @@ useInitSessionEvents(sessionId, onEvent, useCallback(() => { /* on close */ }, [
 - **Node DAG** tab (`NodeDagPanel.tsx`) shows the `+node+` lineage of the selected node, centered on it. The selection is lifted into `ProjectLayout` via `lib/selectedNodeContext.tsx`: pages call `useReportSelectedNode(uid)` (Models.tsx, FileExplorer and the Git page — the selected changed file's node via `lib/nodeForPath.ts` `nodeForRepoPath()`, which strips the repo-relative project subpath) and it clears on unmount; `lib/nodeLineage.ts` `buildNodeLineageGraph()` builds the subgraph (tests excluded unless the selected node is a test). Mounted only while visible so centering uses the real pane size
 - Terminal tab allows multiple instances with VSCode-style tabs on the right side
 - `RunPanel` always mounted to continuously receive `run_log` SSE events
+- The app home page has its own pane (`routes/Home/HomeBottomPane.tsx`): Terminal, Project Logs (only combined docs runs, via `app/logs/workspace_logger.py`), API Logs; it reuses `PaneTabBar`, `usePaneResize`, `TerminalArea` and `LogView` from `BottomPane/`
 - `BottomPane` manages `open` state, `activeTab`, and `height`
 
 ### SidePane Architecture (Right Panel)

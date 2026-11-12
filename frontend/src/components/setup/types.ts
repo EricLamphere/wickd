@@ -18,9 +18,14 @@ export interface SetupForm {
   envVars: GlobalEnvVarDto[] | null;
 }
 
-/** Suggested global requirements file: `<projects folder>/requirements.txt`. */
+/** The first folder of a projects path setting (several may be listed, comma separated). */
+export function primaryProjectsFolder(projectsPath: string): string {
+  return projectsPath.split(',').map((p) => p.trim()).find(Boolean) ?? '';
+}
+
+/** Suggested global requirements file: `<first projects folder>/requirements.txt`. */
 export function defaultRequirementsPath(projectsPath: string): string {
-  const base = projectsPath.trim().replace(/\/+$/, '');
+  const base = primaryProjectsFolder(projectsPath).replace(/\/+$/, '');
   return base ? `${base}/requirements.txt` : '';
 }
 

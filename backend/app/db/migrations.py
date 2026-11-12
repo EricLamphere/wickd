@@ -850,6 +850,12 @@ async def run_migrations() -> None:
             "UPDATE run_schedules SET last_status = 'error' WHERE last_status IN ('pending', 'running')"
         ))
         await session.commit()
+        # an init step removed from the pipeline whose script was kept in the init dir
+        if not await _column_exists(session, "init_steps", "removed"):
+            await session.execute(text(
+                "ALTER TABLE init_steps ADD COLUMN removed BOOLEAN NOT NULL DEFAULT 0"
+            ))
+            await session.commit()
 
 async def init_db() -> None:
     await ensure_db_initialized()

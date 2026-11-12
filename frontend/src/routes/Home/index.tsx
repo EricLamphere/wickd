@@ -13,6 +13,7 @@ import { SUMMARIES_KEY } from './ProjectCards';
 import { ProjectsTab } from './ProjectsTab';
 import { CombinedDocs } from './CombinedDocs';
 import { WorkspaceWickyPane } from './WorkspaceWickyPane';
+import { HomeBottomPane } from './HomeBottomPane';
 
 const HOME_TABS = ['projects', 'docs'] as const;
 type HomeTab = (typeof HOME_TABS)[number];
@@ -176,16 +177,20 @@ export default function Home() {
           </div>
         </div>
 
-        {tab === 'projects' ? (
-          <ProjectsTab
-            isConfigured={isConfigured}
-            projectsPath={appSettings?.dbt_projects_path ?? undefined}
-            paletteOpen={paletteOpen}
-            onNewProject={openNewProject}
-          />
-        ) : (
-          <CombinedDocs />
-        )}
+        <div className="flex flex-col flex-1 min-h-0">
+          {tab === 'projects' ? (
+            <ProjectsTab
+              isConfigured={isConfigured}
+              projectsPath={appSettings?.dbt_projects_path ?? undefined}
+              paletteOpen={paletteOpen}
+              onNewProject={openNewProject}
+            />
+          ) : (
+            <CombinedDocs />
+          )}
+        </div>
+
+        <HomeBottomPane projectsPath={appSettings ? appSettings.dbt_projects_path : undefined} />
       </div>
 
       <WorkspaceWickyPane />

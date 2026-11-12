@@ -23,7 +23,7 @@ from app.dbt.core_version import (
     parse_dbt_version,
     requirement_satisfied,
 )
-from app.dbt.init_scripts import BASE_STEPS, INIT_DIR_NAME, delete_script, list_scripts, save_script
+from app.dbt.init_scripts import BASE_STEPS, INIT_DIR_NAME, init_dir, list_scripts, save_script
 from app.dbt.interactive import manager as init_manager
 from app.dbt.venv import existing_bin, venv_dbt, venv_pip, venv_python
 from app.envvars import layer_env, load_global_env_vars
@@ -230,7 +230,9 @@ async def _sync_steps_from_disk(
 
     await session.commit()
     result = await session.execute(
-        select(InitStep).where(InitStep.project_id == project.id).order_by(InitStep.order)
+        select(InitStep)
+        .where(InitStep.project_id == project.id, InitStep.removed.is_(False))
+        .order_by(InitStep.order)
     )
     return list(result.scalars().all())
 
@@ -280,15 +282,37 @@ async def post_step(
         session.add(row)
     else:
         row.script_path = str(script.path)
+        if row.removed:
+            row.removed = False
+            row.order = await _next_step_order(session, project.id)
     await session.commit()
     await session.refresh(row)
     return _row_to_dto(row)
 
 
+async def _next_step_order(session: AsyncSession, project_id: int) -> int:
+    result = await session.execute(select(InitStep.order).where(InitStep.project_id == project_id))
+    return max(result.scalars().all(), default=-1) + 1
+
+
+def _owns_script(project: Project, row: InitStep | None, name: str) -> Path | None:
+    """The step's script when it lives in the project's init dir (wickd created it
+    there), else None (a linked external script, or no file)."""
+    owned = init_dir(Path(project.path), project.init_script_path or INIT_DIR_NAME) / f"{name}.sh"
+    if row is not None and row.script_path and Path(row.script_path) != owned:
+        return None
+    return owned if owned.is_file() else None
+
+
 @router.delete("/{project_id}/init/steps/{name}")
 async def delete_step(
-    project_id: int, name: str, session: AsyncSession = Depends(get_session)
+    project_id: int,
+    name: str,
+    delete_script: bool = False,
+    session: AsyncSession = Depends(get_session),
 ) -> dict[str, bool]:
+    """Remove a custom step from the pipeline. Its script stays on disk unless
+    `delete_script` is set; a linked external script is never deleted."""
     project = await session.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
@@ -299,11 +323,26 @@ async def delete_step(
         )
     )
     row = result.scalar_one_or_none()
-    if row and not row.is_base:
+    if row is not None and row.is_base:
+        raise HTTPException(status_code=400, detail="built-in steps can't be removed")
+
+    owned = _owns_script(project, row, name)
+    script_deleted = False
+    if delete_script and owned is not None:
+        owned.unlink()
+        script_deleted = True
+
+    if owned is not None and not script_deleted:
+        # The script stays in the init dir, which the disk sync turns into steps: keep a hidden row
+        if row is None:
+            row = InitStep(project_id=project.id, name=display, is_base=False, script_path=str(owned))
+            session.add(row)
+        row.removed = True
+    elif row is not None:
         await session.delete(row)
-        await session.commit()
-    delete_script(Path(project.path), name, project.init_script_path or INIT_DIR_NAME)
-    return {"ok": True}
+    await session.commit()
+    log.info("init_step_removed", project_id=project_id, step=name, script_deleted=script_deleted)
+    return {"ok": True, "script_deleted": script_deleted}
 
 
 class InitStepToggleDto(BaseModel):
@@ -483,6 +522,9 @@ async def link_step(
         session.add(row)
     else:
         row.script_path = str(candidate)
+        if row.removed:  # linking a removed step's script adds it back, at the end
+            row.removed = False
+            row.order = await _next_step_order(session, project_id)
     await session.commit()
     await session.refresh(row)
     return _row_to_dto(row)

@@ -1162,8 +1162,11 @@ export const api = {
     open: (projectId: number) => post(`/projects/${projectId}/open`),
     createStep: (projectId: number, name: string, content: string) =>
       post(`/projects/${projectId}/init/steps`, { name, content }),
-    deleteStep: (projectId: number, name: string) =>
-      del(`/projects/${projectId}/init/steps/${encodeURIComponent(name)}`),
+    /** Remove a custom step; its script is kept unless deleteScript (linked external scripts are never deleted). */
+    deleteStep: (projectId: number, name: string, deleteScript = false) =>
+      del<{ ok: boolean; script_deleted: boolean }>(
+        `/projects/${projectId}/init/steps/${encodeURIComponent(name)}${deleteScript ? '?delete_script=true' : ''}`,
+      ),
     toggleStep: (projectId: number, name: string, enabled: boolean) =>
       request<InitStepDto>(`/projects/${projectId}/init/steps/${encodeURIComponent(name)}`, {
         method: 'PATCH',

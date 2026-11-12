@@ -10,6 +10,7 @@ from app.config import settings
 from app.db.models import AppSetting, Project
 from app.logging_setup import get_logger
 from app.projects.discovery import DiscoveredProject, discover_projects
+from app.projects.workspaces import parse_workspaces
 
 log = get_logger(__name__)
 
@@ -31,14 +32,32 @@ async def wait_for_startup_scan() -> None:
         await asyncio.shield(task)
 
 
-async def _effective_workspace(session: AsyncSession) -> Path | None:
-    """Return the effective workspace path, or None if not configured."""
+async def effective_workspaces(session: AsyncSession) -> list[Path]:
+    """Every configured projects folder (the setting may list several, comma
+    separated), or [] if not configured. The DB setting wins over the env var."""
     row = await session.get(AppSetting, "dbt_projects_path")
     if row is not None and row.value:
-        return Path(row.value)
-    if settings.dbt_projects_path is not None:
-        return settings.dbt_projects_path
-    return None
+        return parse_workspaces(row.value)
+    return parse_workspaces(settings.dbt_projects_path)
+
+
+async def _effective_workspace(session: AsyncSession) -> Path | None:
+    """The primary projects folder (the first listed): where new projects go."""
+    workspaces = await effective_workspaces(session)
+    return workspaces[0] if workspaces else None
+
+
+def _discover_all(workspaces: list[Path]) -> list[DiscoveredProject]:
+    """Discover across every folder as if they were one; a project reachable
+    from two folders is kept once."""
+    seen: set[Path] = set()
+    found: list[DiscoveredProject] = []
+    for workspace in workspaces:
+        for dp in discover_projects(workspace):
+            if dp.path not in seen:
+                seen.add(dp.path)
+                found.append(dp)
+    return found
 
 
 async def list_projects(session: AsyncSession) -> list[Project]:
@@ -47,15 +66,15 @@ async def list_projects(session: AsyncSession) -> list[Project]:
 
 
 async def rescan_projects(session: AsyncSession) -> list[Project]:
-    workspace = await _effective_workspace(session)
-    if workspace is None:
+    workspaces = await effective_workspaces(session)
+    if not workspaces:
         return await list_projects(session)
-    # Walking the workspace is blocking filesystem I/O — keep it off the event loop.
+    # Walking the workspaces is blocking filesystem I/O — keep it off the event loop.
     started = time.perf_counter()
-    discovered: list[DiscoveredProject] = await asyncio.to_thread(discover_projects, workspace)
+    discovered: list[DiscoveredProject] = await asyncio.to_thread(_discover_all, workspaces)
     log.info(
         "discovery_done",
-        workspace=str(workspace),
+        workspaces=[str(w) for w in workspaces],
         projects=len(discovered),
         duration_ms=round((time.perf_counter() - started) * 1000),
     )

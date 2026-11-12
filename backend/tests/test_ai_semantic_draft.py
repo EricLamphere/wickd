@@ -273,3 +273,11 @@ async def test_accept_all_also_verifies(client, db_session, routes, project, moc
     r = await client.post(f"/api/projects/{pid}/ai/proposals/{proposal['id']}/accept")
     assert r.status_code == 200 and r.json()["status"] == "applied"
     assert len(routes["verified"]) == 1
+
+
+def test_spine_relation_has_a_relation_name():
+    """MetricFlow's manifest parser rejects relation_name None ("none is not an allowed value")."""
+    spine = semantic_draft._spine_relation({"database": "db", "schema": "analytics"})
+    assert spine["node_relation"]["relation_name"] == "db.analytics.metricflow_time_spine"
+    no_db = semantic_draft._spine_relation({"schema": "analytics"})
+    assert no_db["node_relation"]["relation_name"] == "analytics.metricflow_time_spine"

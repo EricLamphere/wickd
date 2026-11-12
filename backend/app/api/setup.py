@@ -35,6 +35,7 @@ from app.dbt.core_version import (
 from app.envvars import is_valid_env_key
 from app.logging_setup import get_logger
 from app.projects.service import rescan_projects
+from app.projects.workspaces import parse_workspaces
 
 log = get_logger(__name__)
 
@@ -65,23 +66,35 @@ def _field_error(field: str, code: str, message: str) -> HTTPException:
     return HTTPException(status_code=400, detail={"field": field, "code": code, "message": message})
 
 
-def _resolve_projects_dir(raw: str, create: bool) -> Path:
-    if not raw.strip():
+def _resolve_projects_dir(raw: str, create: bool) -> list[Path]:
+    """Validate the projects path setting: one folder or several, comma separated.
+    Every folder is checked before any missing one is created."""
+    paths = parse_workspaces(raw)
+    if not paths:
         raise _field_error("dbt_projects_path", "required", "Choose a folder for your dbt projects.")
-    path = Path(raw.strip()).expanduser()
+    for path in paths:
+        _check_projects_dir(path, create)
+    for path in paths:
+        if not path.exists():
+            _create_projects_dir(path)
+    return paths
+
+
+def _check_projects_dir(path: Path, create: bool) -> None:
     if not path.is_absolute():
-        raise _field_error("dbt_projects_path", "invalid", "Use a full path, e.g. ~/dbt-projects.")
+        raise _field_error("dbt_projects_path", "invalid", f"Use a full path, e.g. ~/dbt-projects (got {path}).")
     if path.exists() and not path.is_dir():
         raise _field_error("dbt_projects_path", "invalid", f"{path} is a file, not a folder.")
-    if not path.exists():
-        if not create:
-            raise _field_error("dbt_projects_path", "not_found", f"{path} doesn't exist yet.")
-        try:
-            path.mkdir(parents=True)
-        except OSError as exc:
-            raise _field_error("dbt_projects_path", "invalid", f"Couldn't create {path}: {exc}")
-        log.info("setup_projects_dir_created", path=str(path))
-    return path
+    if not path.exists() and not create:
+        raise _field_error("dbt_projects_path", "not_found", f"{path} doesn't exist yet.")
+
+
+def _create_projects_dir(path: Path) -> None:
+    try:
+        path.mkdir(parents=True)
+    except OSError as exc:
+        raise _field_error("dbt_projects_path", "invalid", f"Couldn't create {path}: {exc}")
+    log.info("setup_projects_dir_created", path=str(path))
 
 
 def _resolve_requirements(raw: str, create: bool) -> tuple[Path | None, bool]:
@@ -167,7 +180,7 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
     rebuild the dbt venv) runs last among the checks, and nothing is committed
     unless every step succeeds.
     """
-    projects_dir = _resolve_projects_dir(dto.dbt_projects_path, dto.create_projects_dir)
+    projects_dirs = _resolve_projects_dir(dto.dbt_projects_path, dto.create_projects_dir)
     requirements, create_requirements = _resolve_requirements(
         dto.global_requirements_path, dto.create_requirements_file
     )
@@ -185,7 +198,7 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
     elif requirements is not None:
         _pin_dbt_core_if_missing(requirements, dbt_core_version)
 
-    await _upsert(session, "dbt_projects_path", str(projects_dir))
+    await _upsert(session, "dbt_projects_path", ", ".join(str(p) for p in projects_dirs))
     if requirements is None:
         await _delete_setting(session, "global_requirements_path")
         # No file: global setup installs this version (missing = latest)
@@ -202,7 +215,7 @@ async def complete_setup(dto: SetupDto, session: AsyncSession = Depends(get_sess
         await replace_global_env_vars(session, env_vars)
     await _upsert(session, SETUP_COMPLETED_KEY, "true")
     await session.commit()
-    log.info("setup_completed", projects_dir=str(projects_dir), requirements=str(requirements))
+    log.info("setup_completed", projects_dirs=[str(p) for p in projects_dirs], requirements=str(requirements))
 
     await rescan_projects(session)
     return await get_settings(session)

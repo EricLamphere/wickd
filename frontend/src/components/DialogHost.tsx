@@ -9,11 +9,12 @@ const DEFAULT_TITLE: Record<DialogRequest['kind'], string> = {
 
 function Dialog({ dialog }: { dialog: DialogRequest }) {
   const [value, setValue] = useState(dialog.defaultValue ?? '');
+  const [checked, setChecked] = useState(false);
   const okRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isPrompt = dialog.kind === 'prompt';
 
-  const ok = () => resolveDialog(isPrompt ? value : true);
+  const ok = () => resolveDialog(isPrompt ? value : dialog.checkboxLabel ? { checked } : true);
   const cancel = () => resolveDialog(null);
 
   useEffect(() => {
@@ -59,6 +60,17 @@ function Dialog({ dialog }: { dialog: DialogRequest }) {
               spellCheck={false}
               className="bg-surface-elevated border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-100 font-mono focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
+          )}
+          {dialog.checkboxLabel && (
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => setChecked(e.target.checked)}
+                className="accent-red-500"
+              />
+              {dialog.checkboxLabel}
+            </label>
           )}
         </div>
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-800">

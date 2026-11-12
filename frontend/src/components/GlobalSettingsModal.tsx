@@ -105,7 +105,7 @@ function SettingsTab() {
     /** Shown instead of the value, not editable */
     locked?: string;
   }[] = [
-    { key: 'dbt_projects_path', label: 'WICKD_PROJECTS_PATH', value: appSettings?.dbt_projects_path, example: '/home/user/dbt-projects' },
+    { key: 'dbt_projects_path', label: 'WICKD_PROJECTS_PATH', value: appSettings?.dbt_projects_path, hint: 'several folders: separate with commas (new projects go in the first)', example: '/home/user/dbt-projects, /home/user/work/dbt' },
     { key: 'global_requirements_path', label: 'WICKD_GLOBAL_REQUIREMENTS_PATH', value: appSettings?.global_requirements_path, hint: 'requirements.txt installed via Run global setup', example: '/home/user/dbt-projects/requirements.txt' },
     { key: 'dbt_core_version', label: 'WICKD_DBT_CORE_VERSION', value: appSettings?.dbt_core_version, hint: 'dbt-core Run global setup installs when no requirements file is set (blank = latest)', example: '1.10.13', locked: versionLockedReason },
     { key: 'log_level', label: 'WICKD_LOG_LEVEL', value: appSettings?.log_level, hint: 'takes effect on restart', example: 'INFO' },

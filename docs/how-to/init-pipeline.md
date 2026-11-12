@@ -49,6 +49,10 @@ The script editor (new script, or **Edit** on a custom step) has a **Test** butt
 
 A test saves nothing. Step status is untouched and captured vars are only reported. Tests stop after 5 minutes, and return an error while the init pipeline is running.
 
+## Removing a step
+
+**Remove** on a custom step takes it out of the pipeline. Its script is kept by default: tick **Also delete the script file** in the confirmation to delete it as well. A kept script stays in the init folder but no longer shows up as a step; to add it back, use it again (the add tile at the end of the flow → **Use existing script**, pick the file). A linked script from outside the init folder is never deleted, only unlinked.
+
 ## Enabling and disabling steps
 
 Click the toggle on any step to enable or disable it without deleting it. Disabled steps are skipped during the pipeline but remain in the list.

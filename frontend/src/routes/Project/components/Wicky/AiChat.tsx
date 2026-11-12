@@ -38,6 +38,8 @@ export interface ChatRequest {
   chatMode?: ChatMode;
   /** Start this quick action instead of sending text (QuickActions runs it). */
   action?: WickyAction;
+  /** The node `action` is for; it never starts on another one. */
+  uniqueId?: string;
   /** action 'unit_test': selected SQL to preselect the focus from */
   focusHint?: FocusHint;
 }

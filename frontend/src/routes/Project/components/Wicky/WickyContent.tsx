@@ -9,6 +9,7 @@ import { AiSetup } from './AiSetup';
 import { QuickActions } from './QuickActions';
 import { AiChat } from './AiChat';
 import { semanticModelOf } from '../../lib/semantic';
+import { autoStartFor } from './autoStart';
 
 interface WickyContentProps {
   projectId: number;
@@ -78,6 +79,8 @@ function WickyReady({ projectId, model, graph, request: external, onRequestTaken
   const { proposals, progress } = useAiProposals(projectId);
   const chat = useWickyConversation(projectId);
   const [request, setRequest] = useState<ChatRequest | null>(null);
+  // The last quick action started from a request, so it never starts twice
+  const [takenNonce, setTakenNonce] = useState<number | null>(null);
 
   // Take ownership of an outside request so it isn't re-sent when the pane remounts
   useEffect(() => {
@@ -105,7 +108,8 @@ function WickyReady({ projectId, model, graph, request: external, onRequestTaken
             ensureConversation={chat.ensure}
             failing={isFailing(model, graph)}
             inSemanticLayer={!!semanticModelOf(graph, model)}
-            autoStart={request?.action ? { nonce: request.nonce, action: request.action, focusHint: request.focusHint } : null}
+            autoStart={autoStartFor(request, takenNonce, model.unique_id)}
+            onAutoStarted={setTakenNonce}
             onExplainFailure={() => setRequest({
               nonce: Date.now(),
               text: `Explain why ${model.name} is failing`,

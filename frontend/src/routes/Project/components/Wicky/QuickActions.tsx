@@ -4,10 +4,11 @@ import { Boxes, FlaskConical, FlaskRound, Loader2, Sparkles, Stethoscope, Wand2 
 import type { ModelNode } from '../../../../lib/api';
 import { aiApi, aiErrorMessage, type AiProposalDto, type UnitTestRequest } from '../../../../lib/aiApi';
 import { semanticErrorBody, type SemanticStatusDto } from '../../../../lib/semanticApi';
-import type { FocusHint, WickyAction } from '../../lib/wickyEvents';
+import type { FocusHint } from '../../lib/wickyEvents';
 import { canDocument } from '../SidePane/DocumentModelButton';
 import { MetricflowBlockedNotice } from '../semantic/MetricflowBlockedNotice';
 import { UnitTestOptions } from './UnitTestOptions';
+import type { AutoStart } from './autoStart';
 
 interface QuickActionsProps {
   projectId: number;
@@ -24,7 +25,9 @@ interface QuickActionsProps {
   /** The model already has a semantic model (no "Add to semantic layer"). */
   inSemanticLayer: boolean;
   /** An action another page asked for (openWicky({ action })); started once per nonce. */
-  autoStart: { nonce: number; action: WickyAction; focusHint?: FocusHint } | null;
+  autoStart: AutoStart | null;
+  /** Called with the nonce once `autoStart` has started, so it isn't started again. */
+  onAutoStarted: (nonce: number) => void;
 }
 
 type ProposalKind = 'document' | 'tests' | 'semantic' | 'unit_test';
@@ -46,7 +49,7 @@ const BUTTON = 'flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-elevate
 
 /** One-click Wicky actions for the selected node. Results appear in the chat below. */
 export function QuickActions({
-  projectId, model, proposals, ensureConversation, failing, onExplainFailure, onRefactor, inSemanticLayer, autoStart,
+  projectId, model, proposals, ensureConversation, failing, onExplainFailure, onRefactor, inSemanticLayer, autoStart, onAutoStarted,
 }: QuickActionsProps) {
   const qc = useQueryClient();
   const [choosing, setChoosing] = useState(false);
@@ -87,6 +90,7 @@ export function QuickActions({
   useEffect(() => {
     if (!autoStart || started.current === autoStart.nonce) return;
     started.current = autoStart.nonce;
+    onAutoStarted(autoStart.nonce);
     if (autoStart.action === 'semantic_draft') void run('semantic');
     if (autoStart.action === 'unit_test' && model.resource_type === 'model') {
       setChoosing(false);

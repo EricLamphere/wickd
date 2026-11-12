@@ -19,6 +19,7 @@ from app.dbt.runner import runner
 from app.events.bus import bus
 from app.main import app
 from app.semantic import dbt_change, execute, query_runs, service, status
+from app.semantic.compat_data import DBT_CORE_LATEST_PATCHES
 from app.semantic.runtime import WorkerRequestError
 
 FIXTURES = Path(__file__).parent / "fixtures" / "semantic"
@@ -123,8 +124,9 @@ async def test_status_latest_spec_on_old_dbt_offers_versions(client, db, tmp_pat
     body = (await client.get(f"/api/projects/{project.id}/semantic/status")).json()
     assert not body["available"]
     assert body["reason_code"] == "latest_spec_needs_1_12"
-    assert body["compatible_dbt_versions"] == ["1.12.6"]
-    assert body["recommended_version"] == "1.12.6"
+    # the latest 1.12 patch, from the PyPI table the release refreshes
+    assert body["compatible_dbt_versions"] == [DBT_CORE_LATEST_PATCHES["1.12"]]
+    assert body["recommended_version"] == DBT_CORE_LATEST_PATCHES["1.12"]
 
 
 async def test_status_cli_check(client, db, tmp_path, dbt_env) -> None:
@@ -132,7 +134,7 @@ async def test_status_cli_check(client, db, tmp_path, dbt_env) -> None:
     project = await _project(db, tmp_path)
     body = (await client.get(f"/api/projects/{project.id}/semantic/status?want_cli=true")).json()
     assert body["reason_code"] == "no_cli_release"
-    assert body["recommended_version"] == "1.10.23"
+    assert body["recommended_version"] == DBT_CORE_LATEST_PATCHES["1.10"]
 
 
 async def test_project_and_global_mode(client, db, tmp_path, dbt_env, worker_calls) -> None:

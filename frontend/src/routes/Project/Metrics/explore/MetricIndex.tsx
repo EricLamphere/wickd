@@ -50,14 +50,17 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
 }) {
   const pts = points(item, metric.name);
   return (
-    <button onClick={onOpen} title={metric.description ?? undefined}
-      className="flex flex-col gap-2 min-w-0 p-3 text-left rounded border border-gray-800 bg-surface-panel hover:border-gray-600">
-      <div className="flex items-start gap-2 min-w-0">
-        <span className="flex flex-col flex-1 min-w-0">
-          <span className="text-xs font-medium text-gray-100 truncate">{metric.label || metric.name}</span>
-          {metric.label && <span className="text-[10px] font-mono text-gray-500 truncate">{metric.name}</span>}
-        </span>
-        <span className={`shrink-0 px-1.5 py-px text-[10px] rounded border ${TYPE_CLS[metric.type] ?? TYPE_CLS.simple}`}>{metric.type}</span>
+    // a div, not a <button>: older WebKit (the desktop app's WKWebView on older macOS) wraps a button's
+    // children in an inner box that won't shrink, so long names overflowed instead of truncating
+    <div role="button" tabIndex={0} onClick={onOpen} title={metric.description ?? undefined}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      className="flex flex-col gap-2 min-w-0 overflow-hidden p-3 text-left rounded border border-gray-800 bg-surface-panel cursor-pointer outline-none hover:border-gray-600 focus-visible:border-gray-500">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+        <div className="flex flex-col min-w-0">
+          <span className="text-xs font-medium text-gray-100 truncate" title={metric.label || metric.name}>{metric.label || metric.name}</span>
+          {metric.label && <span className="text-[10px] font-mono text-gray-500 truncate" title={metric.name}>{metric.name}</span>}
+        </div>
+        <span className={`px-1.5 py-px text-[10px] rounded border ${TYPE_CLS[metric.type] ?? TYPE_CLS.simple}`}>{metric.type}</span>
       </div>
       <div className="flex items-end gap-2 h-8">
         {pts.length > 1 ? (
@@ -75,7 +78,7 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
         {monitor && <span className={`px-1 rounded border ${monitor.pill}`}>{monitor.label}</span>}
         {item?.result?.ran_at && <span className="ml-auto">{relativeTime(item.result.ran_at)}</span>}
       </div>
-    </button>
+    </div>
   );
 }
 

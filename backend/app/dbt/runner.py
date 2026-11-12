@@ -2,6 +2,7 @@ import asyncio
 import os
 import shlex
 import signal
+import time
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -56,6 +57,16 @@ def process_env(req: RunRequest) -> dict[str, str] | None:
         return req.env
     base = dict(os.environ if req.env is None else req.env)
     return {**base, "DBT_POPULATE_CACHE": base.get("DBT_POPULATE_CACHE", "false")}
+
+
+LOCK_WAIT_LOG_S = 1.0
+
+
+def _log_lock_wait(req: RunRequest, queued: float) -> None:
+    """Log a long wait for the project's dbt lock (a query queued behind another dbt command)."""
+    waited = time.monotonic() - queued
+    if waited >= LOCK_WAIT_LOG_S:
+        log.info("dbt_lock_waited", project_id=req.project_id, command=command_label(req), waited_s=round(waited, 1))
 
 
 def command_label(req: RunRequest) -> str:
@@ -170,13 +181,19 @@ class DbtRunner:
         args += list(req.extra)
         return args
 
-    async def run(self, req: RunRequest) -> tuple[int, bytes, bytes]:
+    async def run(self, req: RunRequest, *, timeout: float | None = None) -> tuple[int, bytes, bytes]:
         """Acquire the per-project lock and run dbt, returning (returncode, stdout, stderr).
 
+        `timeout` (seconds) starts once the lock is held, so waiting behind another dbt command
+        doesn't count; on expiry dbt is killed and TimeoutError raised.
         Does not publish bus events — use for non-user-visible commands like dbt show.
         """
         lock = self._lock_for(req.project_id)
-        async with lock:
+        queued = time.monotonic()
+        async with lock, asyncio.timeout(None) as deadline:
+            _log_lock_wait(req, queued)
+            if timeout is not None:
+                deadline.reschedule(asyncio.get_running_loop().time() + timeout)
             args = self.build_args(req)
             pid = req.project_id
             append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
@@ -206,7 +223,9 @@ class DbtRunner:
 
         Closing the generator early (a caller's timeout, break) kills dbt before the lock is released."""
         lock = self._lock_for(req.project_id)
+        queued = time.monotonic()
         async with lock:
+            _log_lock_wait(req, queued)
             pid = req.project_id
             append_project_log(str(req.project_path), f">>> {command_line(req)}", pid)
             proc = await asyncio.create_subprocess_exec(

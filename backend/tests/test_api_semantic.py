@@ -205,7 +205,7 @@ async def test_query_runs_through_dbt_show(client, db, tmp_path, dbt_env, worker
     async def fake_env(project_id):
         return {"DBT_TARGET": "dev"}
 
-    async def fake_run(req):
+    async def fake_run(req, **_):
         seen["extra"] = req.extra
         rows = [{"metric_time__day": f"2024-01-0{i}", "revenue": i} for i in range(1, 4)]
         return 0, json.dumps({"show": rows}).encode(), b""
@@ -231,7 +231,7 @@ def fake_show(monkeypatch: pytest.MonkeyPatch) -> dict:
     async def fake_env(project_id):
         return {"DBT_TARGET": "dev"}
 
-    async def fake_run(req):
+    async def fake_run(req, **_):
         state["calls"] += 1
         if state["gate"] is not None:
             await state["gate"].wait()
@@ -507,7 +507,7 @@ async def test_verify_parses_and_rechecks(client, db, tmp_path, dbt_env, monkeyp
     async def fake_env(project_id):
         return {}
 
-    async def fake_run(req):
+    async def fake_run(req, **_):
         assert req.command == "parse"
         return 1, b"Could not render {{ Dimension('x') }}: 'Dimension' is undefined", b""
 

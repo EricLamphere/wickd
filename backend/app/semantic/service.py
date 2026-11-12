@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import json
 import tempfile
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,10 @@ def target_dir(project_path: Path) -> Path:
     return project_path / DEFAULT_TARGET
 
 
+# a half-written manifest.json (dbt rewriting it) is retried this often, this far apart
+UNREADABLE_ATTEMPTS = 4
+UNREADABLE_RETRY_S = 0.25
+
 _info_cache: dict[str, tuple[tuple[int, ...], ManifestInfo]] = {}
 
 
@@ -81,6 +86,23 @@ def _hash(path: Path) -> str | None:
         return None
 
 
+def _load_manifest(manifest_path: Path) -> dict | None:
+    """manifest.json parsed, or None. Every dbt command (each `dbt show` too) rewrites it in place,
+    so a read can catch it half-written: retry a few times before giving up."""
+    error: Exception | None = None
+    for attempt in range(UNREADABLE_ATTEMPTS):
+        if attempt:
+            time.sleep(UNREADABLE_RETRY_S)
+        try:
+            data = json.loads(manifest_path.read_bytes())
+        except (OSError, json.JSONDecodeError) as exc:
+            error = exc
+            continue
+        return data if isinstance(data, dict) else None
+    log.warning("semantic_manifest_info_unreadable", path=str(manifest_path), error=str(error))
+    return None
+
+
 def _read_manifest_info(target: Path) -> ManifestInfo:
     manifest_path = target / "manifest.json"
     semantic = target / "semantic_manifest.json"
@@ -92,10 +114,10 @@ def _read_manifest_info(target: Path) -> ManifestInfo:
     hit = _info_cache.get(str(manifest_path))
     if hit and hit[0] == key:
         return hit[1]
-    try:
-        data = json.loads(manifest_path.read_bytes())
-    except (OSError, json.JSONDecodeError) as exc:
-        log.warning("semantic_manifest_info_unreadable", path=str(manifest_path), error=str(exc))
+    data = _load_manifest(manifest_path)
+    if data is None:
+        if hit:  # dbt is still rewriting it: the last good read is the best answer
+            return hit[1]
         return ManifestInfo(semantic, None, None, {k: 0 for k in SEMANTIC_SECTIONS}, stat.st_mtime)
     metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
     counts = {k: len(v) if isinstance(v := data.get(k), dict) else 0 for k in SEMANTIC_SECTIONS}

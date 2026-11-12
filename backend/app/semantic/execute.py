@@ -67,6 +67,18 @@ def for_dbt_show(sql: str, adapter_type: str | None) -> str:
     return cleaned
 
 
+def timeout_message(
+    timeout: float, *, startup: float = 0.0, index: int | None = None, total: int | None = None
+) -> str:
+    """Why a query was stopped. `startup`: the extra allowance it had for dbt to start (parse,
+    connect), so the total it was given is stated, not just METRIC_QUERY_TIMEOUT."""
+    which = f"Query {index + 1} of {total}" if index is not None and total is not None else "The query"
+    budget = (f"{timeout + startup:.0f}s ({startup:.0f}s for dbt to start plus the project's "
+              f"METRIC_QUERY_TIMEOUT of {timeout:.0f}s)") if startup else \
+        f"{timeout:.0f}s (the project's METRIC_QUERY_TIMEOUT setting)"
+    return f"{which} didn't finish within {budget} and was stopped."
+
+
 async def wait_for_lock(project_id: int, seconds: float = LOCK_WAIT_S) -> bool:
     """Wait up to `seconds` for the project's other dbt command to finish; False if it didn't."""
     waited = 0.0
@@ -86,7 +98,6 @@ async def run_sql(
         raise ExecutionError("busy", "dbt stayed busy with another command — try again in a moment.")
     from app.semantic.batch import (  # batch imports this module
         STARTUP_ALLOWANCE_S,
-        TIMEOUT_KEY,
         query_timeout,
     )
 
@@ -102,13 +113,12 @@ async def run_sql(
         env=env,
     )
     try:
-        async with asyncio.timeout(STARTUP_ALLOWANCE_S + timeout):
-            code, stdout, stderr = await runner.run(req)
+        # the clock starts once dbt starts: waiting behind another dbt command doesn't count
+        code, stdout, stderr = await runner.run(req, timeout=STARTUP_ALLOWANCE_S + timeout)
     except TimeoutError:
-        log.warning("metric_query_timeout", project_id=project_id, timeout_s=int(timeout), sql=sql[:2000])
-        raise ExecutionError(
-            "timeout", f"The query took longer than {timeout:.0f}s (the project's {TIMEOUT_KEY} setting) and was stopped."
-        ) from None
+        log.warning("metric_query_timeout", project_id=project_id, timeout_s=int(STARTUP_ALLOWANCE_S + timeout),
+                    sql=sql[:2000])
+        raise ExecutionError("timeout", timeout_message(timeout, startup=STARTUP_ALLOWANCE_S)) from None
     out = stdout.decode(errors="replace")
     columns, rows = parse_show_json(out)
     if code != 0 or not columns:

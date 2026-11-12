@@ -21,7 +21,13 @@ from app.api.init import load_project_env
 from app.config import settings
 from app.dbt.runner import RunRequest, runner
 from app.logging_setup import get_logger
-from app.semantic.execute import LOCK_WAIT_S, MAX_ROW_LIMIT, error_detail, wait_for_lock
+from app.semantic.execute import (
+    LOCK_WAIT_S,
+    MAX_ROW_LIMIT,
+    error_detail,
+    timeout_message,
+    wait_for_lock,
+)
 
 log = get_logger(__name__)
 
@@ -136,15 +142,21 @@ async def _run_batch(
     run = _BatchRun()
     logs: list[str] = []
     loop = asyncio.get_running_loop()
+    started = False
     try:
-        async with aclosing(runner.run_lines(req)) as lines, asyncio.timeout(STARTUP_ALLOWANCE_S + timeout) as deadline:
+        # the first deadline also covers waiting for the dbt lock; dbt's first line restarts it
+        async with aclosing(runner.run_lines(req)) as lines, \
+                asyncio.timeout(loop.time() + lock_wait + STARTUP_ALLOWANCE_S + timeout) as deadline:
             async for line in lines:
                 found = parse_batch_output(line)
                 if found:
                     run.found.update(found)
                     deadline.reschedule(loop.time() + timeout)  # the next query's clock starts now
-                else:
-                    logs.append(line)
+                    continue
+                if not started and not run.found:  # dbt is running: waiting for the lock is over
+                    deadline.reschedule(loop.time() + STARTUP_ALLOWANCE_S + timeout)
+                started = True
+                logs.append(line)
     except TimeoutError:
         run.timed_out = True
     run.detail = error_detail("\n".join(logs))
@@ -154,9 +166,6 @@ async def _run_batch(
     return run
 
 
-def _timeout_message(index: int, total: int, timeout: float) -> str:
-    return (f"Query {index + 1} of {total} took longer than {timeout:.0f}s "
-            f"(the project's {TIMEOUT_KEY} setting) and was stopped.")
 
 
 def other_target_path(project_id: int, target: str) -> Path:
@@ -208,8 +217,11 @@ async def run_many(
         if run.timed_out:
             stalled = 0 if run.found else stalled + 1
             log.warning("metric_query_timeout", project_id=project_id, query=failed + 1, of=len(sqls),
-                        timeout_s=int(timeout), sql=sqls[failed][:2000])
-            results[failed] = BatchResult([], [], False, _timeout_message(failed, len(sqls), timeout))
+                        timeout_s=int(timeout + (0 if run.found else STARTUP_ALLOWANCE_S)), sql=sqls[failed][:2000])
+            # the first query of a dbt show also had the startup allowance
+            startup = STARTUP_ALLOWANCE_S if not run.found else 0.0
+            results[failed] = BatchResult([], [], False,
+                                          timeout_message(timeout, startup=startup, index=failed, total=len(sqls)))
             if stalled >= 2:  # dbt itself seems stuck (startup or connection): don't retry the rest
                 stuck = f"Not run: dbt timed out twice in a row without returning any result ({timeout:.0f}s per query)."
                 results.update({i: BatchResult([], [], False, stuck) for i in range(failed + 1, end)})

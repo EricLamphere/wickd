@@ -53,7 +53,7 @@ def test_candidates_go_both_ways_and_skip_the_current_version() -> None:
     result = check("1.10.2", "3.12", uses_latest_spec=False, want_cli=True)
     assert "1.10.23" in result.compatible_dbt_versions  # same minor, newer patch
     assert "1.9.11" in result.compatible_dbt_versions  # older
-    assert "1.12.6" in result.compatible_dbt_versions  # newer
+    assert DBT_CORE_LATEST_PATCHES["1.12"] in result.compatible_dbt_versions  # newer
     assert "1.10.2" not in result.compatible_dbt_versions
 
 

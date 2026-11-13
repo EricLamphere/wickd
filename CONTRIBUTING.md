@@ -62,6 +62,7 @@ The rules that matter most:
 | `WICKD_GLOBAL_REQUIREMENTS_PATH` | _(none)_ | `requirements.txt` installed into the dbt venv on every project open |
 | `WICKD_DBT_CORE_VERSION` | _(latest)_ | dbt-core release Run global setup installs when no global requirements file is set; chosen in the setup wizard, editable in Global Settings (app setting only, not an env var) |
 | `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app) | App storage (SQLite DB, dbt venv, docs, logs). Set automatically — not configurable in the UI |
+| `WICKD_PORT` | `8001` (dev) / `47823` (desktop app) | Backend port. The desktop app picks its own (47823, or a free port if that's taken), so it can run alongside `task start` |
 | `WICKD_LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `WICKD_AI_MODEL` | `qwen3.5-4b` | Bundled local model for AI features (Pro); set in Global Settings or the AI tab |
 | `WICKD_AI_ENDPOINT_URL` / `WICKD_AI_ENDPOINT_MODEL` | _(none)_ | OpenAI-compatible server (and model name) to use instead of the bundled model; Global Settings |

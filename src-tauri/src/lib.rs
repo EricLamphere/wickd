@@ -3,7 +3,8 @@ use std::time::Duration;
 
 use tauri::{Manager, RunEvent};
 
-const BACKEND_URL: &str = "http://127.0.0.1:8001";
+mod backend_port;
+
 const BACKEND_HEALTH_PATH: &str = "/api/health";
 const BACKEND_POLL_TIMEOUT: Duration = Duration::from_secs(20);
 const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -19,7 +20,7 @@ struct BackendProcess(std::sync::Mutex<Option<Child>>);
 /// helper process (spawned the first time anything touches `multiprocessing`, e.g.
 /// via `ProcessPoolExecutor` import machinery). That helper is deliberately designed
 /// to survive a plain kill of its parent so it can clean up shared resources, which
-/// left it (and the port 8001 listener) orphaned when we only killed the tracked PID.
+/// left it (and the backend port's listener) orphaned when we only killed the tracked PID.
 /// `pkill -P <pid>` reaps any such children before/alongside killing the parent.
 fn kill_backend_tree(mut child: Child) {
     let pid = child.id();
@@ -77,16 +78,24 @@ fn apply_requested_zoom(window: &tauri::WebviewWindow) {
     }
 }
 
-/// Shows the main window once `base_url`'s backend answers.
-fn show_when_ready(window: tauri::WebviewWindow, base_url: String) {
+/// True when `health_url` answers as the backend expecting `token` (any wickd
+/// backend when `token` is None).
+fn backend_ready(health_url: &str, token: Option<&str>) -> bool {
+    reqwest::blocking::get(health_url)
+        .ok()
+        .filter(|r| r.status().is_success())
+        .and_then(|r| r.text().ok())
+        .is_some_and(|body| backend_port::health_matches(&body, token))
+}
+
+/// Shows the main window once `base_url`'s backend answers. With a `token`, only a
+/// backend echoing it counts, so a stale or unrelated server on the port is ignored.
+fn show_when_ready(window: tauri::WebviewWindow, base_url: String, token: Option<String>) {
     std::thread::spawn(move || {
         let health_url = format!("{base_url}{BACKEND_HEALTH_PATH}");
         let started = std::time::Instant::now();
         loop {
-            if reqwest::blocking::get(&health_url)
-                .map(|r| r.status().is_success())
-                .unwrap_or(false)
-            {
+            if backend_ready(&health_url, token.as_deref()) {
                 break;
             }
             if started.elapsed() > BACKEND_POLL_TIMEOUT {
@@ -114,7 +123,7 @@ pub fn run() {
                     apply_requested_size(&window);
                     apply_requested_zoom(&window);
                 }
-                show_when_ready(window, url);
+                show_when_ready(window, url, None);
                 return Ok(());
             }
 
@@ -141,9 +150,15 @@ pub fn run() {
                 .join("wickd-backend")
                 .join("wickd-backend");
 
+            // Never the dev port (8001), so the app and `task start` can run side by side.
+            let port = backend_port::choose_port(backend_port::PREFERRED_PORT);
+            let token = backend_port::new_instance_token();
+
             let child = std::process::Command::new(&backend_exe)
                 .env("WICKD_FRONTEND_DIST", frontend_dist.to_string_lossy().to_string())
                 .env("WICKD_DATA_DIR", data_dir.to_string_lossy().to_string())
+                .env("WICKD_PORT", port.to_string())
+                .env("WICKD_INSTANCE_TOKEN", &token)
                 .spawn()
                 .expect("failed to spawn wickd-backend");
 
@@ -157,15 +172,12 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("main window not found");
 
-            // The window is created with url = http://127.0.0.1:8001 and starts
-            // loading it immediately — almost always before the sidecar backend
-            // has bound the port, since the sidecar was just spawned above. That
-            // initial load fails (connection refused) and WKWebView does not
-            // auto-retry, so simply calling window.show() later reveals an
-            // already-failed blank page. Poll the backend, then explicitly
-            // navigate once it's actually up, and only show the window after that
-            // navigation has been issued.
-            show_when_ready(window, BACKEND_URL.to_string());
+            // The window is created hidden on about:blank (the port is only known
+            // now), and WKWebView wouldn't retry a load that ran before the backend
+            // bound its port anyway. Poll the backend, then navigate once it's
+            // actually up, and only show the window after that navigation has been
+            // issued.
+            show_when_ready(window, format!("http://127.0.0.1:{port}"), Some(token));
 
             Ok(())
         })

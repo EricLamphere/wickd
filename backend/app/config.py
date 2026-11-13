@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
     host: str = Field(default="127.0.0.1")
     port: int = Field(default=8001)
+    # Set by the desktop shell per launch and echoed by /api/health, so the shell only opens
+    # the window once its own backend answers (src-tauri/src/backend_port.rs). Empty in dev.
+    instance_token: str = Field(default="")
     frontend_dist: Path = Field(default_factory=_default_frontend_dist)
     dbt_venv_dir: Path = Field(default_factory=_default_dbt_venv_dir)
     # llama-server binary for local AI; unset → bundled copy, then PATH (app/ai/runtime.py)

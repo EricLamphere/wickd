@@ -506,7 +506,7 @@ ai_proposal_files
 ## API Routes
 
 ```
-GET    /api/health
+GET    /api/health                                       {status: "ok", instance} — instance = WICKD_INSTANCE_TOKEN (desktop shell launch check; empty in dev)
 
 GET    /api/settings
 PUT    /api/settings
@@ -1326,6 +1326,8 @@ Behavior:
 |---|---|---|
 | `WICKD_DBT_PROJECTS_PATH` | _(none)_ | Root directory scanned for dbt projects, or several separated by commas; the old name `WICKD_PROJECTS_PATH` is still read (new projects will be created in the first); overridable via Global Settings UI |
 | `WICKD_DATA_DIR` | `<repo>/data` (dev) / `~/Library/Application Support/com.lampherelabs.wickd` (desktop app, passed in by the Tauri shell) | App storage: SQLite database, dbt venv, generated docs, API logs. Not a user-facing setting — the dev default is fixed and the desktop app sets it from Tauri's `app_data_dir()` |
+| `WICKD_PORT` | `8001` (dev) / `47823` (desktop app, passed in by the Tauri shell) | Backend port. The desktop app never uses 8001, so it can run beside `task start`; it prefers 47823 (a fixed port keeps the webview's origin, and so its localStorage, stable) and falls back to a free port only when that's taken (`src-tauri/src/backend_port.rs`) |
+| `WICKD_INSTANCE_TOKEN` | _(empty)_ | Set by the desktop shell per launch and echoed by `GET /api/health` as `instance`; the shell shows the window only once its own backend answers, never a stale or unrelated server on the port. Not a secret |
 | `WICKD_DATABASE_URL` | _(derived from DATA_DIR)_ | Override SQLite path |
 | `WICKD_LOG_LEVEL` | `INFO` | structlog level |
 | `WICKD_LLAMA_SERVER_PATH` | _(bundled copy, then `PATH`)_ | llama-server binary for local AI — see Key Flows → Local AI |

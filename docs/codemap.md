@@ -182,3 +182,9 @@ frontend/src/
     RichTable.tsx   — Designed table for Pro insight views (Run History performance, Test gaps): component cells, sortable columns, row selection by key (shift-click ranges), expandable rows, hover row actions, ↑↓/Space/Enter; pure logic in lib/richTable.ts (tested); RichTableControls.tsx (TableSearch, RowAction); filters use FilterDropdown
     charts/         — SVG charts: Sparkline (area + median + hover readout), Dumbbell (usual → now on a shared scale), MeterBar, RunBarsChart (one bar per run, status colours, y ticks, median, tooltip); geometry in lib/charts.ts (tested)
 ```
+
+```
+src-tauri/src/
+  lib.rs          — desktop shell: spawns the bundled wickd-backend (WICKD_DATA_DIR, WICKD_FRONTEND_DIST, WICKD_PORT, WICKD_INSTANCE_TOKEN), opens the hidden about:blank window at the backend once /api/health echoes the launch token, kills the backend tree on exit; debug-only attach mode (WICKD_SHELL_URL/SIZE/ZOOM, screenshots skill)
+  backend_port.rs — choose_port() (fixed PREFERRED_PORT 47823, never dev's 8001; free port if taken), new_instance_token(), health_matches(); tested with `cargo test`
+```

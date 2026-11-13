@@ -63,6 +63,7 @@ from app.api import unit_tests as unit_tests_api
 from app.api import workspace as workspace_api
 from app.api import workspace_ai as workspace_ai_api
 from app.api import workspace_docs as workspace_docs_api
+from app.api import workspace_docs_pages as workspace_docs_pages_api
 from app.api import workspace_logs as workspace_logs_api
 from app.charts.runtime import charts_servers
 from app.config import settings
@@ -176,6 +177,7 @@ app.include_router(license_api.router)
 app.include_router(env_api.router)
 app.include_router(docs_api.router)
 app.include_router(workspace_docs_api.router)
+app.include_router(workspace_docs_pages_api.router)
 app.include_router(workspace_logs_api.router)
 app.include_router(workspace_ai_api.router)
 app.include_router(events_api.router)

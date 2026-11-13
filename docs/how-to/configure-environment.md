@@ -150,6 +150,7 @@ Global settings are shown for reference but can only be edited in the Global Set
 - **WICKD_DBT_CORE_VERSION** — the dbt-core release **Run global setup** installs when there's no global requirements file (blank = latest)
 - **WICKD_LOG_LEVEL** — logging verbosity
 - **WICKD_METRICFLOW_MODE** — the semantic layer default for projects: `auto` (default) or `off`
+- **WICKD_SHARED_DOCS_PATHS** — Markdown folders outside any dbt project (for example a team's central `dbt/docs` next to `dbt/projects/`), comma-separated absolute paths, shown in the home page's combined docs **Pages** tab — see [Browse project docs](browse-docs.md#shared-docs-folders-in-combined-docs)
 - **WICKD_PYTHON_PATH** — the Python interpreter dbt runs on (see below)
 
 To change these, click the lock icon area or open Global Settings from the Home page.

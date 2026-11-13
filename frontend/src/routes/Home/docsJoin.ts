@@ -23,7 +23,8 @@ export function parseNodeKey(key: string): { projectId: number; uid: string } | 
   if (at <= 0) return null;
   const head = key.slice(0, at);
   const uid = key.slice(at + KEY_SEPARATOR.length);
-  if (!/^\d+$/.test(head) || !uid) return null;
+  // negative = a shared docs folder's page (docsPagesApi sharedSourceId())
+  if (!/^-?\d+$/.test(head) || !uid) return null;
   return { projectId: Number(head), uid };
 }
 

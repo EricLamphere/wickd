@@ -16,6 +16,8 @@ from app.dbt import venv
 from app.dbt.core_version import DBT_CORE_VERSION_KEY, is_valid_version
 from app.dbt.python_env import PYTHON_PATH_KEY
 from app.dbt.runner import runner
+from app.docs_pages import shared as shared_docs
+from app.docs_pages.service import DocsPagesError
 from app.logging_setup import get_logger
 from app.semantic.mode import GLOBAL_KEY as METRICFLOW_MODE_KEY
 from app.semantic.mode import MODES as METRICFLOW_MODES
@@ -42,6 +44,8 @@ class SettingsUpdateDto(BaseModel):
     dbt_core_version: str | None = None
     # default for projects without their own setting: auto | off
     metricflow_mode: str | None = None
+    # comma-separated docs folders outside any project, for combined docs' Pages tab ("" clears)
+    shared_docs_paths: str | None = None
 
 
 class SettingsDto(BaseModel):
@@ -61,6 +65,8 @@ class SettingsDto(BaseModel):
     dbt_core_version: str | None
     # semantic layer: MetricFlow default for projects (auto | off)
     metricflow_mode: str
+    # docs folders outside any project shown in combined docs' Pages tab; null = none
+    shared_docs_paths: str | None
     configured: bool
     setup_completed: bool
 
@@ -119,6 +125,7 @@ async def get_settings(session: AsyncSession = Depends(get_session)) -> Settings
         ai_endpoint_model=await _get_override(session, AI_ENDPOINT_MODEL_KEY) or None,
         dbt_core_version=await _get_override(session, DBT_CORE_VERSION_KEY) or None,
         metricflow_mode=await metricflow_global_mode(session),
+        shared_docs_paths=await shared_docs.load_setting(session) or None,
         setup_completed=setup_completed,
     )
 
@@ -222,8 +229,23 @@ async def put_settings(
         if mode not in METRICFLOW_MODES:
             raise HTTPException(status_code=400, detail="metricflow_mode must be 'auto' or 'off'")
         await _upsert(session, METRICFLOW_MODE_KEY, mode)
+    if dto.shared_docs_paths is not None:
+        try:
+            normalized = await asyncio.to_thread(shared_docs.normalize_setting, dto.shared_docs_paths)
+        except DocsPagesError as exc:
+            raise HTTPException(status_code=400, detail=exc.message) from exc
+        await _upsert(session, shared_docs.SETTING_KEY, normalized)
     await session.commit()
+    if dto.shared_docs_paths is not None:
+        await _resync_watcher()
     return await get_settings(session)
+
+
+async def _resync_watcher() -> None:
+    """Watch new shared docs folders now rather than on the watcher's next tick."""
+    from app.watcher.service import watcher_manager  # lazy: the watcher imports half the app
+
+    await watcher_manager.resync()
 
 
 def _validate_endpoint(raw: str) -> str:

@@ -93,6 +93,7 @@ When handling SSE events, invalidate the relevant query:
 | `docs_pages_changed`; also `graph_changed`, `docs_generated` for `['docs-page', projectId]` only (docs block usage comes from the manifest) | `['docs-pages', projectId]`, `['docs-page', projectId]` (Docs → Pages and README rendering, `DocsBrowser/pages/useDocsPages.ts`) |
 | `charts_changed`, `charts_build_started`, `charts_build_finished` | `['charts', projectId]` (Charts page + nav item, `routes/Project/Charts/useCharts.ts`); `charts_changed` also `['charts-validate', projectId]` |
 | `docs_pages_changed` (global stream, `project_id`) | `['docs-pages', id]`, `['docs-page', id]` (Home → Docs Pages tab, `routes/Home/CombinedPages.tsx`) |
+| `docs_pages_changed` (global stream, `shared_folder`); saving `shared_docs_paths` in Global Settings | `['docs-pages-shared']`, `['docs-page', sharedSourceId(folder)]` (shared docs folders in the same tab; a folder's pages use a negative id, `lib/docsPagesApi.ts`) |
 | `charts_env` (global stream) | `['charts']` once the dbt Charts sidecar is ready or failed |
 | `run_schedules_changed` (a failed outcome also shows a toast), `run_history_changed` | `['run-schedules', projectId]` (Runs → Schedule tab, Runs nav dot; `routes/Project/RunHistory/schedule/useSchedules.ts`); `run_schedules_changed` also `['run-schedule-history', projectId]` |
 | none (staleTime 30 s; the options come from the manifest's compiled SQL, read when the Add unit test panel opens) | `['unit-test-focus', projectId, uniqueId]` (Wicky → Add unit test…, `Wicky/UnitTestOptions.tsx`) |

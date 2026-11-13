@@ -22,6 +22,7 @@ from app.charts import discovery as charts_discovery
 from app.db.engine import SessionLocal
 from app.db.models import ModelStatus, Project, ProjectEnvVar
 from app.docs_pages import service as docs_pages
+from app.docs_pages import shared as shared_docs
 from app.events.bus import Event, bus
 from app.git.repo import find_repo_root
 from app.logging_setup import get_logger
@@ -60,6 +61,8 @@ class WatchedProject:
 class WatchPlan:
     projects: tuple[WatchedProject, ...]
     roots: tuple[Path, ...]
+    # WICKD_SHARED_DOCS_PATHS folders (id, resolved path): page changes → global docs_pages_changed
+    shared_docs: tuple[tuple[int, Path], ...] = ()
 
 
 def _is_under(path: Path, root: Path) -> bool:
@@ -94,6 +97,7 @@ def build_plan(
     projects: list[tuple[int, Path]],
     dashboard_settings: dict[int, str] | None = None,
     docs_settings: dict[int, str] | None = None,
+    shared_docs_setting: str | None = None,
 ) -> WatchPlan:
     """Resolve each existing project's git dir and the minimal set of roots to watch."""
     settings = dashboard_settings or {}
@@ -115,7 +119,9 @@ def build_plan(
         + [w.git_dir for w in watched if w.git_dir is not None]
         + [w.docs_dir for w in watched if w.docs_dir is not None]
     )
-    return WatchPlan(projects=tuple(watched), roots=collapse_roots(roots))
+    shared = tuple((f.id, f.path) for f in shared_docs.shared_folders(shared_docs_setting))
+    roots += [path for _, path in shared]
+    return WatchPlan(projects=tuple(watched), roots=collapse_roots(roots), shared_docs=shared)
 
 
 def is_relevant(plan: WatchPlan, path: Path) -> bool:
@@ -124,6 +130,9 @@ def is_relevant(plan: WatchPlan, path: Path) -> bool:
         if wp.git_dir is not None and _is_under(path, wp.git_dir):
             rel = path.relative_to(wp.git_dir).parts
             return bool(rel) and (rel[0] in _GIT_STATUS_FILES or rel[0] == "refs")
+    for _, shared_dir in plan.shared_docs:
+        if _is_under(path, shared_dir) and is_shared_docs_change(shared_dir, path):
+            return True
     for wp in plan.projects:
         if wp.docs_dir is not None and _is_under(path, wp.docs_dir) and not _is_under(path, wp.path):
             rel = path.relative_to(wp.docs_dir).parts
@@ -161,6 +170,22 @@ def docs_page_paths(docs_dir: Path | None, changed: list[Path]) -> list[str]:
     suffixes = docs_pages.PAGE_SUFFIXES | docs_pages.IMAGE_TYPES.keys()
     resolved = [f.resolve() for f in changed if f.suffix.lower() in suffixes]  # a project path may be a symlink
     return sorted({f.relative_to(docs_dir).as_posix() for f in resolved if f != docs_dir and _is_under(f, docs_dir)})
+
+
+def is_shared_docs_change(shared_dir: Path, path: Path) -> bool:
+    rel = path.relative_to(shared_dir).parts
+    return not any(part in _IGNORED_PROJECT_DIRS for part in rel)
+
+
+def shared_docs_changes(plan: WatchPlan, changes: Changes) -> dict[int, list[str]]:
+    """Changed pages / images per shared docs folder id (relative to the folder)."""
+    changed = [Path(p) for _, p in changes]
+    routed: dict[int, list[str]] = {}
+    for folder_id, shared_dir in plan.shared_docs:
+        paths = docs_page_paths(shared_dir, changed)
+        if paths:
+            routed[folder_id] = paths
+    return routed
 
 
 def route_changes(plan: WatchPlan, changes: Changes) -> dict[int, Changes]:
@@ -238,8 +263,9 @@ class WatcherManager:
             docs_settings = dict((await session.execute(
                 select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == docs_pages.SETTING_KEY)
             )).all())
+            shared_setting = await shared_docs.load_setting(session)
         started = time.perf_counter()
-        plan = await asyncio.to_thread(build_plan, rows, settings, docs_settings)
+        plan = await asyncio.to_thread(build_plan, rows, settings, docs_settings, shared_setting)
         plan_ms = round((time.perf_counter() - started) * 1000)
         if plan == self._plan:
             return
@@ -287,6 +313,7 @@ class WatcherManager:
             plan, changes = await self._queue.get()
             if plan != self._plan:
                 continue  # batch from a watcher that has since been replaced
+            await self._publish_shared_docs(plan, changes)
             by_id = {wp.project_id: wp for wp in plan.projects}
             for project_id, project_changes in route_changes(plan, changes).items():
                 wp = by_id[project_id]
@@ -297,6 +324,16 @@ class WatcherManager:
                     )
                 except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("watcher_dispatch_error", project_id=project_id, error=str(exc))
+
+    async def _publish_shared_docs(self, plan: WatchPlan, changes: Changes) -> None:
+        """Shared docs folders belong to no project: their page changes go on the global stream only."""
+        for folder_id, paths in shared_docs_changes(plan, changes).items():
+            try:
+                await bus.publish(Event(
+                    topic="global", type="docs_pages_changed", data={"shared_folder": folder_id, "paths": paths},
+                ))
+            except Exception as exc:  # noqa: BLE001 — error is logged below
+                log.warning("watcher_shared_docs_error", folder_id=folder_id, error=str(exc))
 
     async def _handle_changes(
         self,

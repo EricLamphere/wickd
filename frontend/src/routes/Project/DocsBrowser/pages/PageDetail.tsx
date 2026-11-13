@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FileText, Pencil, RefreshCw, BookMarked } from 'lucide-react';
 import type { DocsNodeDto } from '../../../../lib/api';
 import type { DocsPagesListDto, DocsPageSegmentDto } from '../../../../lib/docsPagesApi';
-import { extractHeadings, type Heading, type LinkContext } from '../../lib/docsPageLinks';
+import { extractHeadings, type Heading, type LinkContext, type NodeRefKind } from '../../lib/docsPageLinks';
 import { MarkdownPage } from './MarkdownPage';
 import { scrollToAnchor, useDocsPage, useMarkdownLinkHandler, useNodeResolver } from './useDocsPages';
 
@@ -12,6 +12,8 @@ interface PageDetailProps {
   path: string;
   list: DocsPagesListDto;
   nodes: Map<string, DocsNodeDto>;
+  /** Resolves `ref:` links; defaults to the project's cached docs (a shared folder passes its own). */
+  resolveNode?: (kind: NodeRefKind, name: string) => string | null;
 }
 
 function folderOf(path: string): string {
@@ -20,12 +22,13 @@ function folderOf(path: string): string {
 }
 
 /** One Markdown page from the docs folder: header (title, path, Edit), body, and an outline. */
-export function PageDetail({ projectId, path, list, nodes }: PageDetailProps) {
+export function PageDetail({ projectId, path, list, nodes, resolveNode: resolveOverride }: PageDetailProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
   const { data, isLoading, error } = useDocsPage(projectId, path);
-  const resolveNode = useNodeResolver(projectId);
+  const projectResolver = useNodeResolver(projectId);
+  const resolveNode = resolveOverride ?? projectResolver;
   const onLink = useMarkdownLinkHandler(projectId, containerRef, true);
 
   const ctx = useMemo<LinkContext>(() => ({

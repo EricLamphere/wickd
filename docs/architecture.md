@@ -755,6 +755,9 @@ GET    /api/workspace/logs/api                           home page API Logs: tai
 DELETE /api/workspace/logs/api                           truncate it
 GET    /api/workspace/docs/profile                       global profile picked on the home page for combined docs (`{profile_id}`, null = each project's own)
 PUT    /api/workspace/docs/profile                       set it (`{profile_id}`, null clears; 404 on an unknown profile). Saved in app_settings as `combined_docs_profile_id`
+GET    /api/workspace/docs-pages                         shared docs folders (WICKD_SHARED_DOCS_PATHS) for combined docs' Pages tab: `{folders: [{id, name, path, pages}]}`; id = position in the setting, missing folders left out (api/workspace_docs_pages.py)
+GET    /api/workspace/docs-pages/{folder_id}/content     one page (`?path=`, same shape as a project's; docs blocks aren't matched to nodes, `project_path` null); 404 for an unknown folder
+GET    /api/workspace/docs-pages/{folder_id}/asset       an image from the folder (`?path=`, safe_join; SVGs served inert)
 GET    /api/global-profiles
 POST   /api/global-profiles
 DELETE /api/global-profiles/{profile_id}
@@ -1332,6 +1335,7 @@ Behavior:
 | `WICKD_LOG_LEVEL` | `INFO` | structlog level |
 | `WICKD_LLAMA_SERVER_PATH` | _(bundled copy, then `PATH`)_ | llama-server binary for local AI — see Key Flows → Local AI |
 | `WICKD_METRICFLOW_MODE` | `auto` | Default MetricFlow mode when the `metricflow_mode` app setting is unset |
+| `WICKD_SHARED_DOCS_PATHS` | _(none)_ | Comma-separated Markdown folders outside any project, added to combined docs' Pages tab, when the `shared_docs_paths` app setting is unset |
 | `WICKD_METRICFLOW_VENV_DIR` | `<data_dir>/metricflow-venv` | The MetricFlow sidecar venv (engine only, no dbt) — see Key Flows → Semantic layer |
 | `WICKD_FRONTEND_DIST` | `frontend/dist` (dev) / resolved next to the packaged binary | Directory the SPA is served from — see `_mount_spa()` |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment to validate license keys against — sandbox or production |
@@ -1354,6 +1358,7 @@ Global settings (stored in `app_settings` table, set via UI):
 | `dbt_core_version` | dbt-core release global setup installs when no `global_requirements_path` is set (UI label `WICKD_DBT_CORE_VERSION`); missing/empty = latest. Chosen in the setup wizard. Cleared when a requirements path is saved; refused while one is set (the file decides) |
 | `log_level` | Overrides `WICKD_LOG_LEVEL` |
 | `metricflow_mode` | Semantic layer default for projects without their own `metricflow_mode` (UI label `WICKD_METRICFLOW_MODE`): `auto` (default) or `off`; overrides the `WICKD_METRICFLOW_MODE` env var |
+| `shared_docs_paths` | Comma-separated absolute folders of Markdown pages outside any dbt project (UI label `WICKD_SHARED_DOCS_PATHS`), shown after the projects in the home page's combined docs Pages tab and watched for changes (global `docs_pages_changed` with `shared_folder`); each must exist when saved (400 otherwise), at most 20; overrides the env var (`app/docs_pages/shared.py`) |
 | `python_path` | Python 3.11+ interpreter the dbt venv is built from (UI label `WICKD_PYTHON_PATH`). Auto-detected on first launch; changing it rebuilds the venv. Not editable in a source checkout |
 
 Per-project env vars (stored in `project_env_vars`, injected into every dbt subprocess via `load_project_env()`):

@@ -67,3 +67,4 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `WICKD_AI_ENDPOINT_URL` | `ai_endpoint_url` | `http://localhost:11434` |
 | `WICKD_AI_ENDPOINT_MODEL` | `ai_endpoint_model` | `qwen3:8b` |
 | `WICKD_METRICFLOW_MODE` | `metricflow_mode` | `auto` |
+| `WICKD_SHARED_DOCS_PATHS` | `shared_docs_paths` (comma-separated absolute folders; validated on save) | `/home/user/dbt/docs` |

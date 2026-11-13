@@ -65,6 +65,12 @@ dbt reads `{% docs name %}…{% enddocs %}` blocks from `.md` files. A file that
 
 **Edit** in a page's header opens the file in **Files** (only for docs folders inside the dbt project). Saving there, or editing the file anywhere else, updates the rendered page right away.
 
+### Shared docs folders in combined docs
+
+The home page's **Docs** tab (combined docs) has a **Pages** tab too, listing each selected project's pages under its name. To include Markdown that lives outside every dbt project, such as a team's central `dbt/docs` next to `dbt/projects/`, set **WICKD_SHARED_DOCS_PATHS** in **Global Settings → Docs**: one or more absolute folder paths, separated by commas. Each folder shows after the projects with a folder icon, labeled with its parent and name (`dbt/docs`).
+
+Shared pages render the same way and update live when the files change. `ref:` / `source:` links open the node in whichever selected project has it. Because the folder belongs to no project, there's no **Edit** button, and docs blocks in it aren't matched to the nodes that use them.
+
 ## READMEs
 
 The project's `README.md` (on the project home page and in the Docs project overview) uses the same renderer: tables, task lists, mermaid, images relative to the project, and links to `docs/…` pages open them in the **Pages** tab. Links to other project files open them in **Files**.

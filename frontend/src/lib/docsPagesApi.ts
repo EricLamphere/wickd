@@ -35,11 +35,44 @@ export interface DocsPageContentDto {
 /** Where an image path is resolved from: the docs folder, or the project root (README). */
 export type AssetRoot = 'docs' | 'project';
 
+/** A WICKD_SHARED_DOCS_PATHS folder: Markdown outside any project, for combined docs. */
+export interface SharedDocsFolderDto {
+  id: number; // position in the setting
+  name: string; // "<parent>/<folder>"
+  path: string;
+  pages: DocsPageDto[];
+}
+
+/**
+ * Combined docs address a shared folder's pages like a project's, with a negative id in the
+ * project's place (folder 0 → -1), so page keys, selection and PageDetail work unchanged.
+ * These helpers send those ids to the workspace routes.
+ */
+export function sharedSourceId(folderId: number): number {
+  return -(folderId + 1);
+}
+
+export function sharedFolderOf(sourceId: number): number | null {
+  return sourceId < 0 ? -sourceId - 1 : null;
+}
+
+const enc = encodeURIComponent;
+
 export const docsPagesApi = {
   list: (projectId: number) => get<DocsPagesListDto>(`/projects/${projectId}/docs-pages`),
-  content: (projectId: number, path: string) =>
-    get<DocsPageContentDto>(`/projects/${projectId}/docs-pages/content?path=${encodeURIComponent(path)}`),
+  /** A project's page, or (negative id) a shared folder's. */
+  content: (sourceId: number, path: string) => {
+    const folder = sharedFolderOf(sourceId);
+    return get<DocsPageContentDto>(folder === null
+      ? `/projects/${sourceId}/docs-pages/content?path=${enc(path)}`
+      : `/workspace/docs-pages/${folder}/content?path=${enc(path)}`);
+  },
   /** URL for an <img src>; images are loaded by the browser, not through fetch. */
-  assetUrl: (projectId: number, path: string, root: AssetRoot) =>
-    `/api/projects/${projectId}/docs-pages/asset?path=${encodeURIComponent(path)}&root=${root}`,
+  assetUrl: (sourceId: number, path: string, root: AssetRoot) => {
+    const folder = sharedFolderOf(sourceId);
+    return folder === null
+      ? `/api/projects/${sourceId}/docs-pages/asset?path=${enc(path)}&root=${root}`
+      : `/api/workspace/docs-pages/${folder}/asset?path=${enc(path)}`;
+  },
+  shared: () => get<{ folders: SharedDocsFolderDto[] }>('/workspace/docs-pages'),
 };

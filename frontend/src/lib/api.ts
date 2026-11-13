@@ -922,6 +922,8 @@ export interface SettingsDto {
   dbt_core_version: string | null;
   /** Semantic layer: MetricFlow default for projects without their own setting. */
   metricflow_mode: 'auto' | 'off';
+  /** Comma-separated docs folders outside any project, shown in combined docs' Pages tab. */
+  shared_docs_paths: string | null;
   configured: boolean;
   setup_completed: boolean;
 }
@@ -995,6 +997,8 @@ export interface SettingsUpdateDto {
   /** "" clears it (latest). */
   dbt_core_version?: string;
   metricflow_mode?: 'auto' | 'off';
+  /** "" clears it. */
+  shared_docs_paths?: string;
 }
 
 export const api = {

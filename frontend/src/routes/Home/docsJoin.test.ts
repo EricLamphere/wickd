@@ -42,8 +42,12 @@ describe('node keys', () => {
     expect(parseNodeKey(key)).toEqual({ projectId: 12, uid: 'source.shop.raw.orders' });
   });
 
+  it('accepts a shared docs folder\'s negative id', () => {
+    expect(parseNodeKey('-1::page:guide.md')).toEqual({ projectId: -1, uid: 'page:guide.md' });
+  });
+
   it('rejects anything else', () => {
-    for (const bad of ['', 'model.shop.orders', 'x::model.a.b', '::model.a.b', '1::']) {
+    for (const bad of ['', 'model.shop.orders', 'x::model.a.b', '::model.a.b', '1::', '-::page:a.md', '--1::page:a.md']) {
       expect(parseNodeKey(bad)).toBeNull();
     }
   });

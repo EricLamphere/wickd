@@ -86,6 +86,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("WICKD_DBT_PROJECTS_PATH", "WICKD_PROJECTS_PATH", "dbt_projects_path"),
     )
     global_requirements_path: str | None = Field(default=None, alias="WICKD_GLOBAL_REQUIREMENTS_PATH")
+    # Docs folders outside any dbt project for combined docs' Pages tab (comma-separated)
+    shared_docs_paths: str | None = Field(default=None, alias="WICKD_SHARED_DOCS_PATHS")
     data_dir: Path = Field(default_factory=_default_data_dir)
     database_url: str = Field(default="")
     vscode_cmd: str = Field(default="code")

@@ -43,6 +43,14 @@ function buildSections(settings: SettingsDto | undefined): SettingSection[] {
       extra: (s) => <PythonInterpreterRow appSettings={s} />,
     },
     {
+      id: 'docs',
+      title: 'Docs',
+      description: 'The home page’s combined docs.',
+      rows: [
+        { key: 'shared_docs_paths', label: 'WICKD_SHARED_DOCS_PATHS', hint: 'Markdown folders outside any project, shown in the Pages tab (separate with commas)', example: '/home/user/dbt/docs' },
+      ],
+    },
+    {
       id: 'ai',
       title: 'AI',
       description: 'The model Wicky uses (Pro).',
@@ -66,6 +74,7 @@ function buildSections(settings: SettingsDto | undefined): SettingSection[] {
 /** Query keys whose data depends on a given setting. */
 function keysToInvalidate(key: SettingKey): string[][] {
   if (key.startsWith('ai_')) return [['ai-status']];
+  if (key === 'shared_docs_paths') return [['docs-pages-shared']];
   if (key === 'metricflow_mode') return [['semantic-status'], ['health-summary']];
   // Both decide which dbt-core is expected, so the installed-version check changes
   if (key === 'global_requirements_path' || key === 'dbt_core_version') return [['dbt-core-status']];

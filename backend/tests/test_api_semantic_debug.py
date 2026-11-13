@@ -84,7 +84,7 @@ def stubs(monkeypatch: pytest.MonkeyPatch) -> dict:
         rec["explains"].append((op, payload))
         return {**EXPLAINED, "sql": MF_SQL, "columns": ["metric_time__month", "completed_revenue"]}
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, **_kw):
         rec["runs"].append(sqls)
         if rec["block"] is not None:
             await rec["block"].wait()

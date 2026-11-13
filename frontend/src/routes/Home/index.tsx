@@ -99,7 +99,7 @@ export default function Home() {
         {appSettings && !isConfigured && (
           <div className="flex items-center justify-between gap-4 mx-6 mt-4 px-4 py-3 bg-amber-950/40 border border-amber-800/60 rounded-lg shrink-0">
             <div className="flex flex-col gap-0.5">
-              <p className="text-sm font-medium text-amber-300">WICKD_PROJECTS_PATH is not set</p>
+              <p className="text-sm font-medium text-amber-300">WICKD_DBT_PROJECTS_PATH is not set</p>
               <p className="text-xs text-amber-500">Set the path to your dbt projects folder before scanning or creating projects.</p>
             </div>
             <button

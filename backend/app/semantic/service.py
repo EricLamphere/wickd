@@ -9,6 +9,7 @@ import hashlib
 import json
 import tempfile
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -200,9 +201,32 @@ async def _call(info: ManifestInfo, op: str, payload: dict[str, Any], timeout: f
         raise SemanticError(exc.code, message) from exc
 
 
+# explain/catalog answers per semantic manifest content: the metric index asks for hundreds of
+# queries on every refetch, and each catalog is the whole project (large with many metrics)
+_MEMO_MAX = 5000
+_memo: OrderedDict[tuple[str, ...], dict] = OrderedDict()
+
+
+async def _memoized(info: ManifestInfo, op: str, payload: dict[str, Any]) -> dict:
+    """_call(), answered from memory while the semantic manifest's content is unchanged."""
+    if not info.semantic_hash:
+        return await _call(info, op, payload)
+    key = (str(info.semantic_manifest), info.semantic_hash, info.adapter_type or "", op,
+           json.dumps(payload, sort_keys=True, default=str))
+    hit = _memo.get(key)
+    if hit is not None:
+        _memo.move_to_end(key)
+        return hit
+    out = await _call(info, op, payload)
+    _memo[key] = out
+    while len(_memo) > _MEMO_MAX:
+        _memo.popitem(last=False)
+    return out
+
+
 async def explain(project_path: Path, query: dict[str, Any]) -> dict:
-    """{sql, columns} for metrics × group-bys (or a saved query)."""
-    return await _call(await manifest_info(project_path), "explain", query)
+    """{sql, columns} for metrics × group-bys (or a saved query). Don't mutate the answer (memoized)."""
+    return await _memoized(await manifest_info(project_path), "explain", query)
 
 
 async def explain_plan(project_path: Path, query: dict[str, Any]) -> dict:
@@ -250,8 +274,8 @@ async def validate_draft(
 
 
 async def catalog(project_path: Path) -> dict:
-    """Metrics with their dimensions, and saved queries, as MetricFlow sees them."""
-    return await _call(await manifest_info(project_path), "catalog", {})
+    """Metrics with their dimensions, and saved queries, as MetricFlow sees them. Don't mutate it (memoized)."""
+    return await _memoized(await manifest_info(project_path), "catalog", {})
 
 
 # MetricFlow (0.212+) rewrites a legacy cumulative metric's `measure` input into a

@@ -246,7 +246,8 @@ async def _refresh_target(
     if not plans:
         return results
     await _progress(project.id, run_id, "querying", len(plans))
-    batch = await run_many(project.id, Path(project.path), [p.sql for p in plans], target=target or None)
+    batch = await run_many(project.id, Path(project.path), [p.sql for p in plans], target=target or None,
+                            kind="monitors")
     await _progress(project.id, run_id, "detecting", len(plans))
     for plan, res in zip(plans, batch, strict=True):
         results[plan.monitor.id] = await _store_and_detect(plan, res, target, today)
@@ -290,7 +291,8 @@ async def _refresh_slices(
     updated: dict[int, MonitorSpec] = {}
     if due:
         await _progress(project.id, run_id, "slices", len(due))
-        batch = await run_many(project.id, Path(project.path), [sql for _, sql in due], target=target or None)
+        batch = await run_many(project.id, Path(project.path), [sql for _, sql in due], target=target or None,
+                                kind="monitors")
         for (m, _), res in zip(due, batch, strict=True):
             slices = _top_slices(m, res)
             if isinstance(slices, str):

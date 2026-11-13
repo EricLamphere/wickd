@@ -4,8 +4,7 @@ import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { api, type GlobalProfileDto } from '../lib/api';
 import { applyTheme } from '../lib/useTheme';
 import { GlobalEnvVarsSection } from './GlobalEnvVarsSection';
-import { PythonInterpreterRow } from './PythonInterpreterRow';
-import { OPEN_SETUP_EVENT } from './setup/SetupGate';
+import { GlobalSettingsTab } from './GlobalSettingsTab';
 import { SubscriptionSection } from './SubscriptionSection';
 import { alertError, confirmDialog } from '../lib/dialogs';
 
@@ -59,7 +58,7 @@ export function GlobalSettingsModal({ onClose, initialTab = 'settings' }: { onCl
         </div>
 
         <div className="flex-1 overflow-auto p-5">
-          {activeTab === 'settings' && <SettingsTab />}
+          {activeTab === 'settings' && <GlobalSettingsTab />}
           {activeTab === 'profiles' && (
             <div className="flex flex-col gap-8">
               <GlobalEnvVarsSection />
@@ -78,123 +77,6 @@ export function GlobalSettingsModal({ onClose, initialTab = 'settings' }: { onCl
           >
             Close
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---- Settings Tab ----
-
-function SettingsTab() {
-  const qc = useQueryClient();
-  const { data: appSettings } = useQuery({
-    queryKey: ['app-settings'],
-    queryFn: () => api.settings.get(),
-  });
-
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  // A global requirements file decides dbt-core, so the version setting doesn't apply
-  const versionLockedReason = appSettings?.global_requirements_path ? 'Set by your requirements file' : undefined;
-
-  const rows: {
-    key: string; label: string; value: string | null | undefined; hint?: string; example?: string;
-    /** Shown instead of the value, not editable */
-    locked?: string;
-  }[] = [
-    { key: 'dbt_projects_path', label: 'WICKD_PROJECTS_PATH', value: appSettings?.dbt_projects_path, hint: 'several folders: separate with commas (new projects go in the first)', example: '/home/user/dbt-projects, /home/user/work/dbt' },
-    { key: 'global_requirements_path', label: 'WICKD_GLOBAL_REQUIREMENTS_PATH', value: appSettings?.global_requirements_path, hint: 'requirements.txt installed via Run global setup', example: '/home/user/dbt-projects/requirements.txt' },
-    { key: 'dbt_core_version', label: 'WICKD_DBT_CORE_VERSION', value: appSettings?.dbt_core_version, hint: 'dbt-core Run global setup installs when no requirements file is set (blank = latest)', example: '1.10.13', locked: versionLockedReason },
-    { key: 'log_level', label: 'WICKD_LOG_LEVEL', value: appSettings?.log_level, hint: 'takes effect on restart', example: 'INFO' },
-    { key: 'ai_model', label: 'WICKD_AI_MODEL', value: appSettings?.ai_model, hint: 'bundled local model (Pro)', example: 'qwen3.5-4b' },
-    { key: 'ai_endpoint_url', label: 'WICKD_AI_ENDPOINT_URL', value: appSettings?.ai_endpoint_url, hint: 'OpenAI-compatible server used instead', example: 'http://localhost:11434' },
-    { key: 'ai_endpoint_model', label: 'WICKD_AI_ENDPOINT_MODEL', value: appSettings?.ai_endpoint_model, hint: 'model name on that server', example: 'qwen3:8b' },
-    { key: 'metricflow_mode', label: 'WICKD_METRICFLOW_MODE', value: appSettings?.metricflow_mode, hint: 'semantic layer: auto or off; projects can override', example: 'auto' },
-  ];
-
-  const handleSave = async (key: string) => {
-    setSaving(true);
-    try {
-      await api.settings.update({ [key]: editValue });
-      setEditingKey(null);
-      qc.invalidateQueries({ queryKey: ['app-settings'] });
-      if (key.startsWith('ai_')) qc.invalidateQueries({ queryKey: ['ai-status'] });
-      if (key === 'metricflow_mode') {
-        for (const k of ['semantic-status', 'health-summary']) qc.invalidateQueries({ queryKey: [k] });
-      }
-      // Both decide which dbt-core is expected, so the installed-version check changes
-      if (key === 'global_requirements_path' || key === 'dbt_core_version') {
-        qc.invalidateQueries({ queryKey: ['dbt-core-status'] });
-      }
-    } catch (e) {
-      alertError(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <div>
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Settings</h3>
-            <p className="text-xs text-gray-500">Configuration shared across all projects.</p>
-          </div>
-          <button
-            onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SETUP_EVENT))}
-            className="px-3 py-1.5 text-xs rounded bg-surface-elevated hover:bg-gray-700 text-gray-300 shrink-0 transition-colors"
-          >
-            Run setup again
-          </button>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          {!appSettings && <p className="text-xs text-gray-600">Loading…</p>}
-          {rows.map(({ key, label, value, hint, example, locked }) => (
-            <div key={key} className="flex items-center gap-2 px-3 py-2 bg-surface-elevated rounded border border-gray-800 text-xs">
-              <div className="w-60 shrink-0">
-                <span className="font-mono text-brand-300 truncate block">{label}</span>
-                {hint && <span className="text-gray-600 italic">{hint}</span>}
-              </div>
-              <span className="text-gray-600">=</span>
-              {locked ? (
-                <span className="flex-1 text-gray-500 italic truncate">{locked}</span>
-              ) : editingKey === key ? (
-                <>
-                  <input
-                    autoFocus
-                    value={editValue}
-                    onChange={(e) => setEditValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSave(key);
-                      if (e.key === 'Escape') { e.stopPropagation(); setEditingKey(null); }
-                    }}
-                    placeholder={example ? `e.g. ${example}` : undefined}
-                    className="flex-1 bg-surface-panel border border-brand-500 rounded px-2 py-0.5 text-gray-100 font-mono focus:outline-none placeholder-gray-600"
-                  />
-                  <button
-                    onClick={() => handleSave(key)}
-                    disabled={saving}
-                    className="text-brand-400 hover:text-brand-300 p-1 disabled:opacity-40"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => setEditingKey(null)} className="text-gray-600 hover:text-gray-400 p-1">✕</button>
-                </>
-              ) : (
-                <span
-                  className="flex-1 font-mono text-gray-300 truncate cursor-pointer hover:text-gray-100"
-                  onClick={() => { setEditingKey(key); setEditValue(value ?? ''); }}
-                >
-                  {value ?? <span className="text-gray-600 italic">{example ? `e.g. ${example}` : 'not set'}</span>}
-                </span>
-              )}
-            </div>
-          ))}
-          {appSettings && <PythonInterpreterRow appSettings={appSettings} />}
         </div>
       </div>
     </div>

@@ -166,13 +166,17 @@ async def refresh(
     for e in ready:
         unique.setdefault(e.key.sql_hash, e.sql)
     started = time.monotonic()
-    batch = await run_many(project.id, Path(project.path), list(unique.values()), target=ctx.target or None) if unique else []
+    batch = await run_many(project.id, Path(project.path), list(unique.values()), target=ctx.target or None,
+                             kind="dashboard") if unique else []
     elapsed_ms = int((time.monotonic() - started) * 1000)
     ran_at = datetime.now(UTC)
     by_hash = dict(zip(unique.keys(), batch, strict=True))
     stored: set[str] = set()
     for e in ready:
         res = by_hash[e.key.sql_hash]
+        if res.cancelled:
+            by_query[(e.widget_id, e.role)] = QueryResult("not_run", e.query, sql=e.sql)
+            continue
         if res.error:
             by_query[(e.widget_id, e.role)] = QueryResult("error", e.query, sql=e.sql, error=res.error)
             continue
@@ -231,7 +235,7 @@ async def preview_in_background(
             result = QueryResult("running", e.query, sql=e.sql)
         by_query[(e.widget_id, e.role)] = result
     if to_run:
-        query_runs.start(project.id, Path(project.path), to_run, ctx)
+        query_runs.start(project.id, Path(project.path), to_run, ctx, kind="explore")
     return ctx, _assemble(board, plans, by_query, broken)
 
 

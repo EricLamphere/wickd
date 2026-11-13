@@ -259,7 +259,7 @@ def start_backend(tier: str, data_dir: Path, dist: Path) -> subprocess.Popen:
         **os.environ,
         "WICKD_DATA_DIR": str(data_dir),
         "WICKD_FRONTEND_DIST": str(dist),
-        "WICKD_PROJECTS_PATH": str(DEMO_ROOT),
+        "WICKD_DBT_PROJECTS_PATH": str(DEMO_ROOT),
         "WICKD_DBT_VENV_DIR": str(demo_link("dbt-venv")),
         "WICKD_METRICFLOW_VENV_DIR": str(demo_link("metricflow-venv")),
         # Whatever the app shows from these (Downloads, the terminal, venv paths) stays demo-only.

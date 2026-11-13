@@ -71,6 +71,8 @@ class QueryBatchDto(BaseModel):
     queries: list[ExplainDto] = Field(min_length=1, max_length=200)
     # false: stored results only (`not_run` where there are none); true: run those in one batch
     run: bool = False
+    # rerun every query, stored or not (Refresh all: data loaded outside dbt)
+    refresh: bool = False
 
 
 class CompareDto(BaseModel):
@@ -196,7 +198,8 @@ async def post_query_batch(project_id: int, dto: QueryBatchDto, session: AsyncSe
     status = await _require_available(session, project, query=True)
     queries = [q.model_dump(exclude_none=True) for q in dto.queries]
     try:
-        items = await query_batch.run_queries(session, project, queries, status.adapter_type, run=dto.run)
+        items = await query_batch.run_queries(session, project, queries, status.adapter_type, run=dto.run,
+                                             refresh=dto.refresh)
     except (service.SemanticError, RuntimeUnavailable, ExecutionError) as exc:
         raise _semantic_http(exc) from exc
     return {"results": [i.to_dict() for i in items]}

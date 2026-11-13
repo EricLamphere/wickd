@@ -100,7 +100,8 @@ async def _results(
     if not missing:
         return by_hash, 0, newest
     started = time.monotonic()
-    batch = await run_many(project.id, Path(project.path), list(missing.values()), target=ctx.target or None)
+    batch = await run_many(project.id, Path(project.path), list(missing.values()), target=ctx.target or None,
+                            kind="debug")
     elapsed_ms, ran_at = int((time.monotonic() - started) * 1000), datetime.now(UTC)
     for sql_hash, res in zip(missing, batch, strict=True):
         by_hash[sql_hash] = res

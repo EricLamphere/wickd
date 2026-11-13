@@ -125,7 +125,7 @@ def batches(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """Stubbed run_many: 30 days of revenue ending yesterday per query; set `respond` to override."""
     calls: list[dict] = []
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, **_kw):
         calls.append({"sqls": sqls, "target": target})
         respond = state.get("respond")
         if respond is not None:
@@ -309,7 +309,7 @@ async def test_requests_while_running_merge_into_one_follow_up(db, tmp_path, wor
     b = await _monitor(db, project, metric="order_count")
     gate = asyncio.Event()
 
-    async def slow_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+    async def slow_run_many(project_id, project_path, sqls, *, limit=5000, target=None, **_kw):
         batches.append({"sqls": sqls})
         await gate.wait()
         return [_series_result(30, metric=m) for m in ["revenue", "order_count"][: len(sqls)]]

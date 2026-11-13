@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Project
 from app.logging_setup import get_logger
-from app.semantic import query_cache, query_runs, service
+from app.semantic import data_freshness, query_cache, query_runs, service
 from app.semantic.query_cache import CacheKey
 from app.semantic.query_service import MetricQueryOutcome, explain_checked, query_context
 from app.semantic.query_spec import QueryInvalid
@@ -26,7 +26,8 @@ log = get_logger(__name__)
 
 @dataclass(frozen=True)
 class BatchItem:
-    status: Literal["ok", "not_run", "running", "error"]
+    # stale: a stored result from before the data last changed (data_freshness.py), still shown
+    status: Literal["ok", "stale", "not_run", "running", "error"]
     result: MetricQueryOutcome | None = None
     error: str | None = None
     # the explained SQL, also when not run or failed (the SQL dialog shows it for debugging)
@@ -60,14 +61,17 @@ def _from_cache(e: _Explained, hit: query_cache.CachedResult) -> MetricQueryOutc
 
 async def run_queries(
     session: AsyncSession, project: Project, queries: Sequence[Mapping[str, Any]], adapter_type: str | None,
-    *, run: bool = False,
+    *, run: bool = False, refresh: bool = False,
 ) -> list[BatchItem]:
-    """One item per query, in order: stored results, `running` while a background run has it, a
-    recent failure as `error`; with `run`, the rest (failures included) start in one background
-    batch and answer `running` — metric_queries_finished says when to read them again.
+    """One item per query, in order: stored results (`stale` when older than the project's last
+    run / build / seed on the target), `running` while a background run has it, a recent failure
+    as `error`; with `run`, the rest (stale and failed included) start in one background run and
+    answer `running` — metric_queries_finished says when to read them again. `refresh` reruns
+    every query, stored or not.
 
     Raises runtime.RuntimeUnavailable when the MetricFlow sidecar can't start."""
     ctx = await query_context(session, project.id, Path(project.path))
+    changed_at = await data_freshness.data_changed_at(session, project.id, Path(project.path), ctx.target)
     items: list[BatchItem] = [BatchItem("not_run")] * len(queries)
     to_run: list[query_runs.PendingQuery] = []
     for i, query in enumerate(queries):
@@ -77,16 +81,18 @@ async def run_queries(
             items[i] = BatchItem("error", error=_message(exc))
             continue
         e = _Explained(i, query, sql, CacheKey(project.id, ctx.target, ctx.env_fingerprint, query_cache.sql_hash(sql)))
-        hit = await query_cache.lookup(session, e.key)
-        if hit is not None:
-            items[i] = BatchItem("ok", _from_cache(e, hit))
-            continue
+        pending = query_runs.PendingQuery(
+            e.key, sql, tuple(query.get("metrics") or ()), tuple(query.get("group_by") or ()))
         state = query_runs.status(e.key)
         if state == query_runs.RUNNING:
             items[i] = BatchItem("running", sql=sql)
-        elif run:
-            to_run.append(query_runs.PendingQuery(
-                e.key, sql, tuple(query.get("metrics") or ()), tuple(query.get("group_by") or ())))
+            continue
+        hit = await query_cache.lookup(session, e.key)
+        stale = hit is not None and data_freshness.is_stale(hit.ran_at, changed_at)
+        if hit is not None and not refresh and not (stale and run):
+            items[i] = BatchItem("stale" if stale else "ok", _from_cache(e, hit))
+        elif run or refresh:
+            to_run.append(pending)
             items[i] = BatchItem("running", sql=sql)
         elif isinstance(state, query_runs.Failure):
             items[i] = BatchItem("error", error=state.error, sql=sql)

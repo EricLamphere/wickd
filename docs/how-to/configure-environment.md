@@ -131,7 +131,9 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 **MONITOR_SCHEDULE** — the same automatic check as a cron expression in your computer's local time, e.g. `0 9 * * 1-5` for weekdays at 9:00 (wickd Pro). It replaces `MONITOR_INTERVAL_HOURS` (saving one clears the other) and can fire at most every 15 minutes. Unset means off.
 
-**METRIC_QUERY_TIMEOUT** — how many seconds each metric query (metric pages, the query view, dashboards, monitors) may run on your warehouse before it's stopped. Default 120, up to 3600. The first query of a run also gets two minutes for dbt to start. See [Explore metrics](explore-metrics.md#slow-or-failing-queries).
+**METRIC_QUERY_TIMEOUT** — how many seconds each metric query (metric pages, the query view, dashboards, monitors) may run on your warehouse before it's stopped. Default 120, up to 3600. The clock starts once dbt has parsed the project, which has five minutes of its own.
+
+**METRIC_QUERY_CONCURRENCY** — how many metric queries run at once, each `dbt show` in its own process (default 4, up to 16). Raise it for warehouses with a fixed cost per query, such as Athena, within your warehouse's limit on concurrent queries; each process takes a few hundred MB of memory. DuckDB projects always run one. See [Explore metrics](explore-metrics.md#slow-or-failing-queries).
 
 **DIFF_BASE_TARGET** — the dbt target metric compare's "before" side reads (wickd Pro), e.g. `prod`. Unset, both sides read your active target, so only semantic YAML changes show. See [Compare metrics](compare-metrics.md).
 
@@ -141,9 +143,9 @@ Use this to point the SQL Workspace at a different folder — for example `analy
 
 ### Global settings (read-only here)
 
-Global settings are shown for reference but can only be edited in the Global Settings modal:
+Global settings are shown for reference but can only be edited in the Global Settings modal, whose Settings tab groups them into **dbt**, **AI** and **General** sections:
 
-- **WICKD_PROJECTS_PATH** — the workspace directory scanned for dbt projects. List several folders separated by commas (`~/dbt-projects, ~/work/dbt`) and wickd treats them as one: every folder is scanned, and new projects are created in the first
+- **WICKD_DBT_PROJECTS_PATH** — the workspace directory scanned for dbt projects. List several folders separated by commas (`~/dbt-projects, ~/work/dbt`) and wickd treats them as one: every folder is scanned, and new projects are created in the first
 - **WICKD_GLOBAL_REQUIREMENTS_PATH** — a global `requirements.txt` installed for every project
 - **WICKD_DBT_CORE_VERSION** — the dbt-core release **Run global setup** installs when there's no global requirements file (blank = latest)
 - **WICKD_LOG_LEVEL** — logging verbosity

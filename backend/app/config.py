@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -80,7 +80,11 @@ class Settings(BaseSettings):
     )
 
     # Optional — can also be set via the Global Settings UI (stored in app_settings table)
-    dbt_projects_path: Path | None = Field(default=None, alias="WICKD_PROJECTS_PATH")
+    # WICKD_PROJECTS_PATH is the pre-1.3.3 name, still read so existing setups keep working
+    dbt_projects_path: Path | None = Field(
+        default=None,
+        validation_alias=AliasChoices("WICKD_DBT_PROJECTS_PATH", "WICKD_PROJECTS_PATH", "dbt_projects_path"),
+    )
     global_requirements_path: str | None = Field(default=None, alias="WICKD_GLOBAL_REQUIREMENTS_PATH")
     data_dir: Path = Field(default_factory=_default_data_dir)
     database_url: str = Field(default="")

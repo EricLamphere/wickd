@@ -40,6 +40,7 @@ from app.api import init_script_test as init_script_test_api
 from app.api import license as license_api
 from app.api import logs as logs_api
 from app.api import metric_monitors as metric_monitors_api
+from app.api import metric_queries as metric_queries_api
 from app.api import models as models_api
 from app.api import performance as performance_api
 from app.api import projects as projects_api
@@ -145,6 +146,7 @@ app.include_router(test_gaps_api.router)
 app.include_router(unit_tests_api.router)
 app.include_router(semantic_api.router)
 app.include_router(semantic_debug_api.router)
+app.include_router(metric_queries_api.router)
 app.include_router(metric_monitors_api.router)
 app.include_router(dashboards_api.router)
 app.include_router(charts_api.router)

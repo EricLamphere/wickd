@@ -23,6 +23,7 @@ import { DashboardsTab } from './dashboards/DashboardsTab';
 import { ProLabel } from '../../../components/ProLabel';
 import { PageHeader } from '../components/PageHeader';
 import { DraftFromModel } from './DraftFromModel';
+import { MetricQueryActivity } from './MetricQueryActivity';
 import { MetricsSidebar } from './MetricsSidebar';
 import { MetricsUnavailable } from './MetricsUnavailable';
 import {
@@ -127,7 +128,9 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
           onChange: setTab,
           items: TABS.map((t) => ({ id: t, label: t === 'monitors' ? <ProLabel>Monitors</ProLabel> : TAB_LABELS[t] })),
         }}
-      />
+      >
+        <MetricQueryActivity projectId={projectId} />
+      </PageHeader>
       <div className="flex-1 min-h-0 overflow-auto">
         {tab === 'explore' && (
           <Explorer projectId={projectId} catalog={catalog} onMonitor={monitor} onOpenDashboard={openDashboard} onOpenMonitors={() => setTab('monitors')} />

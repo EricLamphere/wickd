@@ -3,7 +3,7 @@
 // every card in one dbt show), where it's used and whether it has issues. Click → its page.
 // Above the cards, the query composer as an entry box: Enter opens the query view with the line.
 import { useMemo } from 'react';
-import { AlertTriangle, Loader2, Play } from 'lucide-react';
+import { AlertTriangle, Loader2, Play, RefreshCw } from 'lucide-react';
 import { Sparkline } from '../../../../components/charts/Sparkline';
 import type { DashboardWidget } from '../../../../lib/dashboardsApi';
 import type { CatalogMetric, QueryBatchItemDto, SemanticCatalogDto } from '../../../../lib/semanticApi';
@@ -32,8 +32,14 @@ interface Props {
 
 const ENTRY_WIDGET = emptyExploreWidget();
 
+/** "Run all (12 not run · 30 outdated)", or "Refresh all" when everything is up to date. */
+function runAllLabel(notRun: number, stale: number): string {
+  const parts = [notRun ? `${notRun} not run` : '', stale ? `${stale} outdated` : ''].filter(Boolean);
+  return parts.length ? `Run all (${parts.join(' · ')})` : 'Refresh all';
+}
+
 function points(item: QueryBatchItemDto | undefined, metric: string): { t: number; v: number }[] {
-  const r = item?.status === 'ok' ? item.result : null;
+  const r = item?.status === 'ok' || item?.status === 'stale' ? item.result : null;
   if (!r) return [];
   const time = r.columns.findIndex((c) => c.startsWith('metric_time'));
   const value = r.columns.indexOf(metric);
@@ -76,7 +82,11 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
         <span>{usage ? `Used in ${usage}` : 'Not used yet'}</span>
         {issues > 0 && <span className="flex items-center gap-0.5 text-amber-300"><AlertTriangle className="w-3 h-3" />{issues}</span>}
         {monitor && <span className={`px-1 rounded border ${monitor.pill}`}>{monitor.label}</span>}
-        {item?.result?.ran_at && <span className="ml-auto">{relativeTime(item.result.ran_at)}</span>}
+        {item?.result?.ran_at && (
+          item.status === 'stale'
+            ? <span className="ml-auto text-amber-300/80" title="Stored before the project's last run, build or seed — Run all updates it">Outdated · {relativeTime(item.result.ran_at)}</span>
+            : <span className="ml-auto">{relativeTime(item.result.ran_at)}</span>
+        )}
       </div>
     </div>
   );
@@ -90,6 +100,8 @@ export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onEx
   const ctx = useMetricContext(projectId);
   const grain = chartQueries(names[0] ?? '', period).grain;
   const notRun = names.filter((n) => spark.byMetric.get(n)?.status === 'not_run').length;
+  const stale = names.filter((n) => spark.byMetric.get(n)?.status === 'stale').length;
+  const pending = notRun + stale;
 
   return (
     <div className="flex flex-col gap-4 p-5 min-w-0">
@@ -99,12 +111,20 @@ export function MetricIndex({ projectId, catalog, period, onPeriod, onOpen, onEx
         <MetricFilterBar metrics={catalog.metrics} filter={filter} onChange={update} row />
         <div className="flex-1" />
         <PeriodControl period={period} onChange={onPeriod} compare={false} />
-        <button onClick={() => spark.run()} disabled={spark.running || !names.length}
-          title="Run every metric's chart for this period on the warehouse, in one batch"
+        <button onClick={() => (pending ? spark.run() : spark.refresh())} disabled={spark.running || !names.length}
+          title={pending
+            ? "Run every metric that hasn't run, or ran before the project's last run / build / seed"
+            : 'Run every metric again on the warehouse (e.g. after data was loaded outside dbt)'}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
-          {spark.running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
-          {notRun ? `Run all (${notRun} not run)` : 'Run all'}
+          {spark.running ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : pending ? <Play className="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          {runAllLabel(notRun, stale)}
         </button>
+        {pending > 0 && !spark.running && (
+          <button onClick={() => spark.refresh()} title="Run every metric again, up to date or not"
+            className="flex items-center gap-1.5 px-2 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">
+            <RefreshCw className="w-3.5 h-3.5" />Refresh all
+          </button>
+        )}
       </div>
       <Composer projectId={projectId} catalog={catalog} labels={labels} widget={ENTRY_WIDGET} onCommit={onExplore}
         showPeriod={false} clearOnCommit className="w-full max-w-3xl" placeholder="Ask your metrics: revenue by customer__region last 90 days vs last year — Enter opens it" />

@@ -66,11 +66,17 @@ The widget lives in the URL, so back/forward steps through your queries and you 
 
 ### Slow or failing queries
 
-Each query may run for 120 seconds by default before it's stopped. Raise it with the **METRIC_QUERY_TIMEOUT** project setting (Environment → Settings, in seconds) if your warehouse is slow. A query that times out or fails doesn't take the others down with it: results that finished are kept, the rest still run, and the failed one shows its error. **View SQL** (a chart's ⋯ menu, or the SQL tab in the query view) always shows the SQL, even when the query failed or hasn't run, so you can try it yourself in the Workspace. Failures, timeouts and how long each run took are also written to the **API Logs** tab in the bottom pane, with the SQL.
+Metric queries run several at a time: by default four `dbt show` processes work through the queue side by side, each taking every fourth query, so the top of the metric index fills in first. Warehouses with a fixed cost per query (Athena, BigQuery) gain the most. Change it with the **METRIC_QUERY_CONCURRENCY** project setting (1–16; DuckDB always runs one). Every metric run in the project shares those processes, so Run all and a dashboard refresh at the same time don't double the load. The metric index fills in as results arrive, not only when the whole run ends.
+
+While queries run, the Metrics page header shows their progress (**Running 45 / 380 queries**) with **Cancel**, on every tab: Run all, a metric page, dashboards, monitors. The query view has its own **Cancel** beside Refresh. Cancel stops the queries that haven't finished; finished results are kept, and the rest show **Not run** again, so Run all picks them up later.
+
+dbt gets five minutes to start (parse the project) before its first query; a slow start is retried once. After that, each query may run for 120 seconds by default before it's stopped. Raise it with the **METRIC_QUERY_TIMEOUT** project setting (Environment → Settings, in seconds) if your warehouse is slow. A query that times out or fails doesn't take the others down with it: results that finished are kept, every other query still runs, and the failed one shows its error. **View SQL** (a chart's ⋯ menu, or the SQL tab in the query view) always shows the SQL, even when the query failed or hasn't run, so you can try it yourself in the Workspace. Failures, timeouts and how long each run took are also written to the **API Logs** tab in the bottom pane, with the SQL.
 
 ### Results are remembered
 
 Every result is stored, keyed by the exact SQL, your dbt target, the environment variables wickd sets (global, profile and project vars) and your `profiles.yml`. So when you come back to a query, its last result shows right away without hitting the warehouse. Switching to a profile that points the same target at another warehouse is a different environment, so it never shows the other environment's numbers. Only a hash of the variables is stored, never their values. Editing a metric's YAML changes its SQL, so a stored result no longer matches; use **Refresh** after a parse to see the new numbers.
+
+When the data changes instead, a stored result from before the project's last `dbt run`, `build`, `seed` or `snapshot` on that target is marked **Outdated**. The metric index still shows it, and **Run all (… outdated)** reruns it along with anything not run yet. A metric page reruns its outdated charts by itself. Runs started in wickd count, and so does a run from the command line, as long as its `target/run_results.json` is still the latest one. Data loaded outside dbt (an ingestion job, a manual load) can't be detected: use **Refresh all** to rerun every metric anyway.
 
 ## Saved queries
 

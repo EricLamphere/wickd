@@ -49,7 +49,8 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `MONITOR_INTERVAL_HOURS` | `ProjectEnvVar` | (empty = off) | `6` |
 | `MONITOR_SCHEDULE` | `ProjectEnvVar` (saved through PUT …/metric-monitors/settings, which validates it) | (empty = off) | `0 9 * * 1-5` |
 | `DIFF_BASE_TARGET` | `ProjectEnvVar` (metric compare's "before" side; data diff's prod side, required there; the target a `git:` STATE_SOURCE is parsed for) | (empty = the active target) | `prod` |
-| `METRIC_QUERY_TIMEOUT` | `ProjectEnvVar` (seconds each metric query may run before it's stopped; 1–3600; read by `semantic/batch.py` `query_timeout()`) | `120` | `300` |
+| `METRIC_QUERY_TIMEOUT` | `ProjectEnvVar` (seconds each metric query may run before it's stopped, counted from dbt's parse; 1–3600; read by `semantic/batch.py` `query_timeout()`) | `120` | `300` |
+| `METRIC_QUERY_CONCURRENCY` | `ProjectEnvVar` (metric `dbt show` processes at once, shared by all of a project's metric runs; 1–16; DuckDB/SQLite always 1; read by `semantic/show_slots.py` `query_concurrency()`) | `4` | `8` |
 | `STATE_SOURCE` | `ProjectEnvVar` (slim builds' production manifest: `git:<ref>` or `path:<folder>`; Test link resolves it) | (empty = git, the repo's base branch) | `git:main` |
 | `state_defer` | `ProjectEnvVar`, internal (sticky "Defer to prod": `defer` / `favor`; set from the side pane toggle / Header chip, not shown as a setting row) | (empty = off) | `defer` |
 
@@ -57,7 +58,7 @@ All settings must appear in one of two places in the Environment page (`frontend
 
 | Setting | Key | Example |
 |---|---|---|
-| `WICKD_PROJECTS_PATH` | `dbt_projects_path` (comma-separated list allowed) | `/home/user/dbt-projects, /home/user/work/dbt` |
+| `WICKD_DBT_PROJECTS_PATH` | `dbt_projects_path` (comma-separated list allowed) | `/home/user/dbt-projects, /home/user/work/dbt` |
 | `WICKD_GLOBAL_REQUIREMENTS_PATH` | `global_requirements_path` | `/home/user/dbt-projects/requirements.txt` |
 | `WICKD_DBT_CORE_VERSION` | `dbt_core_version` | `1.10.13` |
 | `WICKD_PYTHON_PATH` | `python_path` | `/opt/homebrew/bin/python3.12` |

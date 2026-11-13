@@ -170,8 +170,9 @@ export interface MetricQueryResultDto {
 
 /** One query of a batch: its stored (or, when run, fresh) result, or why it couldn't answer. */
 export interface QueryBatchItemDto {
-  /** running: a background run has it (metric_queries_finished says when it's done) */
-  status: 'ok' | 'not_run' | 'running' | 'error';
+  /** running: a background run has it (metric_queries_finished says when it's done);
+   *  stale: a stored result from before the project's last run / build / seed (still shown) */
+  status: 'ok' | 'stale' | 'not_run' | 'running' | 'error';
   result: MetricQueryResultDto | null;
   error: string | null;
   /** the explained SQL, also when not run or failed (null when it couldn't be explained) */
@@ -272,6 +273,18 @@ export function semanticErrorBody(err: unknown): SemanticErrorBody | null {
   return body && typeof body.error === 'string' ? { error: body.error, message: body.message ?? '', status: body.status } : null;
 }
 
+/** A metric query run in flight (GET …/semantic/queries/active, `metric_queries_progress` events). */
+export interface MetricQueryRunDto {
+  run_id: string;
+  kind: 'metrics' | 'explore' | 'dashboard' | 'debug' | 'monitors' | 'compare' | string;
+  label: string;
+  done: number;
+  total: number;
+  started_at: string;
+  finished: boolean;
+  cancelled: boolean;
+}
+
 export const semanticApi = {
   status: (projectId: number, wantCli = false) =>
     get<SemanticStatusDto>(`/projects/${projectId}/semantic/status${wantCli ? '?want_cli=true' : ''}`),
@@ -293,8 +306,13 @@ export const semanticApi = {
   cachedQuery: (projectId: number, body: MetricQueryBody) =>
     post<MetricQueryResultDto | null>(`/projects/${projectId}/semantic/query/cached`, body),
   /** many queries' stored results; `run` runs the missing ones together in one dbt show (metric index, metric pages) */
-  queryBatch: (projectId: number, queries: MetricQueryBody[], run = false) =>
-    post<{ results: QueryBatchItemDto[] }>(`/projects/${projectId}/semantic/query/batch`, { queries, run }),
+  queryBatch: (projectId: number, queries: MetricQueryBody[], run = false, refresh = false) =>
+    post<{ results: QueryBatchItemDto[] }>(`/projects/${projectId}/semantic/query/batch`, { queries, run, refresh }),
+  /** metric query runs in flight (metric pages, query view, dashboards, debug, monitors, compare), with progress */
+  activeQueries: (projectId: number) => get<{ runs: MetricQueryRunDto[] }>(`/projects/${projectId}/semantic/queries/active`),
+  /** stop runs (none given = every metric run): finished results are kept, the rest go back to not run */
+  cancelQueries: (projectId: number, runIds?: string[]) =>
+    post<{ cancelled: number }>(`/projects/${projectId}/semantic/queries/cancel`, { run_ids: runIds ?? null }),
   compareOptions: (projectId: number) => get<CompareOptionsDto>(`/projects/${projectId}/semantic/compare/options`),
   /** Pro: one query run two ways (uncommitted vs HEAD, branch vs base, two targets, two metrics) */
   compare: (projectId: number, body: CompareBody) => post<CompareResultDto>(`/projects/${projectId}/semantic/compare`, body),

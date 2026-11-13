@@ -102,7 +102,8 @@ export function pageResult(q: PageQueries, items: QueryBatchItemDto[], roles: Re
     if (!found) continue;
     const { body, item } = found;
     queries[widgetRole] = {
-      status: item?.status ?? 'not_run', query: body, sql: item?.result?.sql ?? item?.sql ?? null, columns: item?.result?.columns ?? [],
+      // a stale result still draws (the page reruns it by itself)
+      status: item?.status === 'stale' ? 'ok' : item?.status ?? 'not_run', query: body, sql: item?.result?.sql ?? item?.sql ?? null, columns: item?.result?.columns ?? [],
       rows: item?.result?.rows ?? [], truncated: item?.result?.truncated ?? false, ran_at: item?.result?.ran_at ?? null, error: item?.error ?? null,
     };
   }

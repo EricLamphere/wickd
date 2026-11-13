@@ -277,6 +277,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const diffBaseTarget = envVars.find((v) => v.key === 'DIFF_BASE_TARGET')?.value ?? '';
   const stateSource = envVars.find((v) => v.key === 'STATE_SOURCE')?.value ?? '';
   const metricQueryTimeout = envVars.find((v) => v.key === 'METRIC_QUERY_TIMEOUT')?.value ?? '';
+  const metricQueryConcurrency = envVars.find((v) => v.key === 'METRIC_QUERY_CONCURRENCY')?.value ?? '';
 
   const handleSaveInitScriptPath = async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
@@ -404,6 +405,18 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
   };
 
+  // dbt processes running metric queries at once (backend: semantic/show_slots.py query_concurrency)
+  const handleSaveMetricQueryConcurrency = async (val: string) => {
+    const raw = val.trim();
+    const count = Number(raw);
+    if (raw && !(Number.isInteger(count) && count >= 1 && count <= 16)) {
+      throw new Error('METRIC_QUERY_CONCURRENCY must be a whole number between 1 and 16, e.g. 8');
+    }
+    if (raw) await api.init.setEnvVar(projectId, 'METRIC_QUERY_CONCURRENCY', String(count));
+    else await api.init.deleteEnvVar(projectId, 'METRIC_QUERY_CONCURRENCY');
+    qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
+  };
+
   // Slim builds' production manifest: git:<ref> or path:<folder>; empty = git, the base branch
   const handleSaveStateSource = async (val: string) => {
     const source = val.trim();
@@ -496,6 +509,15 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               onResizeLabel={handleResizeLabel}
             />
             <ProjectSettingRow
+              label="METRIC_QUERY_CONCURRENCY"
+              value={metricQueryConcurrency}
+              placeholder="4 (metric queries run at once, each in its own dbt process; DuckDB always 1)"
+              kind="default"
+              onSave={handleSaveMetricQueryConcurrency}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
               label="MONITOR_INTERVAL_HOURS"
               value={monitorInterval}
               placeholder="6 (metric monitors' auto-check while wickd is open; empty = off)"
@@ -540,7 +562,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'METRIC_QUERY_TIMEOUT', 'state_defer', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'METRIC_QUERY_TIMEOUT', 'METRIC_QUERY_CONCURRENCY', 'state_defer', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

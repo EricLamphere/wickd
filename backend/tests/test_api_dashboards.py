@@ -83,7 +83,7 @@ def worker(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict]]:
 def batches(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     calls: list[list[str]] = []
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60, **_kw):
         calls.append(sqls)
         return [BatchResult([], [], False, "Database Error: boom") if "order_count" in s
                 else BatchResult(["revenue"], [[42]], False) for s in sqls]

@@ -125,7 +125,8 @@ async def _run(project: Project, sides: list[Side]) -> None:
         if s.sql and not s.error:
             by_target.setdefault(s.target, []).append(s)
     for target, group in by_target.items():
-        results = await run_many(project.id, Path(project.path), [s.sql for s in group], target=target or None)
+        results = await run_many(project.id, Path(project.path), [s.sql for s in group], target=target or None,
+                                    kind="compare")
         for s, res in zip(group, results, strict=True):
             if res.error:
                 s.error = res.error

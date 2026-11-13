@@ -25,6 +25,10 @@ import { Composer } from './Composer';
 import { writeWorkspaceSql } from '../lib/openInWorkspace';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { useProEntitled } from '../../RunHistory/usePerformance';
+import { MetricQueryActivity } from '../MetricQueryActivity';
+
+// the query view sits in a modal over the page header's activity: show its own runs here
+const EXPLORE_RUN_KINDS = ['explore', 'compare'] as const;
 import type { CompareState } from '../lib/compareView';
 import { ComparePanel } from './ComparePanel';
 import { ExploreResults, RESULT_TABS, resultsTabKey, type ResultTab } from './ExploreResults';
@@ -113,6 +117,7 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onOp
           <Composer projectId={projectId} catalog={catalog} labels={labels} widget={widget} onCommit={onChange} onRun={refresh} />
           <div className="flex items-center gap-2 min-h-[34px]">
             {result?.ran_at && !busy && <span className="text-[11px] text-gray-500">Last run {relativeTime(result.ran_at)}</span>}
+            <MetricQueryActivity projectId={projectId} kinds={EXPLORE_RUN_KINDS} />
             <button onClick={() => refresh()} disabled={!metrics.length || busy} title="Run it on the warehouse again (⌘Enter)"
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}Refresh

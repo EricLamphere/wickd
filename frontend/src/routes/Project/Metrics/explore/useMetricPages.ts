@@ -14,9 +14,11 @@ import { useSemanticCheck } from '../../components/semantic/useSemantic';
 import { useDashboardList } from '../dashboards/useDashboards';
 import { useMonitorStatuses } from '../monitors/useMonitors';
 import { chartQueries, DEFAULT_PERIOD, pageQueries, type MetricPeriod } from '../lib/metricPage';
+import { progressRefresh } from '../lib/queryActivity';
 
-/** The batch endpoint takes at most this many queries per request. */
-const BATCH_LIMIT = 200;
+/** Queries per request (the endpoint takes up to 200; smaller requests answer quickly, which a
+ *  webview needs: it drops a request that stays silent too long). */
+const BATCH_LIMIT = 100;
 
 const periodKey = (projectId: number) => `wickd:metric-page-period:${projectId}`;
 
@@ -43,19 +45,28 @@ export function useMetricPeriod(projectId: number): [MetricPeriod, (next: Metric
 
 function useInvalidateOnDefinitions(projectId: number) {
   const qc = useQueryClient();
+  const lastProgress = useRef(0);
   useProjectEvents(projectId, useCallback((event) => {
     // new definitions → new SQL; a background run finished → its results (or failures) are in
     if (event.type === 'graph_changed' || event.type === 'metric_queries_finished') {
       qc.invalidateQueries({ queryKey: ['metric-chart', projectId] });
       qc.invalidateQueries({ queryKey: ['metric-index', projectId] });
+      return;
+    }
+    // a long run stores each result as it lands: show them as they come, at most every few seconds,
+    // never restarting a read still in flight
+    if (event.type === 'metric_queries_progress' && progressRefresh(event.data, lastProgress.current, Date.now())) {
+      lastProgress.current = Date.now();
+      qc.invalidateQueries({ queryKey: ['metric-chart', projectId] }, { cancelRefetch: false });
+      qc.invalidateQueries({ queryKey: ['metric-index', projectId] }, { cancelRefetch: false });
     }
   }, [projectId, qc]));
 }
 
-async function batch(projectId: number, queries: MetricQueryBody[], run: boolean): Promise<QueryBatchItemDto[]> {
+async function batch(projectId: number, queries: MetricQueryBody[], run: boolean, refresh = false): Promise<QueryBatchItemDto[]> {
   const out: QueryBatchItemDto[] = [];
   for (let i = 0; i < queries.length; i += BATCH_LIMIT) {
-    out.push(...(await semanticApi.queryBatch(projectId, queries.slice(i, i + BATCH_LIMIT), run)).results);
+    out.push(...(await semanticApi.queryBatch(projectId, queries.slice(i, i + BATCH_LIMIT), run, refresh)).results);
   }
   return out;
 }
@@ -74,7 +85,8 @@ function useBatch(projectId: number, key: string, queries: MetricQueryBody[], en
   const runner = useMutation({
     // the key and queries travel with the run, so a run that finishes after the period or
     // dimension changed lands on its own key, not the new one
-    mutationFn: (v: { key: readonly unknown[]; queries: MetricQueryBody[] }) => batch(projectId, v.queries, true),
+    mutationFn: (v: { key: readonly unknown[]; queries: MetricQueryBody[]; refresh?: boolean }) =>
+      batch(projectId, v.queries, true, v.refresh),
     // the run's dbt show rewrites manifest.json → graph_changed → a refetch that may have read the
     // cache before this run stored its results; drop it so it can't overwrite them with not_run
     onSuccess: async (items, v) => {
@@ -84,10 +96,13 @@ function useBatch(projectId: number, key: string, queries: MetricQueryBody[], en
   });
   const { mutate } = runner;
   const run = useCallback(() => mutate({ key: queryKey, queries }), [mutate, queryKey, queries]);
+  // every query again, stored or not (data loaded outside dbt, which the stale check can't see)
+  const refresh = useCallback(() => mutate({ key: queryKey, queries, refresh: true }), [mutate, queryKey, queries]);
 
   const attempted = useRef(new Set<string>());
   const keyText = queryKey[2] as string;
-  const missing = !!stored.data?.some((item) => item.status === 'not_run');
+  // not run, or stored before the last run / build / seed: a metric page reruns those by itself
+  const missing = !!stored.data?.some((item) => item.status === 'not_run' || item.status === 'stale');
   useEffect(() => {
     if (!autoRun || !missing || runner.isPending || attempted.current.has(keyText)) return;
     attempted.current.add(keyText);
@@ -96,7 +111,7 @@ function useBatch(projectId: number, key: string, queries: MetricQueryBody[], en
 
   // Run answers at once; the queries run in the background until metric_queries_finished
   const inBackground = !!stored.data?.some((item) => item.status === 'running');
-  return { stored, run, running: runner.isPending || inBackground, runError: runner.error };
+  return { stored, run, refresh, running: runner.isPending || inBackground, runError: runner.error };
 }
 
 /** A metric page's charts (over time, the total, the top values of `dimension`), each with its comparison. */

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import shlex
 import signal
@@ -9,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from app.dbt.shared_gate import SharedGate
 from app.dbt.venv import venv_dbt
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
@@ -60,6 +62,7 @@ def process_env(req: RunRequest) -> dict[str, str] | None:
 
 
 LOCK_WAIT_LOG_S = 1.0
+_NO_LOCK = contextlib.nullcontext()
 
 
 def _log_lock_wait(req: RunRequest, queued: float) -> None:
@@ -122,6 +125,7 @@ class DbtRunner:
         self._cancelled: set[int] = set()
         self._return_codes: dict[int, int] = {}
         self._current: dict[int, CurrentRun] = {}
+        self._gates: dict[int, SharedGate] = {}
 
     def _lock_for(self, project_id: int) -> asyncio.Lock:
         lock = self._locks.get(project_id)
@@ -134,6 +138,16 @@ class DbtRunner:
         """The project's lock, for tools that read the warehouse outside dbt but must not overlap
         a dbt command (dbt Charts builds: DuckDB allows one writer and blocks readers meanwhile)."""
         return self._lock_for(project_id)
+
+    def shared_lock(self, project_id: int, timeout: float | None = None):
+        """Hold the project's lock shared with other read-only holders (metric query workers, which
+        run `run_lines(locked=False)` inside it); exclusive commands wait for every holder.
+        An async context manager; TimeoutError if the lock isn't free within `timeout`."""
+        gate = self._gates.get(project_id)
+        if gate is None:
+            gate = SharedGate(self._lock_for(project_id))
+            self._gates[project_id] = gate
+        return gate.hold(timeout)
 
     def is_busy(self) -> bool:
         """True while any project has a dbt command in flight."""
@@ -217,12 +231,15 @@ class DbtRunner:
             append_project_log(str(req.project_path), f"<<< dbt {req.command} {status}", pid)
             return rc, stdout_bytes, stderr_bytes
 
-    async def run_lines(self, req: RunRequest) -> AsyncIterator[str]:
+    async def run_lines(self, req: RunRequest, *, locked: bool = True) -> AsyncIterator[str]:
         """Like run(), but yields each output line (stdout and stderr merged) as dbt prints it,
         so a caller can use results that arrive before a timeout. No bus events.
 
+        `locked=False`: the caller already holds the project's lock through shared_lock() (parallel
+        metric query workers, each with its own --target-path).
+
         Closing the generator early (a caller's timeout, break) kills dbt before the lock is released."""
-        lock = self._lock_for(req.project_id)
+        lock = self._lock_for(req.project_id) if locked else _NO_LOCK
         queued = time.monotonic()
         async with lock:
             _log_lock_wait(req, queued)

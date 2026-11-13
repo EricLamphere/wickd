@@ -31,3 +31,14 @@ async def override_db():
 
     app.dependency_overrides.pop(get_session, None)
     await test_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def clear_semantic_memo():
+    """explain/catalog answers are memoized per semantic manifest content; tests stub the sidecar
+    with different answers for the same fixture manifest."""
+    from app.semantic import service
+
+    service._memo.clear()
+    yield
+    service._memo.clear()

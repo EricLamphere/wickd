@@ -271,7 +271,7 @@ async def test_query_batch_reads_stored_results_and_runs_the_rest_in_one_batch(
 
     batches: list[list[str]] = []
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60, **_kw):
         batches.append(sqls)
         return [BatchResult(["metric_time__day", "revenue"], [["2024-01-01", 5]], False) for _ in sqls]
 
@@ -650,7 +650,7 @@ async def test_query_batch_returns_the_sql_even_when_not_run_or_failed(
     """The SQL dialog must show what was (or would be) run, so failures can be debugged."""
     from app.semantic.batch import BatchResult
 
-    async def failing_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60):
+    async def failing_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60, **_kw):
         return [BatchResult([], [], False, "the batch timed out") for _ in sqls]
 
     monkeypatch.setattr(query_runs, "run_many", failing_run_many)
@@ -680,3 +680,44 @@ async def _next_event(queue, event_type: str):
         event = await asyncio.wait_for(queue.get(), timeout=2.0)
         if event.type == event_type:
             return event
+
+
+async def test_query_batch_flags_results_older_than_the_last_build_and_reruns_them(
+    client, db, tmp_path, dbt_env, worker_calls, monkeypatch
+) -> None:
+    """A run / build / seed after a result was stored makes it `stale`: still shown, rerun by Run all.
+    Refresh reruns everything."""
+    from datetime import UTC, datetime
+
+    from app.db.models import RunInvocation
+    from app.semantic.batch import BatchResult
+
+    batches: list[list[str]] = []
+
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, lock_wait=60, **_kw):
+        batches.append(sqls)
+        return [BatchResult(["metric_time__day", "revenue"], [["2024-01-01", 5]], False) for _ in sqls]
+
+    monkeypatch.setattr(query_runs, "run_many", fake_run_many)
+    project = await _project(db, tmp_path)
+    url = f"/api/projects/{project.id}/semantic/query/batch"
+    queries = [{"metrics": ["revenue"]}]
+
+    await client.post(url, json={"queries": queries, "run": True})
+    await query_runs.wait_idle()
+    assert (await client.post(url, json={"queries": queries})).json()["results"][0]["status"] == "ok"
+
+    db.add(RunInvocation(project_id=project.id, command="build", target=None, status="success",
+                         finished_at=datetime.now(UTC)))
+    await db.commit()
+    stale = (await client.post(url, json={"queries": queries})).json()["results"][0]
+    assert stale["status"] == "stale" and stale["result"]["rows"] == [["2024-01-01", 5]]
+    assert (await client.post(url, json={"queries": queries, "run": True})).json()["results"][0]["status"] == "running"
+    await query_runs.wait_idle()
+    assert len(batches) == 2
+    assert (await client.post(url, json={"queries": queries})).json()["results"][0]["status"] == "ok"
+
+    refreshed = (await client.post(url, json={"queries": queries, "refresh": True})).json()["results"][0]
+    assert refreshed["status"] == "running"
+    await query_runs.wait_idle()
+    assert len(batches) == 3

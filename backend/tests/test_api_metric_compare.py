@@ -79,7 +79,7 @@ def stubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
             return SideManifest(Path(project.path) / "target" / "semantic_manifest.json", None, None)
         return SideManifest(base_manifest, "abc123" if ref else None, target, ("note from checkout",) if ref else ())
 
-    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None):
+    async def fake_run_many(project_id, project_path, sqls, *, limit=5000, target=None, **_kw):
         rec["runs"].append((sqls, target))
         return [BatchResult(["metric_time__day", "revenue"], [["2026-01-01", 10 if "current" in s else 8]], False) for s in sqls]
 

@@ -1,6 +1,6 @@
 [package]
 name = "wickd"
-version = "1.3.2"
+version = "1.3.3"
 description = "wickd desktop app"
 edition = "2021"
 

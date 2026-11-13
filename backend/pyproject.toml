@@ -1,6 +1,6 @@
 [project]
 name = "wickd-backend"
-version = "1.3.2"
+version = "1.3.3"
 description = "FastAPI backend for wickd, an open-source local UI wrapper around dbt-core"
 requires-python = ">=3.11"
 dependencies = [

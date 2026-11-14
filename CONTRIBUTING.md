@@ -72,7 +72,6 @@ The rules that matter most:
 | `WICKD_LLAMA_SERVER_PATH` | _(bundled copy, then `PATH`)_ | llama-server binary for local AI. `task ai:runtime` fetches the pinned build for dev |
 | `POLAR_USE_SANDBOX` | `true` | Which Polar environment (sandbox/production) license checks talk to |
 | `POLAR_SANDBOX_ORGANIZATION_ID` / `POLAR_PRODUCTION_ORGANIZATION_ID` | _(none)_ | Polar org id used to validate license keys (not a secret) |
-| `POLAR_SANDBOX_API_KEY` / `POLAR_PRODUCTION_API_KEY` | _(none)_ | Polar API key — **secret**, set in `backend/.env` only, never commit |
 | `POLAR_SANDBOX_CHECKOUT_URL` / `POLAR_PRODUCTION_CHECKOUT_URL` | _(none)_ | Checkout link behind the in-app **Upgrade to Pro** button |
 | `POLAR_SANDBOX_ORGANIZATION_SLUG` / `POLAR_PRODUCTION_ORGANIZATION_SLUG` | `lamphere-labs` | Builds the Polar customer portal link (`https://[sandbox.]polar.sh/<slug>/portal`) shown for lost license keys and device seats; set to empty to hide it |
 

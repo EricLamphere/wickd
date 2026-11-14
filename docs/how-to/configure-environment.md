@@ -174,8 +174,7 @@ Click the gear icon on the Home page to open **Global Settings**, then the **Sub
 **If you have an active subscription:**
 - Your license key is shown masked (`••••••••…`) by default. Click the eye icon to reveal it, and again to hide it. **Don't share this key** — anyone who has it can activate their own device on it, using up your device slots (and there's no other protection against this).
 - **Lost your license key?** Every license key box (Settings → Subscription, the Pricing page, and the upgrade prompt) links to the Polar customer portal. Sign in there with the email you purchased with to see your key, free up a device, or manage billing.
-- A **Devices** row shows how many devices are currently activated against your key (e.g. "1 of 2 devices activated"). If you see more devices than you own, your key may have been shared or leaked — deactivate the extra device from your Polar customer portal (use the **customer portal** link in this section, then sign in with your purchase email). Click the refresh icon to re-check the count.
-- Click **Cancel subscription** to cancel. You'll be asked to confirm — cancelling takes effect at the end of your current billing period, so Pro features keep working until then. There's no separate "resubscribe" step needed if you change your mind before the period ends; use your Polar customer portal (linked from your purchase receipt email) to undo a pending cancellation.
+- Click **Manage subscription** to open the Polar customer portal (sign in with your purchase email). There you can see which devices use your key, free up a seat, update billing, or cancel. If you see more devices than you own, your key may have been shared or leaked: deactivate the extra one. Cancelling takes effect at the end of your current billing period, so Pro features keep working until then.
 
 **If you don't have an active subscription:**
 - Click **Subscribe to Pro** to open the checkout page.

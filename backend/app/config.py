@@ -106,20 +106,18 @@ class Settings(BaseSettings):
     # Default MetricFlow mode for projects without their own (auto | off); app_settings overrides
     metricflow_mode: str = Field(default="auto")
 
-    # Polar (polar.sh) licensing — organization ID is not a secret (it just
-    # identifies which Polar org to validate license keys against), but the
-    # API key IS a secret and must never be committed; both come from
-    # backend/.env (gitignored), never hardcoded. polar_use_sandbox picks
-    # which Polar environment (and API base URL) to talk to.
+    # Polar (polar.sh) licensing — the organization ID is not a secret (it just
+    # identifies which Polar org to validate license keys against). There is
+    # deliberately no API key setting: the desktop app bundles its config, so
+    # an org API key would be extractable. polar_use_sandbox picks which Polar
+    # environment (and API base URL) to talk to.
     polar_use_sandbox: bool = Field(default=True, alias="POLAR_USE_SANDBOX")
     polar_sandbox_organization_id: str | None = Field(default=None, alias="POLAR_SANDBOX_ORGANIZATION_ID")
-    polar_sandbox_api_key: str | None = Field(default=None, alias="POLAR_SANDBOX_API_KEY")
     polar_production_organization_id: str | None = Field(default=None, alias="POLAR_PRODUCTION_ORGANIZATION_ID")
-    polar_production_api_key: str | None = Field(default=None, alias="POLAR_PRODUCTION_API_KEY")
     polar_sandbox_checkout_url: str | None = Field(default=None, alias="POLAR_SANDBOX_CHECKOUT_URL")
     polar_production_checkout_url: str | None = Field(default=None, alias="POLAR_PRODUCTION_CHECKOUT_URL")
     # Org slugs are public (they're in every customer-facing Polar URL), so unlike
-    # the API keys they're safe to default here. They build the customer portal
+    # the org ID they're safe to default here. They build the customer portal
     # link, where users recover a lost license key and free up device seats.
     # Set to "" to hide the portal link.
     polar_sandbox_organization_slug: str = Field(default="lamphere-labs", alias="POLAR_SANDBOX_ORGANIZATION_SLUG")
@@ -141,10 +139,6 @@ class Settings(BaseSettings):
     @property
     def polar_organization_id(self) -> str | None:
         return self.polar_sandbox_organization_id if self.polar_use_sandbox else self.polar_production_organization_id
-
-    @property
-    def polar_api_key(self) -> str | None:
-        return self.polar_sandbox_api_key if self.polar_use_sandbox else self.polar_production_api_key
 
     @property
     def polar_api_base(self) -> str:

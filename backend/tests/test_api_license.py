@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import ASGITransport, AsyncClient
 
-from app.licensing.polar_client import LicenseKeyState, PolarError
+from app.licensing.polar_client import LicenseKeyState
 from app.main import app
 
 
@@ -27,9 +27,7 @@ async def test_get_status_no_key_set() -> None:
     assert body["entitled"] is False
     assert body["reason"] == "not_licensed"
     assert body["checked_at"] is None
-    assert body["can_cancel"] is False
     assert body["limit_activations"] is None
-    assert body["can_view_activations"] is False
 
 
 async def test_set_license_key_activates_and_validates() -> None:
@@ -59,9 +57,7 @@ async def test_set_license_key_activates_and_validates() -> None:
     assert body["reason"] == "granted"
     assert body["status"] == "granted"
     assert body["checked_at"] is not None
-    assert body["can_cancel"] is True
     assert body["limit_activations"] == 2
-    assert body["can_view_activations"] is True
 
 
 async def test_set_license_key_not_entitled() -> None:
@@ -128,110 +124,30 @@ async def test_checkout_url_included_when_configured() -> None:
         settings.polar_sandbox_checkout_url = original
 
 
-async def _activate_licensed_client(client: AsyncClient) -> None:
-    with patch(
-        "app.licensing.entitlements.polar_client.activate", new=AsyncMock(return_value="act_123")
-    ), patch(
-        "app.licensing.entitlements.polar_client.validate",
-        new=AsyncMock(
-            return_value=LicenseKeyState(
-                status="granted",
-                expires_at=None,
-                activation_id="act_123",
-                customer_id="cust_123",
-                license_key_id="lk_123",
-                limit_activations=2,
-            )
-        ),
-    ):
-        await client.put("/api/license", json={"license_key": "WICKD_-TEST-KEY"})
-
-
-async def test_cancel_subscription_success() -> None:
+async def test_status_has_no_api_key_features() -> None:
+    """Cancel and device count needed Polar's org API key, which must never
+    ship in the desktop app; both live in the customer portal instead."""
     async with await _client() as client:
-        await _activate_licensed_client(client)
+        body = (await client.get("/api/license")).json()
 
-        with patch(
-            "app.licensing.entitlements.polar_client.create_customer_session",
-            new=AsyncMock(return_value="session_token_abc"),
-        ), patch(
-            "app.licensing.entitlements.polar_client.list_active_subscription_ids",
-            new=AsyncMock(return_value=["sub_123"]),
-        ), patch(
-            "app.licensing.entitlements.polar_client.cancel_subscription", new=AsyncMock()
-        ) as mock_cancel:
-            r = await client.post("/api/license/cancel")
-
-    assert r.status_code == 200
-    assert r.json() == {"ok": True, "error": None}
-    mock_cancel.assert_awaited_once_with("session_token_abc", "sub_123")
+    assert "can_cancel" not in body
+    assert "can_view_activations" not in body
+    assert body["portal_url"]
 
 
-async def test_cancel_subscription_without_customer_id_fails() -> None:
+async def test_cancel_and_activations_endpoints_removed() -> None:
     async with await _client() as client:
-        r = await client.post("/api/license/cancel")
+        cancel = await client.post("/api/license/cancel")
+        activations = await client.get("/api/license/activations")
 
-    assert r.status_code == 502
-
-
-async def test_cancel_subscription_no_active_subscription_fails() -> None:
-    async with await _client() as client:
-        await _activate_licensed_client(client)
-
-        with patch(
-            "app.licensing.entitlements.polar_client.create_customer_session",
-            new=AsyncMock(return_value="session_token_abc"),
-        ), patch(
-            "app.licensing.entitlements.polar_client.list_active_subscription_ids",
-            new=AsyncMock(return_value=[]),
-        ):
-            r = await client.post("/api/license/cancel")
-
-    assert r.status_code == 502
+    assert cancel.status_code in (404, 405)
+    assert activations.status_code in (404, 405)
 
 
-async def test_cancel_subscription_polar_error_propagates() -> None:
-    async with await _client() as client:
-        await _activate_licensed_client(client)
+def test_no_org_api_key_anywhere() -> None:
+    from app.config import settings
+    from app.licensing import polar_client
 
-        with patch(
-            "app.licensing.entitlements.polar_client.create_customer_session",
-            new=AsyncMock(side_effect=PolarError("boom")),
-        ):
-            r = await client.post("/api/license/cancel")
-
-    assert r.status_code == 502
-
-
-async def test_get_activations_success() -> None:
-    async with await _client() as client:
-        await _activate_licensed_client(client)
-
-        with patch(
-            "app.licensing.entitlements.polar_client.get_activation_count",
-            new=AsyncMock(return_value=2),
-        ):
-            r = await client.get("/api/license/activations")
-
-    assert r.status_code == 200
-    assert r.json() == {"count": 2, "limit": 2}
-
-
-async def test_get_activations_without_license_key_id_fails() -> None:
-    async with await _client() as client:
-        r = await client.get("/api/license/activations")
-
-    assert r.status_code == 502
-
-
-async def test_get_activations_polar_error_propagates() -> None:
-    async with await _client() as client:
-        await _activate_licensed_client(client)
-
-        with patch(
-            "app.licensing.entitlements.polar_client.get_activation_count",
-            new=AsyncMock(side_effect=PolarError("boom")),
-        ):
-            r = await client.get("/api/license/activations")
-
-    assert r.status_code == 502
+    assert not hasattr(settings, "polar_api_key")
+    for name in ("get_activation_count", "create_customer_session", "list_active_subscription_ids", "cancel_subscription"):
+        assert not hasattr(polar_client, name)

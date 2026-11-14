@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { Eye, EyeOff, CheckCircle2, AlertTriangle, Monitor, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { api, ApiError, type LicenseStatusDto } from '../lib/api';
-import { LicenseKeyHelp, PolarPortalLink } from './PolarPortalLink';
+import { openExternal } from '../lib/openExternal';
+import { LicenseKeyHelp } from './PolarPortalLink';
 
 const REASON_COPY: Record<string, string> = {
   not_entitled: 'Your subscription is no longer active. Renew or enter a new license key below.',
@@ -27,7 +28,7 @@ export function SubscriptionSection() {
       </div>
 
       {license && (license.has_key
-        ? <SubscribedView license={license} qc={qc} />
+        ? <SubscribedView license={license} />
         : <UnsubscribedView qc={qc} />)}
     </div>
   );
@@ -35,21 +36,8 @@ export function SubscriptionSection() {
 
 // ---- Subscribed ----
 
-function SubscribedView({ license, qc }: { license: LicenseStatusDto; qc: ReturnType<typeof useQueryClient> }) {
+function SubscribedView({ license }: { license: LicenseStatusDto }) {
   const [revealed, setRevealed] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
-  const [cancelError, setCancelError] = useState<string | null>(null);
-
-  const cancelMutation = useMutation({
-    mutationFn: () => api.license.cancel(),
-    onSuccess: () => {
-      setConfirmingCancel(false);
-      qc.invalidateQueries({ queryKey: ['license'] });
-    },
-    onError: (err) => {
-      setCancelError(err instanceof ApiError ? err.message : 'Failed to cancel subscription.');
-    },
-  });
 
   const reasonCopy = !license.entitled ? REASON_COPY[license.reason] : null;
   const key = license.license_key ?? '';
@@ -91,95 +79,36 @@ function SubscribedView({ license, qc }: { license: LicenseStatusDto; qc: Return
           </button>
         </div>
         <p className="text-[11px] text-gray-600">
-          Anyone with this key can activate a device on it — don't share it. If you see more devices below than you
-          recognize, someone else may have your key.
+          Anyone with this key can activate a device on it — don't share it.
+          {license.limit_activations !== null &&
+            ` It works on up to ${license.limit_activations} device${license.limit_activations === 1 ? '' : 's'}.`}
         </p>
-        {license.portal_url && (
-          <p className="text-[11px] text-gray-500">
-            Manage devices, billing, and your key in the{' '}
-            <PolarPortalLink url={license.portal_url}>customer portal</PolarPortalLink>.
-          </p>
-        )}
       </div>
 
-      {license.can_view_activations && <ActivationsRow limit={license.limit_activations} />}
-
-      <div className="flex flex-col gap-2 pt-2 border-t border-gray-800">
-        {!confirmingCancel ? (
-          <button
-            onClick={() => { setCancelError(null); setConfirmingCancel(true); }}
-            className="self-start px-3 py-1.5 text-xs rounded border border-red-900/60 text-red-400 hover:bg-red-500/10 transition-colors"
-          >
-            Cancel subscription
-          </button>
-        ) : (
-          <div className="flex flex-col gap-2 bg-red-500/5 border border-red-900/50 rounded px-3 py-2.5">
-            <p className="text-xs text-gray-300">
-              This cancels your wickd Pro subscription at the end of the current billing period — you'll keep Pro
-              access until then. This can't be undone from here.
-            </p>
-            {cancelError && <p className="text-xs text-red-400">{cancelError}</p>}
-            <div className="flex items-center gap-2 justify-end">
-              <button
-                onClick={() => setConfirmingCancel(false)}
-                disabled={cancelMutation.isPending}
-                className="px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-50 transition-colors"
-              >
-                Keep subscription
-              </button>
-              <button
-                onClick={() => cancelMutation.mutate()}
-                disabled={cancelMutation.isPending}
-                className="px-3 py-1.5 text-xs rounded bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 transition-colors"
-              >
-                {cancelMutation.isPending ? 'Cancelling…' : 'Confirm cancellation'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      {license.portal_url && <ManageInPortal url={license.portal_url} />}
     </div>
   );
 }
 
-// ---- Activation count ----
+// ---- Customer portal ----
 
-function ActivationsRow({ limit }: { limit: number | null }) {
-  const { data, isFetching, isError, refetch } = useQuery({
-    queryKey: ['license-activations'],
-    queryFn: () => api.license.activations(),
-    staleTime: 0,
-  });
-
-  const count = data?.count ?? null;
-  const effectiveLimit = data?.limit ?? limit;
-  const atLimit = count !== null && effectiveLimit !== null && count >= effectiveLimit;
-
+/** Device seats and cancelling live in Polar's customer portal: the app can't
+ *  do either without Polar's organization API key, which must never ship in it. */
+function ManageInPortal({ url }: { url: string }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-[11px] text-gray-500 uppercase tracking-wide">Devices</span>
-      <div
-        className={`flex items-center gap-2 border rounded px-3 py-2 ${
-          atLimit ? 'bg-amber-500/10 border-amber-500/30' : 'bg-surface-panel border-gray-800'
-        }`}
+    <div className="flex flex-col gap-2 pt-2 border-t border-gray-800">
+      <p className="text-xs text-gray-400">
+        See which devices use your key, free up a seat, update billing, or cancel your subscription in the Polar
+        customer portal. Sign in with the email you purchased with.
+      </p>
+      <button
+        type="button"
+        onClick={() => openExternal(url)}
+        className="flex items-center gap-1.5 self-start px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:text-gray-100 hover:bg-gray-800 transition-colors"
       >
-        <Monitor className={`w-3.5 h-3.5 shrink-0 ${atLimit ? 'text-amber-400' : 'text-gray-500'}`} />
-        <span className={`flex-1 text-xs ${atLimit ? 'text-amber-300' : 'text-gray-300'}`}>
-          {isError
-            ? "Couldn't load device count"
-            : count === null
-              ? 'Loading…'
-              : `${count} of ${effectiveLimit ?? '∞'} device${effectiveLimit === 1 ? '' : 's'} activated`}
-        </span>
-        <button
-          onClick={() => refetch()}
-          disabled={isFetching}
-          title="Refresh device count"
-          className="text-gray-500 hover:text-gray-300 p-1 shrink-0 disabled:opacity-40"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
+        Manage subscription
+        <ExternalLink className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }

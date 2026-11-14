@@ -583,21 +583,9 @@ export interface LicenseStatusDto {
   status: string;
   checked_at: string | null;
   checkout_url: string | null;
-  /** Polar customer portal — lost license keys, device seats, billing. */
+  /** Polar customer portal — lost license keys, device seats, billing, cancelling. */
   portal_url: string | null;
-  can_cancel: boolean;
   limit_activations: number | null;
-  can_view_activations: boolean;
-}
-
-export interface CancelLicenseResultDto {
-  ok: boolean;
-  error: string | null;
-}
-
-export interface ActivationCountDto {
-  count: number;
-  limit: number | null;
 }
 
 export interface Edge {
@@ -1353,7 +1341,5 @@ export const api = {
     set: (licenseKey: string | null) =>
       put<LicenseStatusDto>('/license', { license_key: licenseKey }),
     recheck: () => post<LicenseStatusDto>('/license/recheck'),
-    cancel: () => post<CancelLicenseResultDto>('/license/cancel'),
-    activations: () => get<ActivationCountDto>('/license/activations'),
   },
 };

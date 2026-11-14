@@ -514,9 +514,8 @@ tasks:
       Build + install the REAL release app — Pro features + Polar PRODUCTION.
       This is what actually gets distributed. backend/.env.production must
       have real POLAR_PRODUCTION_ORGANIZATION_ID / POLAR_PRODUCTION_CHECKOUT_URL
-      values (both public, safe to commit) before running this — it never
-      needs POLAR_PRODUCTION_API_KEY, and that key must never be added to
-      backend/.env.production.
+      values (both public, safe to commit) before running this. The app
+      never uses a Polar API key; never add one to backend/.env.production.
     cmds:
       - task: package:pro
       - task: _package:pro-check

@@ -509,6 +509,9 @@ ai_proposal_files
 
 ```
 GET    /api/health                                       {status: "ok", instance} — instance = WICKD_INSTANCE_TOKEN (desktop shell launch check; empty in dev)
+GET    /api/app/info                                     {version, desktop} — wickd's version (app/version.py: pyproject.toml from source, bundled package metadata when packaged); desktop = packaged backend
+GET    /api/app/busy                                     {busy, activities: [{project, label}]} — what an update-and-restart would stop: dbt commands, init pipelines, global setup, scheduled runs due within 5 minutes
+POST   /api/app/shutdown-prep                            stop the scheduler ticker and file watcher before the shell relaunches on a new version (204, idempotent)
 
 GET    /api/settings
 PUT    /api/settings
@@ -1356,6 +1359,8 @@ Global settings (stored in `app_settings` table, set via UI):
 | `log_level` | Overrides `WICKD_LOG_LEVEL` |
 | `metricflow_mode` | Semantic layer default for projects without their own `metricflow_mode` (UI label `WICKD_METRICFLOW_MODE`): `auto` (default) or `off`; overrides the `WICKD_METRICFLOW_MODE` env var |
 | `shared_docs_paths` | Comma-separated absolute folders of Markdown pages outside any dbt project (UI label `WICKD_SHARED_DOCS_PATHS`), shown after the projects in the home page's combined docs Pages tab and watched for changes (global `docs_pages_changed` with `shared_folder`); each must exist when saved (400 otherwise), at most 20; overrides the env var (`app/docs_pages/shared.py`) |
+| `update_check_enabled` | Desktop updater (plan 32): `false` turns automatic update checks off (UI label `WICKD_UPDATE_CHECK_ENABLED`); missing = on |
+| `update_skipped_version` | The version "Skip this version" hid (UI label `WICKD_UPDATE_SKIPPED_VERSION`), X.Y.Z; empty = none |
 | `python_path` | Python 3.11+ interpreter the dbt venv is built from (UI label `WICKD_PYTHON_PATH`). Auto-detected on first launch; changing it rebuilds the venv. Not editable in a source checkout |
 
 Per-project env vars (stored in `project_env_vars`, injected into every dbt subprocess via `load_project_env()`):
@@ -1392,6 +1397,17 @@ To choose a specific Python interpreter:
 ```bash
 task install PYTHON=python3.12
 ```
+
+---
+
+### Automatic updates (plan 32, Base)
+
+Only the official desktop app updates itself. `task package:production` builds with `UPDATER=1`, which compiles `WICKD_UPDATER=1` into the shell (`src-tauri/src/updater.rs`; read with `option_env!`, `build.rs` reruns when it changes) and emits Tauri's signed updater tarball (`bundle.createUpdaterArtifacts`, minisign key `TAURI_SIGNING_PRIVATE_KEY` from `.env.signing`; the public key is `plugins.updater.pubkey` in `tauri.conf.json`). Only that build registers `tauri-plugin-updater`; debug shells, attach mode and `task package:app` don't, and the `updater_enabled` command tells the frontend.
+
+1. **Check** — `lib/updates/useAppUpdate.ts` runs the plugin's `check()` (query `['app-update']`) on launch, then every 6 hours while the app is open, when `update_check_enabled` is on. It fetches `https://github.com/EricLamphere/wickd/releases/latest/download/latest.json`. The plugin offers only a strictly newer version. A failed check (offline, rate limited) is logged and shows nothing. Global Settings → Updates → Check now checks even when automatic checks are off.
+2. **Notify** — `components/updates/UpdateBar.tsx`, under the header on every page: version, "What's new" (the release notes as Markdown), **Update & restart**, **Later** (sessionStorage, back next launch) and **Skip this version** (`update_skipped_version`). `lib/updates/updatePolicy.ts` (pure, tested) decides.
+3. **Install** — `useUpdateInstall`: `GET /api/app/busy`; if anything is running, a danger confirm names it. Then `downloadAndInstall()` with a progress bar: signature checked, `/Applications/wickd.app` replaced. Then `POST /api/app/shutdown-prep`, then the shell's `relaunch_app` command, which kills the backend tree itself before `request_restart()`: Tauri's `restart()` can skip `RunEvent::Exit`, where the backend is normally killed. The relaunched shell starts a new backend on its own token (`backend_port.rs`), so a leftover old backend can't be mistaken for it. If the install fails (app not in a writable `/Applications`, run from the dmg), the bar offers the manual dmg download, with the error under Details.
+4. **Release** — `task release NOTES_FILE=…` checks the tarball holds the stapled app, writes `latest.json` with `backend/scripts/updater_manifest.py` (version must match `tauri.conf.json`), and creates the GitHub release as a draft with the dmgs, `wickd_<ver>_aarch64.app.tar.gz` and `latest.json`, then publishes it, so "latest" flips only once every asset is up. User data lives in the app data dir, outside the bundle, so an update keeps it.
 
 ---
 

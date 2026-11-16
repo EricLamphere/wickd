@@ -4,6 +4,7 @@ use std::time::Duration;
 use tauri::{Manager, RunEvent};
 
 mod backend_port;
+mod updater;
 
 const BACKEND_HEALTH_PATH: &str = "/api/health";
 const BACKEND_POLL_TIMEOUT: Duration = Duration::from_secs(20);
@@ -12,7 +13,7 @@ const BACKEND_POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Holds the backend process's child handle for the lifetime of the app so it
 /// can be killed explicitly on shutdown — nothing else guarantees its cleanup
 /// on every exit path (e.g. force-quit) without this.
-struct BackendProcess(std::sync::Mutex<Option<Child>>);
+pub(crate) struct BackendProcess(std::sync::Mutex<Option<Child>>);
 
 /// Kills the backend process and any of its direct children.
 ///
@@ -22,7 +23,7 @@ struct BackendProcess(std::sync::Mutex<Option<Child>>);
 /// to survive a plain kill of its parent so it can clean up shared resources, which
 /// left it (and the backend port's listener) orphaned when we only killed the tracked PID.
 /// `pkill -P <pid>` reaps any such children before/alongside killing the parent.
-fn kill_backend_tree(mut child: Child) {
+pub(crate) fn kill_backend_tree(mut child: Child) {
     let pid = child.id();
     let _ = std::process::Command::new("pkill")
         .args(["-9", "-P", &pid.to_string()])
@@ -110,9 +111,16 @@ fn show_when_ready(window: tauri::WebviewWindow, base_url: String, token: Option
 }
 
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+    let mut builder = tauri::Builder::default().plugin(tauri_plugin_opener::init());
+    if updater::enabled() {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+    builder
         .manage(BackendProcess(std::sync::Mutex::new(None)))
+        .invoke_handler(tauri::generate_handler![
+            updater::updater_enabled,
+            updater::relaunch_app
+        ])
         .setup(|app| {
             if let Some(url) = attach_url() {
                 let window = app

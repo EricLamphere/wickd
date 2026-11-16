@@ -16,7 +16,7 @@
 
 import importlib.util
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
 block_cipher = None
 
@@ -58,7 +58,8 @@ a = Analysis(
     ["../app/__main__.py"],
     pathex=[".."],
     binaries=[],
-    datas=[("../app/semantic/worker_main.py", "app/semantic")],
+    # wickd-backend's own metadata carries the app version (app/version.py, GET /api/app/info).
+    datas=[("../app/semantic/worker_main.py", "app/semantic")] + copy_metadata("wickd-backend"),
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},

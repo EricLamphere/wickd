@@ -363,7 +363,28 @@ tasks:
       - task: _package:sign-backend
       - task: _package:sign-llama
       # "-" = ad-hoc signing (local builds); release sets a Developer ID identity.
-      - cd src-tauri && APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}" cargo tauri build
+      # UPDATER=1 (package:production only) compiles the automatic updater in
+      # (WICKD_UPDATER, read by src-tauri/src/updater.rs) and emits the signed
+      # updater tarball, which needs TAURI_SIGNING_PRIVATE_KEY (.env.signing).
+      # Without the key it builds without updates rather than failing, so a
+      # local production build still works; `task release` requires the key.
+      # UPDATER_ENDPOINT (dry runs only, never releases) points the updater at a
+      # local latest.json instead of GitHub; see docs/how-to/update-wickd.md.
+      - |
+        cd src-tauri
+        export APPLE_SIGNING_IDENTITY="${APPLE_SIGNING_IDENTITY:--}"
+        export WICKD_UPDATER=
+        if [ "{{.UPDATER}}" = "1" ] && [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+          echo "TAURI_SIGNING_PRIVATE_KEY not set — building without automatic updates."
+        fi
+        if [ "{{.UPDATER}}" = "1" ] && [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+          export WICKD_UPDATER=1
+          {{if .UPDATER_ENDPOINT}}CONFIG='{"bundle":{"createUpdaterArtifacts":true},"plugins":{"updater":{"endpoints":["{{.UPDATER_ENDPOINT}}"],"dangerousInsecureTransportProtocol":true}}}'
+          echo "Updater endpoint overridden: {{.UPDATER_ENDPOINT}} (dry-run build — never release it)."{{else}}CONFIG='{"bundle":{"createUpdaterArtifacts":true}}'{{end}}
+          cargo tauri build --config "$CONFIG"
+        else
+          cargo tauri build
+        fi
 
   _package:sign-backend:
     desc: |
@@ -461,6 +482,8 @@ tasks:
       - task: _package:app
         vars:
           ENV_FILE: "{{.ENV_FILE}}"
+          UPDATER: "{{.UPDATER}}"
+          UPDATER_ENDPOINT: "{{.UPDATER_ENDPOINT}}"
       - task: _package:install
 
   package:sandbox:pro:
@@ -522,6 +545,9 @@ tasks:
       - task: _package:build-with-env
         vars:
           ENV_FILE: "{{.BACKEND_DIR}}/.env.production"
+          # automatic updates (plan 32); UPDATER_ENDPOINT=<url> only for an update dry run
+          UPDATER: "1"
+          UPDATER_ENDPOINT: "{{.UPDATER_ENDPOINT}}"
 
   # Builds the production app (package:production), Developer-ID signed and
   # notarized, and publishes it as a GitHub release. Apple credentials come
@@ -530,6 +556,8 @@ tasks:
   #   APPLE_ID                your Apple Account email
   #   APPLE_PASSWORD          an app-specific password (appleid.apple.com)
   #   APPLE_TEAM_ID           your 10-character Team ID
+  #   TAURI_SIGNING_PRIVATE_KEY / _PASSWORD  the updater's minisign key (plan 32)
+  # Run as `task release NOTES_FILE=<release notes .md>`.
   # Tauri reads these to sign + notarize the .app; the backend binaries are
   # signed by _package:sign-backend, and the .dmg is notarized + stapled here.
   # The dmg is uploaded twice: once with its versioned name, and once as
@@ -545,6 +573,12 @@ tasks:
       DMG: src-tauri/target/release/bundle/dmg/wickd_{{.VERSION}}_aarch64.dmg
       STABLE_DMG: src-tauri/target/release/bundle/dmg/wickd_aarch64.dmg
       APP: src-tauri/target/release/bundle/macos/wickd.app
+      # Automatic updates (plan 32): Tauri's signed updater tarball, uploaded under a
+      # versioned name, and the latest.json manifest installed apps read.
+      UPDATE_TARBALL: src-tauri/target/release/bundle/macos/wickd.app.tar.gz
+      UPDATE_SIG: src-tauri/target/release/bundle/macos/wickd.app.tar.gz.sig
+      RELEASE_TARBALL: src-tauri/target/release/bundle/macos/wickd_{{.VERSION}}_aarch64.app.tar.gz
+      MANIFEST: src-tauri/target/release/bundle/latest.json
       VERSION_FILES: src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock frontend/package.json frontend/package-lock.json backend/pyproject.toml
     preconditions:
       # Everything here is checked before the (slow) build so mistakes fail fast.
@@ -561,6 +595,16 @@ tasks:
         msg: ".env.signing must set APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID."
       - sh: security find-identity -v -p codesigning | grep -qF "$APPLE_SIGNING_IDENTITY"
         msg: "Signing identity not found in your keychain — install your Developer ID Application certificate (check with: security find-identity -v -p codesigning)."
+      - sh: '[ -n "$TAURI_SIGNING_PRIVATE_KEY" ] && [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]'
+        msg: ".env.signing must set TAURI_SIGNING_PRIVATE_KEY (path to the updater key, e.g. ~/.tauri/wickd.key) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD."
+      - sh: 'case "$TAURI_SIGNING_PRIVATE_KEY" in /*|~*) test -f "$TAURI_SIGNING_PRIVATE_KEY";; *) true;; esac'
+        msg: "The updater signing key file named by TAURI_SIGNING_PRIVATE_KEY doesn't exist — restore it from your password manager backup."
+      - sh: '[ -z "{{.UPDATER_ENDPOINT}}" ]'
+        msg: "UPDATER_ENDPOINT is for update dry runs only — never release a build pointed at it."
+      # User-facing release notes (the release skill drafts them for approval): the GitHub
+      # release body and the update bar's "What's new".
+      - sh: '[ -n "{{.NOTES_FILE}}" ] && [ -s "{{.NOTES_FILE}}" ]'
+        msg: "Pass NOTES_FILE=<path> with the release notes (task release NOTES_FILE=…)."
     cmds:
       # A subprocess, not `task:`, so the .env.signing variables reach the build.
       - task package:production
@@ -577,10 +621,31 @@ tasks:
       - spctl --assess --type execute --verbose "{{.APP}}"
       - spctl --assess --type open --context context:primary-signature --verbose "{{.DMG}}"
       - cp "{{.DMG}}" "{{.STABLE_DMG}}"
+      # The updater tarball must hold the notarized, stapled .app, or an update
+      # would install an app Gatekeeper rejects offline.
+      - |
+        set -euo pipefail
+        for f in "{{.UPDATE_TARBALL}}" "{{.UPDATE_SIG}}"; do
+          if [ ! -f "$f" ]; then
+            echo "Updater artifact $f was not built — is TAURI_SIGNING_PRIVATE_KEY set?" >&2
+            exit 1
+          fi
+        done
+        CHECK="$(mktemp -d)"
+        tar -xzf "{{.UPDATE_TARBALL}}" -C "$CHECK"
+        xcrun stapler validate "$CHECK/wickd.app"
+        spctl --assess --type execute --verbose "$CHECK/wickd.app"
+        rm -rf "$CHECK"
+      - cp "{{.UPDATE_TARBALL}}" "{{.RELEASE_TARBALL}}"
+      - backend/.venv/bin/python backend/scripts/updater_manifest.py --version "{{.VERSION}}" --sig "{{.UPDATE_SIG}}" --notes-file "{{.NOTES_FILE}}" --out "{{.MANIFEST}}"
       # Commit only the version files, after the build passed, so a failed build pushes nothing.
       # A bump that's already committed is fine; there's just nothing to commit here.
       - |
         git diff --quiet HEAD -- {{.VERSION_FILES}} || git commit -m "chore: release {{.VERSION}}" -- {{.VERSION_FILES}}
       - git push origin main
       # The tag is created on the release commit, so it never needs moving afterwards.
-      - gh release create "v{{.VERSION}}" "{{.DMG}}" "{{.STABLE_DMG}}" --title "wickd v{{.VERSION}}" --generate-notes --target "$(git rev-parse HEAD)"
+      # Created as a draft with every asset, then published: "latest" (which the site's
+      # Download button and installed apps' update checks both follow) only flips once
+      # the dmgs, the updater tarball and latest.json are all uploaded.
+      - gh release create "v{{.VERSION}}" "{{.DMG}}" "{{.STABLE_DMG}}" "{{.RELEASE_TARBALL}}" "{{.MANIFEST}}" --draft --title "wickd v{{.VERSION}}" --notes-file "{{.NOTES_FILE}}" --target "$(git rev-parse HEAD)"
+      - gh release edit "v{{.VERSION}}" --draft=false --latest

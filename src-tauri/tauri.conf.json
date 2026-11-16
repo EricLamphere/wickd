@@ -40,6 +40,15 @@
         "Resources/binaries/wickd-backend": "./binaries/wickd-backend",
         "Resources/binaries/llama": "./binaries/llama"
       }
+    },
+    "createUpdaterArtifacts": false
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUxNTgwRkM2RDBEM0FBNEYKUldSUHF0UFF4ZzlZNFJWTVRuc2Vuc28xVTM2WlROMDY2SnhmRGdTZndsTHZxYkg1TlNRWnB6Sm4K",
+      "endpoints": [
+        "https://github.com/EricLamphere/wickd/releases/latest/download/latest.json"
+      ]
     }
   }
 }

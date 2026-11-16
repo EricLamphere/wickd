@@ -912,6 +912,10 @@ export interface SettingsDto {
   metricflow_mode: 'auto' | 'off';
   /** Comma-separated docs folders outside any project, shown in combined docs' Pages tab. */
   shared_docs_paths: string | null;
+  /** Desktop updater (plan 32): automatic update checks (default on). */
+  update_check_enabled: boolean;
+  /** The version the user chose to skip; null = none. */
+  update_skipped_version: string | null;
   configured: boolean;
   setup_completed: boolean;
 }
@@ -987,6 +991,27 @@ export interface SettingsUpdateDto {
   metricflow_mode?: 'auto' | 'off';
   /** "" clears it. */
   shared_docs_paths?: string;
+  update_check_enabled?: boolean;
+  /** X.Y.Z, or "" to clear. */
+  update_skipped_version?: string;
+}
+
+export interface AppInfoDto {
+  version: string;
+  /** The packaged desktop app's backend (not `task start`). */
+  desktop: boolean;
+}
+
+export interface AppActivityDto {
+  /** null for app-wide work (global setup). */
+  project: string | null;
+  label: string;
+}
+
+/** What an update-and-restart would interrupt (GET /app/busy). */
+export interface AppBusyDto {
+  busy: boolean;
+  activities: AppActivityDto[];
 }
 
 export const api = {
@@ -1295,6 +1320,12 @@ export const api = {
     get: () => get<SettingsDto>('/settings'),
     update: (body: SettingsUpdateDto) => put<SettingsDto>('/settings', body),
     pythonInterpreters: () => get<PythonInterpreterDto[]>('/settings/python-interpreters'),
+  },
+  app: {
+    info: () => get<AppInfoDto>('/app/info'),
+    busy: () => get<AppBusyDto>('/app/busy'),
+    /** Stops the scheduler and file watcher before the desktop shell relaunches. */
+    shutdownPrep: () => post<void>('/app/shutdown-prep'),
   },
   setup: {
     complete: (body: SetupDto) => post<SettingsDto>('/setup/complete', body),

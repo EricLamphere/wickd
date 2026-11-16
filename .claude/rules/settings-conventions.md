@@ -68,3 +68,5 @@ All settings must appear in one of two places in the Environment page (`frontend
 | `WICKD_AI_ENDPOINT_MODEL` | `ai_endpoint_model` | `qwen3:8b` |
 | `WICKD_METRICFLOW_MODE` | `metricflow_mode` | `auto` |
 | `WICKD_SHARED_DOCS_PATHS` | `shared_docs_paths` (comma-separated absolute folders; validated on save) | `/home/user/dbt/docs` |
+| `WICKD_UPDATE_CHECK_ENABLED` | `update_check_enabled` (switch; desktop app only, Global Settings → Updates) | `true` |
+| `WICKD_UPDATE_SKIPPED_VERSION` | `update_skipped_version` (set by the update bar's Skip; cleared with Stop skipping) | `1.4.0` |

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -29,6 +30,11 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # "true" once the first-run setup wizard has been completed (see api/setup.py).
 SETUP_COMPLETED_KEY = "setup_completed"
+# Desktop updater (plan 32): "false" turns automatic checks off (default on); the version
+# the user chose to skip, so its update bar stays hidden ("" = none).
+UPDATE_CHECK_ENABLED_KEY = "update_check_enabled"
+UPDATE_SKIPPED_VERSION_KEY = "update_skipped_version"
+_SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 class SettingsUpdateDto(BaseModel):
@@ -46,6 +52,9 @@ class SettingsUpdateDto(BaseModel):
     metricflow_mode: str | None = None
     # comma-separated docs folders outside any project, for combined docs' Pages tab ("" clears)
     shared_docs_paths: str | None = None
+    update_check_enabled: bool | None = None
+    # X.Y.Z, or "" to clear
+    update_skipped_version: str | None = None
 
 
 class SettingsDto(BaseModel):
@@ -67,6 +76,9 @@ class SettingsDto(BaseModel):
     metricflow_mode: str
     # docs folders outside any project shown in combined docs' Pages tab; null = none
     shared_docs_paths: str | None
+    # desktop updater (plan 32)
+    update_check_enabled: bool
+    update_skipped_version: str | None
     configured: bool
     setup_completed: bool
 
@@ -126,6 +138,8 @@ async def get_settings(session: AsyncSession = Depends(get_session)) -> Settings
         dbt_core_version=await _get_override(session, DBT_CORE_VERSION_KEY) or None,
         metricflow_mode=await metricflow_global_mode(session),
         shared_docs_paths=await shared_docs.load_setting(session) or None,
+        update_check_enabled=await _get_override(session, UPDATE_CHECK_ENABLED_KEY) != "false",
+        update_skipped_version=await _get_override(session, UPDATE_SKIPPED_VERSION_KEY) or None,
         setup_completed=setup_completed,
     )
 
@@ -235,6 +249,13 @@ async def put_settings(
         except DocsPagesError as exc:
             raise HTTPException(status_code=400, detail=exc.message) from exc
         await _upsert(session, shared_docs.SETTING_KEY, normalized)
+    if dto.update_check_enabled is not None:
+        await _upsert(session, UPDATE_CHECK_ENABLED_KEY, "true" if dto.update_check_enabled else "false")
+    if dto.update_skipped_version is not None:
+        skipped = dto.update_skipped_version.strip().removeprefix("v")
+        if skipped and not _SEMVER.match(skipped):
+            raise HTTPException(status_code=400, detail=f"'{skipped}' isn't a version number (e.g. 1.4.0)")
+        await _upsert(session, UPDATE_SKIPPED_VERSION_KEY, skipped)
     await session.commit()
     if dto.shared_docs_paths is not None:
         await _resync_watcher()

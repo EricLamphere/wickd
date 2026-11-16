@@ -115,16 +115,20 @@ The app icon's source is `src-tauri/icons/icon.svg`. After editing it, regenerat
 
 Inside the app (header, loading screen, setup wizard) and in browser tabs, wickd uses the *mark*: the icon's flame without the tile, from `frontend/public/` — `wickd-mark.svg` for dark backgrounds, `wickd-mark-light.svg` for light ones (`components/WickdIcon.tsx` picks by theme), and `favicon.svg`, which switches between the two with `prefers-color-scheme`. Keep them in sync with `icon.svg` when the flame changes; the lamphere-labs site uses copies of the same three files in `assets/img/`.
 
+Only `task package:production` builds include automatic updates (it needs the updater signing key in `.env.signing`; without it, it builds without them). The app you build with `task package:app` never offers to update itself. Update it by rebuilding.
+
+To try an update end to end without publishing anything, build version N with `task package:production UPDATER_ENDPOINT=http://127.0.0.1:8765/latest.json` (the endpoint override is compiled in, so never release that build), then bump the version, build N+1 the same way, and serve a `latest.json` (from `backend/scripts/updater_manifest.py`) and N+1's `wickd.app.tar.gz` from that address. Reinstall N and update it. See [Update wickd](docs/how-to/update-wickd.md).
+
 Debug builds of the shell (`cargo build` in `src-tauri/`) can attach to a backend that's already running instead of starting a bundled one: set `WICKD_SHELL_URL` (e.g. `http://127.0.0.1:8002`) and optionally `WICKD_SHELL_SIZE` (e.g. `1920x1145`) and `WICKD_SHELL_ZOOM` (e.g. `0.8`, to lay the app out larger than the display allows). Release builds ignore all three. The README and website screenshots are taken this way; see `.claude/skills/screenshots/SKILL.md`.
 
 ## Releasing (maintainers)
 
 Releases are Developer ID signed and notarized by Apple.
 
-1. Put your Apple credentials in `.env.signing` (gitignored; copy `.env.signing.example`). You need a **Developer ID Application** certificate in your keychain and an app-specific password.
+1. Put your Apple credentials in `.env.signing` (gitignored; copy `.env.signing.example`). You need a **Developer ID Application** certificate in your keychain and an app-specific password. The same file holds the updater's minisign key (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). Keep the key file and its password backed up: without them, no installed app can update again.
 2. Run `/release` in Claude Code, which bumps the version everywhere and runs the release, or bump the version yourself and run `task release`.
 
-`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, commits the six version files as `chore: release <version>`, pushes `main`, and creates GitHub release `v<version>` with its tag on that commit. It refuses to start unless you're on `main` and it matches `origin/main`, so the push publishes only the release commit. It uploads the `.dmg` twice: with its versioned name, and as `wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`.
+`task release` builds with `package:production`, signs the backend binaries and the app, notarizes and staples the `.dmg`, checks it with `spctl`, commits the six version files as `chore: release <version>`, pushes `main`, and creates GitHub release `v<version>` with its tag on that commit. It refuses to start unless you're on `main` and it matches `origin/main`, so the push publishes only the release commit. It uploads the `.dmg` twice: with its versioned name, and as `wickd_aarch64.dmg`, which the website's Download buttons link to via `releases/latest/download/`. It also uploads the signed updater tarball and `latest.json`, which installed apps check for updates. The release is created as a draft and published once every asset is uploaded. Pass the user-facing release notes with `NOTES_FILE=<file>`. They're the release body and the update bar's "What's new".
 
 ## Submitting changes
 

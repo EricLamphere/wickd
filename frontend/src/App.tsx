@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import { DialogHost } from './components/DialogHost';
 import { SetupGate } from './components/setup/SetupGate';
+import { UpdateBar } from './components/updates/UpdateBar';
 import { NavHistoryProvider } from './lib/navHistoryContext';
 import Home from './routes/Home';
 import Pricing from './routes/Pricing';
@@ -26,6 +27,7 @@ export default function App() {
         <SetupGate>
           <div className="flex flex-col h-screen overflow-hidden">
             <Header />
+            <UpdateBar />
             <main className="flex-1 overflow-hidden">
               <Routes>
                 <Route path="/" element={<Home />} />

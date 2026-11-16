@@ -14,6 +14,7 @@ from app.api import ai_model as ai_model_api
 from app.api import ai_proposal_apply as ai_proposal_apply_api
 from app.api import ai_proposals as ai_proposals_api
 from app.api import ai_query as ai_query_api
+from app.api import app_info as app_info_api
 from app.api import charts as charts_api
 from app.api import column_lineage as column_lineage_api
 from app.api import contracts as contracts_api
@@ -131,6 +132,7 @@ app.add_middleware(
 )
 
 app.include_router(health_api.router)
+app.include_router(app_info_api.router)
 app.include_router(settings_api.router)
 app.include_router(scheduling_api.router)
 app.include_router(setup_api.router)

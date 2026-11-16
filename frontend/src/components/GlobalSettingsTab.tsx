@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { api, type SettingsDto } from '../lib/api';
 import { PythonInterpreterRow } from './PythonInterpreterRow';
+import { UpdateSettingsRows } from './updates/UpdateSettingsRows';
 import { OPEN_SETUP_EVENT } from './setup/SetupGate';
 import { alertError } from '../lib/dialogs';
 
@@ -67,6 +68,13 @@ function buildSections(settings: SettingsDto | undefined): SettingSection[] {
       rows: [
         { key: 'log_level', label: 'WICKD_LOG_LEVEL', hint: 'takes effect on restart', example: 'INFO' },
       ],
+    },
+    {
+      id: 'updates',
+      title: 'Updates',
+      description: 'The desktop app updates itself when a new version is released.',
+      rows: [],
+      extra: (s) => <UpdateSettingsRows settings={s} />,
     },
   ];
 }

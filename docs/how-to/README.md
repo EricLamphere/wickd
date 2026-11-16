@@ -4,6 +4,7 @@ Step-by-step guides for using wickd.
 
 | Guide | What it covers |
 |---|---|
+| [Update wickd](update-wickd.md) | How the desktop app tells you about a new version and updates itself, Later and Skip, turning checks off, and what to do if an update can't install |
 | [First-run setup](first-run-setup.md) | The setup wizard: projects folder, Python, dbt packages, preferences, and installing dbt |
 | [Create a project](create-project.md) | Run `dbt init` interactively, set up profiles.yml, and open your first project |
 | [Run, build, and test models](run-models.md) | Select models in the DAG, execute runs, read output from the Run panel, and schedule runs |

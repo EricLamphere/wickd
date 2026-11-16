@@ -16,6 +16,7 @@ Run these and stop with a clear message if any fail:
 
 - `gh auth status` — must be logged in (the release is created with `gh`).
 - `.env.signing` must exist at the repo root with `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` set (template: `.env.signing.example`). Check that the keys are non-empty without printing their values — never echo the password.
+- `.env.signing` must also set `TAURI_SIGNING_PRIVATE_KEY` (path to the updater key, `~/.tauri/wickd.key`) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the key file must exist (check without printing the password). Without it installed apps can't update to this release (plan 32).
 - `security find-identity -v -p codesigning` must list the `APPLE_SIGNING_IDENTITY` value (the Developer ID Application certificate is installed).
 - Read the current version from `src-tauri/tauri.conf.json` (`"version"`). This is the source of truth.
 - Compute the new version from the argument (semver: `patch` → X.Y.Z+1, `minor` → X.Y+1.0, `major` → X+1.0.0; an explicit version must be valid semver and greater than the current one).
@@ -54,32 +55,38 @@ grep -m1 '^version' backend/pyproject.toml
 
 If any file doesn't show the new version, fix it before continuing.
 
-## 3. Build and publish
+## 3. Release notes
 
-Run `task release` from the repo root **in the background** (`run_in_background: true`) — the production build takes several minutes, well past the foreground timeout. It:
+Draft 3–6 short, user-facing bullets from `git log <previous tag>..HEAD --oneline` (previous tag: `gh release view --json tagName -q .tagName`). Write what a user notices ("Metric monitors can alert when data stops arriving"), not commit subjects, PR numbers or refactors. Show them to the user and wait for approval or edits. Then write them as Markdown to `<scratchpad>/release-notes-<new>.md`. They become the GitHub release body and the "What's new" text in installed apps' update bar (`latest.json`).
+
+## 4. Build and publish
+
+Run `task release NOTES_FILE=<that notes file>` from the repo root **in the background** (`run_in_background: true`) — the production build takes several minutes, well past the foreground timeout. It:
 
 1. refuses if a release for this version already exists,
 2. runs `task package:production` (builds the Pro + Polar-production app, Developer-ID signed — backend binaries included — and notarized by Tauri, and installs it to `/Applications`),
 3. notarizes and staples the `.dmg`, then checks both with `spctl` — if notarization is rejected, get the reason with `xcrun notarytool log <submission-id>` (credentials from `.env.signing`),
 4. commits only the six version files as `chore: release <new>` and pushes `main`,
-5. creates GitHub release `v<new>` with its tag on that commit, with both `wickd_<new>_aarch64.dmg` and `wickd_aarch64.dmg` (the stable name the lamphere-labs site's Download buttons link to).
+5. checks that the updater tarball holds the stapled app, then writes `latest.json` (`backend/scripts/updater_manifest.py`),
+6. creates GitHub release `v<new>` **as a draft**, with its tag on that commit and these assets: `wickd_<new>_aarch64.dmg`, `wickd_aarch64.dmg` (the stable name the lamphere-labs site's Download buttons link to), `wickd_<new>_aarch64.app.tar.gz` (the updater tarball) and `latest.json`. Then it publishes the draft, so "latest" only moves once every asset is there.
 
 Wait for the completion notification; don't poll. If it fails, show the relevant tail of the output, diagnose, and do not retry blindly — a failure after the release was created must not create a second one. A build or notarization failure leaves the bump uncommitted and nothing pushed. If the push is rejected (for example `main` moved during the build), stop and tell the user: never force-push, and don't create the release from an unpushed commit.
 
-## 4. Verify
+## 5. Verify
 
 ```bash
-gh release view v<new> --json tagName,url,assets -q '.tagName, .url, (.assets[].name)'
+gh release view v<new> --json tagName,url,isDraft,assets -q '.tagName, .url, .isDraft, (.assets[].name)'
 curl -sIL -o /dev/null -w '%{http_code} %{url_effective}\n' \
   https://github.com/EricLamphere/wickd/releases/latest/download/wickd_aarch64.dmg
+curl -sL https://github.com/EricLamphere/wickd/releases/latest/download/latest.json | jq -r .version
 git fetch --tags origin
 git rev-parse HEAD origin/main "v<new>^{commit}"
 git show --stat --format='%h %s' HEAD
 ```
 
-The release should list both dmg files, and the curl should end in `200` with `filename=wickd_aarch64.dmg` in the final URL. All three commit hashes should match, and the commit should change only the six version files.
+The release should not be a draft and should list both dmg files, the `.app.tar.gz` and `latest.json`; the `latest.json` curl must print `<new>`. The dmg curl should end in `200` with `filename=wickd_aarch64.dmg` in the final URL. All three commit hashes should match, and the commit should change only the six version files.
 
-## 5. Report
+## 6. Report
 
 Tell the user:
 

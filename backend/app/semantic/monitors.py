@@ -62,6 +62,15 @@ class MonitorSpec:
     target: str | None  # pinned
     slices: tuple[Any, ...]
     slices_refreshed_at: datetime | None
+    algorithm: str = "seasonal"
+    config_json: str = "{}"  # the algorithm's settings (kept as text so the spec stays hashable)
+
+    def config(self) -> dict:
+        try:
+            value = json.loads(self.config_json or "{}")
+        except ValueError:
+            return {}
+        return value if isinstance(value, dict) else {}
 
 
 @dataclass(frozen=True)
@@ -94,6 +103,8 @@ def spec_of(row: Any) -> MonitorSpec:
         id=row.id, metric=row.metric, grain=row.grain, dimension=row.dimension, sensitivity=row.sensitivity,
         lookback=row.lookback, target=row.target, slices=tuple(slices if isinstance(slices, list) else []),
         slices_refreshed_at=_as_utc(row.slices_refreshed_at),
+        algorithm=getattr(row, "algorithm", None) or "seasonal",
+        config_json=getattr(row, "algorithm_config_json", None) or "{}",
     )
 
 
@@ -351,7 +362,11 @@ async def _store_and_detect(plan: _Plan, res: BatchResult, target: str, today: d
             )
             await session.flush()
             series = await monitor_points.series(session, m.id, target, key, lookback_start)
-            detected = anomaly.detect(series, grain=m.grain, sensitivity=m.sensitivity, previous=previous, now=today)
+            try:
+                detected = detect_for(m, series, previous=previous, today=today)
+            except (anomaly.AnomalyUnavailable, ValueError) as exc:
+                await session.commit()
+                return _error(m, target, str(exc))
             slices.append(slice_result(key, detected))
         await monitor_points.trim(session, m.id, target, lookback_start)
         result = monitor_result(m, target, slices, truncated=res.truncated, checked_at=now)
@@ -361,6 +376,14 @@ async def _store_and_detect(plan: _Plan, res: BatchResult, target: str, today: d
             row.last_checked_at = now
         await session.commit()
     return result
+
+
+def detect_for(m: MonitorSpec, series: list[dict], *, previous: list[dict] | None, today: date) -> dict:
+    """The monitor's algorithm over one slice's stored series."""
+    return anomaly.detect(
+        series, grain=m.grain, sensitivity=m.sensitivity, previous=previous, now=today,
+        algorithm=m.algorithm, config=m.config(),
+    )
 
 
 # ── results (pure) ───────────────────────────────────────────────────────────

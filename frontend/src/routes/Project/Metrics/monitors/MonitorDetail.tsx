@@ -5,7 +5,9 @@ import { ArrowLeft, Check, RotateCcw, Trash2 } from 'lucide-react';
 import { DataTable } from '../../../../components/DataTable';
 import { Switch } from '../../../../components/Switch';
 import { confirmDialog } from '../../../../lib/dialogs';
-import type { MonitorDto, MonitorListDto, MonitorPatchBody, MonitorPointDto, MonitorSensitivity } from '../../../../lib/monitorsApi';
+import type { MonitorDto, MonitorListDto, MonitorPatchBody, MonitorPointDto } from '../../../../lib/monitorsApi';
+import { AlgorithmFields, type AlgorithmValue } from './AlgorithmFields';
+import { configProblem } from './algorithms';
 import { MonitorChart } from './MonitorChart';
 import { MonitorScheduleSetting } from './ScheduleControls';
 import { clampBand, formatNumber, KIND_LABEL, kindTone, monitorTitle, statusStyle } from './monitorView';
@@ -146,6 +148,37 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
   );
 }
 
+const algorithmOf = (m: MonitorDto): AlgorithmValue => ({
+  algorithm: m.algorithm ?? 'seasonal', config: m.config ?? {}, sensitivity: m.sensitivity,
+});
+
+/** The algorithm and its settings, edited as a draft and saved together (a check runs after). */
+function AlgorithmSetting({ monitor, onUpdate }: { monitor: MonitorDto; onUpdate: (body: MonitorPatchBody) => Promise<unknown> }) {
+  const saved = algorithmOf(monitor);
+  const [draft, setDraft] = useState<AlgorithmValue>(saved);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  const problem = configProblem(draft.algorithm, draft.config);
+  const save = () => {
+    const body: MonitorPatchBody = draft.algorithm === 'seasonal'
+      ? { algorithm: 'seasonal', sensitivity: draft.sensitivity }
+      : { algorithm: draft.algorithm, config: draft.config };
+    void onUpdate(body);
+  };
+  return (
+    <div className="flex flex-col gap-2 pb-2.5 border-b border-gray-800">
+      <AlgorithmFields value={draft} onChange={setDraft} />
+      {problem && <p className="text-[11px] text-amber-400">{problem}</p>}
+      {dirty && (
+        <div className="flex justify-end gap-2">
+          <button onClick={() => setDraft(saved)} className="px-2.5 py-1 rounded border border-gray-700 text-gray-300 hover:border-gray-500">Discard</button>
+          <button onClick={save} disabled={!!problem}
+            className="px-2.5 py-1 rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">Save and check</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MonitorSettings({ monitor, targets, project, onUpdate, onDelete }: {
   monitor: MonitorDto; targets: string[]; project: Pick<MonitorListDto, 'interval_hours' | 'schedule'>;
   onUpdate: (body: MonitorPatchBody) => Promise<unknown>; onDelete: () => void;
@@ -154,12 +187,8 @@ function MonitorSettings({ monitor, targets, project, onUpdate, onDelete }: {
   return (
     <section className="flex flex-col gap-2.5 text-xs">
       <h3 className="font-medium text-gray-300">Settings</h3>
-      <label className="flex items-center justify-between gap-3">
-        <span className="text-gray-400">Sensitivity</span>
-        <select value={monitor.sensitivity} onChange={(e) => onUpdate({ sensitivity: e.target.value as MonitorSensitivity })} className={FIELD_CLS}>
-          <option value="low">low</option><option value="normal">normal</option><option value="high">high</option>
-        </select>
-      </label>
+      <AlgorithmSetting key={`${monitor.id}:${monitor.algorithm}:${JSON.stringify(monitor.config)}:${monitor.sensitivity}`}
+        monitor={monitor} onUpdate={onUpdate} />
       <label className="flex items-center justify-between gap-3">
         <span className="text-gray-400">History kept ({monitor.grain}s)</span>
         <input type="number" min={1} value={lookback} onChange={(e) => setLookback(e.target.value)}
@@ -182,8 +211,10 @@ function MonitorSettings({ monitor, targets, project, onUpdate, onDelete }: {
           title={monitor.enabled ? 'On: click to stop checking this monitor' : 'Off: click to check this monitor again'} />
       </div>
       <p className="text-[11px] text-gray-600 leading-relaxed">
-        Late-arriving data shows as a drop in the latest period, then as a restatement once it lands.
-        The current period is shown but never scored.
+        {(monitor.algorithm ?? 'seasonal') === 'seasonal'
+          ? 'Late-arriving data shows as a drop in the latest period, then as a restatement once it lands.'
+          : 'Restated periods (values that changed after the period ended) are flagged with every algorithm.'}
+        {' '}The current period is shown but never scored.
       </p>
       <button onClick={onDelete} className="self-start flex items-center gap-1.5 px-2.5 py-1 rounded border border-red-900/60 text-red-300 hover:bg-red-950/40">
         <Trash2 className="w-3.5 h-3.5" />Delete monitor

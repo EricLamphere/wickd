@@ -3,7 +3,7 @@
 import { Filter, Loader2, X } from 'lucide-react';
 import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import { semanticErrorBody } from '../../../../../lib/semanticApi';
-import { drillResult, pickLabel, type Pick } from '../drill';
+import { drillResult, pickDescription, pickLabel, type Pick } from '../drill';
 import type { MetricFormat } from '../dashboardModel';
 import { TimeseriesWidget } from './TimeseriesWidget';
 import { useDrill } from './useDrill';
@@ -29,7 +29,7 @@ export function DrillPanel({ projectId, widget, result, pick, labels, format, he
     <div className="flex flex-col min-w-0 min-h-0 h-full" data-drill="">
       <div className="flex items-center gap-1.5 shrink-0 mb-1">
         <span className="min-w-0 px-1.5 py-0.5 text-[10px] rounded border border-brand-800 bg-brand-950/40 text-brand-200 truncate"
-          title={pick.values.map((v) => `${v.dimension} = ${v.value}`).join(', ')}>
+          title={pickDescription(pick)}>
           {pickLabel(pick)}
         </span>
         <span className="text-[10px] text-gray-500 shrink-0">over time</span>

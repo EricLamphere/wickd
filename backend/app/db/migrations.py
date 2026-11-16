@@ -856,6 +856,17 @@ async def run_migrations() -> None:
                 "ALTER TABLE init_steps ADD COLUMN removed BOOLEAN NOT NULL DEFAULT 0"
             ))
             await session.commit()
+        # metric monitor algorithms: seasonal (the original detection) or a rule, with its settings
+        if not await _column_exists(session, "metric_monitors", "algorithm"):
+            await session.execute(text(
+                "ALTER TABLE metric_monitors ADD COLUMN algorithm VARCHAR(32) NOT NULL DEFAULT 'seasonal'"
+            ))
+            await session.commit()
+        if not await _column_exists(session, "metric_monitors", "algorithm_config_json"):
+            await session.execute(text(
+                "ALTER TABLE metric_monitors ADD COLUMN algorithm_config_json TEXT NOT NULL DEFAULT '{}'"
+            ))
+            await session.commit()
 
 async def init_db() -> None:
     await ensure_db_initialized()

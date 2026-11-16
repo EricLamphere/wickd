@@ -19,7 +19,8 @@ build, they tell you whether the change you just made moved a metric.
    - **Grain**: day, week or month.
    - **Slice by** (optional): one categorical dimension. wickd watches its top 10
      values separately (by total over the history window), recomputed weekly.
-   - **Sensitivity**: low, normal or high. This is the only detection setting.
+   - **Algorithm**: how a period is judged (see [Algorithms](#algorithms)). The default,
+     **Seasonal anomaly**, takes a **Sensitivity**: low, normal or high.
    - **Target** (shown when `profiles.yml` has more than one): follow the active target,
      or always check one (e.g. `prod`).
 3. **Create monitor** runs the first check. It loads up to 180 days, 52 weeks or 24
@@ -47,7 +48,22 @@ for the detail view: a larger chart (hover any period for its value, normal
 range, flag and score), the flagged periods, restated periods, every stored value, and
 the settings.
 
-### How periods are scored
+### Algorithms
+
+| Algorithm | Flags | Settings |
+|---|---|---|
+| **Seasonal anomaly** (default) | Spikes, drops and level shifts against the metric's own seasonal pattern, plus missing or zero periods where the series normally has values. Needs history (see Learning above) | Sensitivity |
+| **No data or zero** | A period with no data and/or a zero. Use it to check yesterday's data landed; it works from the first check | Flag missing periods, flag zeros |
+| **Fixed bounds** | A value below a minimum or above a maximum. The band on the chart is the bounds | Minimum and/or maximum |
+| **Period-over-period change** | A move of more than a set percentage from the period before | Largest normal change (%), direction (up or down, only increases, only decreases) |
+
+The last three alarm when any of the last *N* complete periods is flagged (default 1,
+up to 30); older flags stay in the history. Every algorithm also reports restated periods.
+You can monitor the same metric and grain with several algorithms (e.g. Seasonal anomaly
+and No data or zero). To change a monitor's algorithm or settings, edit them under
+**Settings** in its detail view and click **Save and check**.
+
+### How periods are scored (Seasonal anomaly)
 
 - **Baseline:** for day grain, the median of the same weekday over the last 8 weeks;
   for week and month, the median of the last 8 or 6 periods. Recent residuals correct

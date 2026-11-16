@@ -22,6 +22,7 @@ from app.licensing.gating import require_pro
 from app.logging_setup import get_logger
 from app.scheduling import cron
 from app.semantic import anomaly, monitor_points, monitors, service
+from app.semantic import monitor_algorithms as algos
 from app.semantic import monitor_queries as mq
 from app.semantic import monitor_schedule as ms
 from app.semantic.runtime import RuntimeUnavailable
@@ -34,6 +35,7 @@ Grain = Literal["day", "week", "month"]
 Sensitivity = Literal["low", "normal", "high"]
 Period = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")]
 Schedule = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+Algorithm = Literal["seasonal", "no_data", "threshold", "change"]
 
 
 class MonitorCreateDto(BaseModel):
@@ -43,6 +45,8 @@ class MonitorCreateDto(BaseModel):
     sensitivity: Sensitivity = "normal"
     lookback: int | None = Field(default=None, ge=1)
     target: Name | None = None  # pin a dbt target (null = the active one)
+    algorithm: Algorithm = "seasonal"
+    config: dict | None = None  # the algorithm's settings (monitor_algorithms.check_config)
 
 
 class MonitorPatchDto(BaseModel):
@@ -51,6 +55,8 @@ class MonitorPatchDto(BaseModel):
     enabled: bool | None = None
     target: Name | None = None  # send null explicitly to unpin
     schedule: Schedule | None = None  # "off" or cron; send null explicitly to follow the project
+    algorithm: Algorithm | None = None
+    config: dict | None = None  # with algorithm, or alone to change the current one's settings
 
 
 class RefreshDto(BaseModel):
@@ -100,7 +106,16 @@ def monitor_dto(m: MetricMonitor, project_rule: ms.Rule | None) -> dict:
         "position": m.position, "created_at": _iso(m.created_at), "last_checked_at": _iso(m.last_checked_at),
         "latest": _json(m.last_result_json, None), "schedule": m.schedule,
         "next_check_at": _iso(ms.next_check(rule, last, datetime.now(UTC))),
+        "algorithm": m.algorithm or algos.DEFAULT_ALGORITHM, "algorithm_label": algos.label(m.algorithm or algos.DEFAULT_ALGORITHM),
+        "config": _json(m.algorithm_config_json, {}),
     }
+
+
+def _algorithm_config(algorithm: str, config: dict | None) -> str:
+    try:
+        return json.dumps(algos.check_config(algorithm, config))
+    except algos.ConfigError as exc:
+        raise _http_error(400, "invalid_algorithm_config", str(exc)) from exc
 
 
 def run_dto(run: MetricMonitorRun | None) -> dict | None:
@@ -204,16 +219,18 @@ async def create_monitor(project_id: int, dto: MonitorCreateDto, session: AsyncS
     except (service.SemanticError, RuntimeUnavailable) as exc:
         raise _semantic_http(exc) from exc
     _check_dimension(catalog, dto.metric, dto.dimension)
+    config_json = _algorithm_config(dto.algorithm, dto.config)
     duplicate = (await session.execute(
         select(MetricMonitor.id).where(
             MetricMonitor.project_id == project_id, MetricMonitor.metric == dto.metric,
             MetricMonitor.grain == dto.grain, MetricMonitor.dimension.is_(None) if dto.dimension is None
             else MetricMonitor.dimension == dto.dimension,
             MetricMonitor.target.is_(None) if dto.target is None else MetricMonitor.target == dto.target,
+            MetricMonitor.algorithm == dto.algorithm,
         )
     )).first()
     if duplicate is not None:
-        raise _http_error(409, "duplicate_monitor", "This metric is already monitored at that grain.")
+        raise _http_error(409, "duplicate_monitor", "This metric is already monitored at that grain with this algorithm.")
     lookback = min(dto.lookback or mq.DEFAULT_LOOKBACK[dto.grain], mq.MAX_LOOKBACK[dto.grain])
     last = (await session.execute(
         select(func.max(MetricMonitor.position)).where(MetricMonitor.project_id == project_id)
@@ -221,7 +238,7 @@ async def create_monitor(project_id: int, dto: MonitorCreateDto, session: AsyncS
     m = MetricMonitor(
         project_id=project_id, metric=dto.metric, grain=dto.grain, dimension=dto.dimension,
         sensitivity=dto.sensitivity, lookback=lookback, enabled=True, target=dto.target,
-        position=(last if last is not None else -1) + 1,
+        position=(last if last is not None else -1) + 1, algorithm=dto.algorithm, algorithm_config_json=config_json,
     )
     session.add(m)
     await session.commit()
@@ -229,6 +246,24 @@ async def create_monitor(project_id: int, dto: MonitorCreateDto, session: AsyncS
     await monitors.request_refresh(project_id, [m.id], "manual")
     log.info("metric_monitor_created", project_id=project_id, monitor_id=m.id, metric=dto.metric, grain=dto.grain)
     return monitor_dto(m, await _project_rule(session, project_id))
+
+
+def _apply_algorithm(m: MetricMonitor, dto: MonitorPatchDto) -> None:
+    """A new algorithm and/or settings. A new algorithm sent without settings starts from its
+    defaults; settings alone change the current algorithm's."""
+    current = m.algorithm or algos.DEFAULT_ALGORITHM
+    algorithm = dto.algorithm or current
+    if "config" in dto.model_fields_set:
+        config = dto.config
+    elif algorithm == current:
+        stored = _json(m.algorithm_config_json, {})
+        config = stored if isinstance(stored, dict) else None
+    else:
+        config = None
+    m.algorithm_config_json = _algorithm_config(algorithm, config)
+    if algorithm != current:
+        m.algorithm = algorithm
+        m.last_result_json = None  # the stored status came from the old algorithm
 
 
 @router.patch("/{project_id}/metric-monitors/{monitor_id}")
@@ -244,6 +279,9 @@ async def patch_monitor(
         m.lookback = min(dto.lookback, mq.MAX_LOOKBACK[m.grain])
     if dto.enabled is not None:
         m.enabled = dto.enabled
+    rescore = dto.algorithm is not None or "config" in dto.model_fields_set
+    if rescore:
+        _apply_algorithm(m, dto)
     if "target" in dto.model_fields_set:
         m.target = dto.target
     if "schedule" in dto.model_fields_set:
@@ -253,6 +291,8 @@ async def patch_monitor(
             raise _schedule_error(exc) from exc
     await session.commit()
     await session.refresh(m)
+    if rescore and m.enabled:
+        await monitors.request_refresh(project_id, [m.id], "manual")
     return monitor_dto(m, await _project_rule(session, project_id))
 
 
@@ -362,7 +402,10 @@ async def series(
     target_name = target if target is not None else (m.target or await _active_target(session, project_id))
     since = mq.window_start(date.today(), m.grain, m.lookback, has_history=False).isoformat()
     stored = await monitor_points.series(session, m.id, target_name, slice, since)
-    detected = anomaly.detect(stored, grain=m.grain, sensitivity=m.sensitivity, previous=None, now=date.today())
+    try:
+        detected = monitors.detect_for(spec, stored, previous=None, today=date.today())
+    except anomaly.AnomalyUnavailable as exc:
+        raise _http_error(409, "algorithm_unavailable", str(exc)) from exc
     return {
         "monitor": monitor_dto(m, await _project_rule(session, project_id)),
         "slice": slice,

@@ -1,11 +1,12 @@
-// Right-click menu on a value (a bar, a stacked bar segment, a Top N row, a table row): show it
-// over time in the widget, apply it as a dashboard filter, drill into it (InspectDialog), or open
-// the explorer filtered to it. Rendered on document.body
+// Right-click menu on a value (a bar, a stacked bar segment, a Top N row, a table row, a time
+// series' periods): show it over time in the widget (a time series zooms on its periods instead),
+// apply it as a dashboard filter (periods become the dashboard's date range), drill into it
+// (InspectDialog), or open the explorer filtered to it. Rendered on document.body
 // at the pointer, kept inside the window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Filter, LineChart, Microscope, Search } from 'lucide-react';
-import { pickLabel, type Pick } from '../drill';
+import { CalendarRange, Filter, LineChart, Microscope, Search, ZoomIn } from 'lucide-react';
+import { isRangeOnly, pickDescription, pickLabel, type Pick } from '../drill';
 
 export interface ValueActions {
   onDrill: (pick: Pick) => void;
@@ -31,9 +32,13 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey); window.removeEventListener('scroll', onClose, true); };
   }, [onClose]);
   const label = pickLabel(pick);
+  const range = isRangeOnly(pick);
   const items = [
-    { label: 'Show timeseries', icon: <LineChart className="w-3.5 h-3.5" />, run: actions.onDrill },
-    { label: 'Apply as dashboard filter', icon: <Filter className="w-3.5 h-3.5" />, run: actions.onApplyFilter },
+    range
+      ? { label: `Zoom to ${label}`, icon: <ZoomIn className="w-3.5 h-3.5" />, run: actions.onDrill }
+      : { label: 'Show timeseries', icon: <LineChart className="w-3.5 h-3.5" />, run: actions.onDrill },
+    { label: range ? 'Apply as dashboard date range' : 'Apply as dashboard filter',
+      icon: range ? <CalendarRange className="w-3.5 h-3.5" /> : <Filter className="w-3.5 h-3.5" />, run: actions.onApplyFilter },
     { label: `Drill into ${label}`, icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
     { label: 'Investigate', icon: <Microscope className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
   ];
@@ -41,7 +46,7 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
     <div ref={ref} role="menu" aria-label={`Actions for ${label}`} style={pos} onContextMenu={(e) => e.preventDefault()}
       className="fixed z-[70] min-w-[13rem] max-w-[20rem] py-1 bg-surface-elevated border border-gray-700 rounded shadow-xl">
       <p className="px-3 pt-1 pb-1.5 text-[10px] text-gray-500 truncate border-b border-gray-800">
-        {pick.values.map((v) => `${v.dimension} = ${v.value}`).join(', ')}
+        {pickDescription(pick)}
       </p>
       {items.map((item) => (
         <button key={item.label} role="menuitem" onClick={(e) => { e.stopPropagation(); onClose(); item.run(pick); }}

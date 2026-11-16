@@ -1,11 +1,14 @@
-// "Monitor this metric": metric, grain, an optional dimension to slice by (top 10
-// values), sensitivity and an optional pinned target. Opened from the Monitors tab or
+// "Monitor this metric": metric, grain, the algorithm (seasonal anomaly with its
+// sensitivity, no data or zero, fixed bounds, period-over-period change) and its settings, an
+// optional dimension to slice by (top 10 values) and an optional pinned target. Opened from the Monitors tab or
 // pre-filled from the explorer.
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import type { MonitorCreateBody, MonitorGrain, MonitorSensitivity } from '../../../../lib/monitorsApi';
+import type { MonitorCreateBody, MonitorGrain } from '../../../../lib/monitorsApi';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { MetricChooser } from '../MetricChooser';
+import { AlgorithmFields, FIELD_CLS, type AlgorithmValue } from './AlgorithmFields';
+import { configProblem } from './algorithms';
 
 export interface MonitorDraft {
   metric: string;
@@ -23,13 +26,7 @@ interface Props {
   onClose: () => void;
 }
 
-const FIELD_CLS = 'w-full px-2 py-1.5 bg-surface-app border border-gray-700 rounded text-xs text-gray-200 outline-none focus:border-brand-600';
 const GRAINS: MonitorGrain[] = ['day', 'week', 'month'];
-const SENSITIVITY: { value: MonitorSensitivity; label: string }[] = [
-  { value: 'low', label: 'Low: only large deviations' },
-  { value: 'normal', label: 'Normal' },
-  { value: 'high', label: 'High: flags smaller deviations, more false alarms' },
-];
 
 /** A metric's categorical dimensions (a monitor slices by one of these). */
 export function sliceDimensions(catalog: SemanticCatalogDto, metric: string): string[] {
@@ -41,7 +38,8 @@ export function CreateMonitorDialog({ catalog, initial, targets, busy, error, on
   const [metric, setMetric] = useState(initial?.metric ?? catalog.metrics[0]?.name ?? '');
   const [grain, setGrain] = useState<MonitorGrain>(initial?.grain ?? 'day');
   const [dimension, setDimension] = useState<string>(initial?.dimension ?? '');
-  const [sensitivity, setSensitivity] = useState<MonitorSensitivity>('normal');
+  const [algo, setAlgo] = useState<AlgorithmValue>({ algorithm: 'seasonal', config: {}, sensitivity: 'normal' });
+  const problem = configProblem(algo.algorithm, algo.config);
   const [target, setTarget] = useState('');
   const dims = sliceDimensions(catalog, metric);
 
@@ -55,7 +53,10 @@ export function CreateMonitorDialog({ catalog, initial, targets, busy, error, on
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const submit = () => onCreate({ metric, grain, dimension: dimension || null, sensitivity, target: target || null });
+  const submit = () => onCreate({
+    metric, grain, dimension: dimension || null, sensitivity: algo.sensitivity, target: target || null,
+    algorithm: algo.algorithm, config: algo.config,
+  });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
@@ -70,20 +71,13 @@ export function CreateMonitorDialog({ catalog, initial, targets, busy, error, on
             <span className="text-gray-400">Metric</span>
             <MetricChooser catalog={catalog} value={metric || null} onPick={setMetric} ariaLabel="Metric" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-gray-400">Grain</span>
-              <select value={grain} onChange={(e) => setGrain(e.target.value as MonitorGrain)} className={FIELD_CLS}>
-                {GRAINS.map((g) => <option key={g} value={g}>{g}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-gray-400">Sensitivity</span>
-              <select value={sensitivity} onChange={(e) => setSensitivity(e.target.value as MonitorSensitivity)} className={FIELD_CLS}>
-                {SENSITIVITY.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-              </select>
-            </label>
-          </div>
+          <label className="flex flex-col gap-1">
+            <span className="text-gray-400">Grain</span>
+            <select value={grain} onChange={(e) => setGrain(e.target.value as MonitorGrain)} className={FIELD_CLS}>
+              {GRAINS.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </label>
+          <AlgorithmFields value={algo} onChange={setAlgo} />
           <label className="flex flex-col gap-1">
             <span className="text-gray-400">Slice by (optional)</span>
             <select value={dimension} onChange={(e) => setDimension(e.target.value)} className={FIELD_CLS} disabled={dims.length === 0}>
@@ -106,11 +100,12 @@ export function CreateMonitorDialog({ catalog, initial, targets, busy, error, on
             The first check loads up to {grain === 'day' ? '180 days' : grain === 'week' ? '52 weeks' : '24 months'} of
             history; later checks only re-read the recent periods.
           </p>
+          {problem && <p className="text-[11px] text-amber-400">{problem}</p>}
           {error && <p className="text-[11px] text-red-400 break-words">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-800">
           <button onClick={onClose} className="px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-500">Cancel</button>
-          <button onClick={submit} disabled={!metric || busy}
+          <button onClick={submit} disabled={!metric || busy || !!problem}
             className="px-3 py-1.5 text-xs rounded bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
             {busy ? 'Creating…' : 'Create monitor'}
           </button>

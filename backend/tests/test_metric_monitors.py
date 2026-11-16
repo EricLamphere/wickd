@@ -101,8 +101,9 @@ def shim(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     """A fake detect(): the last complete value ≥ 1000 is an anomaly."""
     calls: list[dict] = []
 
-    def detect(series, *, grain, sensitivity, previous, now):
-        calls.append({"series": series, "grain": grain, "sensitivity": sensitivity, "previous": previous})
+    def detect(series, *, grain, sensitivity, previous, now, algorithm="seasonal", config=None):
+        calls.append({"series": series, "grain": grain, "sensitivity": sensitivity, "previous": previous,
+                      "algorithm": algorithm, "config": config})
         points = [{**p, "expected": 10.0, "low": 5.0, "high": 15.0, "score": 0.0, "kind": "none", "partial": False,
                    "restated": False, "previous": None} for p in series]
         last = series[-1]["value"] if series else None
@@ -488,6 +489,68 @@ async def test_create_validates_and_starts_a_refresh(db, tmp_path, client, worke
     dup = await client.post(url, json={"metric": "revenue", "grain": "week", "dimension": "customer__region"})
     assert dup.status_code == 409 and dup.json()["detail"]["error"] == "duplicate_monitor"
     assert (await client.post(url, json={"metric": "revenue", "lookback": 99999})).json()["lookback"] == 730
+
+
+async def test_create_and_patch_algorithms(db, tmp_path, client, worker, shim, entitled, monkeypatch) -> None:
+    project = await _project(db, tmp_path)
+    requested: list = []
+
+    async def fake_request(project_id, ids, trigger):
+        requested.append(list(ids))
+        return 1
+
+    monkeypatch.setattr(monitors, "request_refresh", fake_request)
+    url = f"/api/projects/{project.id}/metric-monitors"
+    bad = await client.post(url, json={"metric": "revenue", "algorithm": "threshold", "config": {}})
+    assert bad.status_code == 400 and bad.json()["detail"]["error"] == "invalid_algorithm_config"
+    assert (await client.post(url, json={"metric": "revenue", "algorithm": "magic"})).status_code == 422
+
+    seasonal = (await client.post(url, json={"metric": "revenue"})).json()
+    assert seasonal["algorithm"] == "seasonal" and seasonal["algorithm_label"] == "Seasonal anomaly"
+    assert seasonal["config"] == {}
+    # the same metric and grain under another algorithm is a separate monitor
+    res = await client.post(url, json={"metric": "revenue", "algorithm": "no_data", "config": {"check_zeros": False}})
+    assert res.status_code == 201
+    received = res.json()
+    assert received["config"] == {"check_nulls": True, "check_zeros": False, "periods": 1}
+
+    requested.clear()
+    patched = (await client.patch(f"{url}/{seasonal['id']}", json={"algorithm": "change"})).json()
+    assert patched["algorithm"] == "change" and patched["config"]["max_change_pct"] == 50.0
+    assert requested == [[seasonal["id"]]]
+    patched = (await client.patch(f"{url}/{seasonal['id']}", json={"config": {"max_change_pct": 20, "direction": "down"}})).json()
+    assert patched["algorithm"] == "change" and patched["config"]["direction"] == "down"
+    bad = await client.patch(f"{url}/{seasonal['id']}", json={"config": {"direction": "sideways"}})
+    assert bad.status_code == 400
+    requested.clear()
+    await client.patch(f"{url}/{seasonal['id']}", json={"sensitivity": "high"})
+    assert requested == []
+
+
+async def test_refresh_passes_the_algorithm_to_detection(db, tmp_path, worker, shim, batches) -> None:
+    project = await _project(db, tmp_path)
+    m = await _monitor(db, project, algorithm="threshold", algorithm_config_json='{"min": 1, "max": null, "periods": 1}')
+    await monitors.request_refresh(project.id, None, "manual")
+    await _settle()
+    assert shim[-1]["algorithm"] == "threshold"
+    assert shim[-1]["config"] == {"min": 1, "max": None, "periods": 1}
+    assert (await _fresh(MetricMonitor, m.id)).last_result_json
+
+
+async def test_refresh_reports_an_algorithm_this_pro_build_lacks(db, tmp_path, worker, shim, batches, monkeypatch) -> None:
+    project = await _project(db, tmp_path)
+    m = await _monitor(db, project, algorithm="change")
+
+    def old_detect(*_a, **_kw):
+        raise anomaly.AnomalyUnavailable("update wickd Pro")
+
+    monkeypatch.setattr(anomaly, "detect", old_detect)
+    await monitors.request_refresh(project.id, None, "manual")
+    await _settle()
+    run = await _run(project.id)
+    results = json.loads(run.results_json)
+    assert results[0]["monitor_id"] == m.id and results[0]["status"] == "error"
+    assert "update wickd Pro" in results[0]["error"]
 
 
 async def test_monitor_cap(db, tmp_path, client, worker, shim, entitled) -> None:

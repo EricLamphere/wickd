@@ -30,7 +30,7 @@ import { WidgetFrame } from '../widgets/WidgetFrame';
 import { aiApi, type AiProposalDto } from '../../../../../lib/aiApi';
 import { chartsApi, chartsErrorMessage } from '../../../../../lib/chartsApi';
 import { ProposalReviewModal } from '../../../components/Wicky/ProposalReviewModal';
-import { pickFilters, withUniqueIds, type Pick } from '../drill';
+import { pickDescription, pickFilters, withPickRange, withUniqueIds, type Pick } from '../drill';
 
 /** The dragged copy glides into the widget's new spot on drop. */
 const DROP_ANIMATION: DropAnimation = {
@@ -257,11 +257,12 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
     const status = widgetMonitorState(widget.metrics ?? [], monitorStatuses, labels);
     const ranQuery = result ? Object.values(result.queries)[0]?.query : undefined;
     const applyFilter = (pick: Pick) => {
-      apply((d) => pickFilters(pick).reduce(withDashboardFilter, d));
-      setNotice(`Filtered the dashboard to ${pick.values.map((v) => `${v.dimension} = ${v.value}`).join(', ')}`);
+      apply((d) => withPickRange(pickFilters(pick).reduce(withDashboardFilter, d), pick));
+      setNotice(`Filtered the dashboard to ${pickDescription(pick)}`);
     };
     const openFiltered = (pick: Pick) => {
-      const base = result?.queries.current?.query ?? ranQuery;
+      const ran = result?.queries.current?.query ?? ranQuery;
+      const base = pick.range ? { ...ran, start: pick.range.start, end: pick.range.end } : ran;
       onOpenExplorer(exploreFromDashboard(widget, base, doc.period?.compare, pickFilters(pick)));
     };
     return {

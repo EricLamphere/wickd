@@ -7,6 +7,7 @@ import type { MonitorDto } from '../../../../lib/monitorsApi';
 import { relativeTime } from '../../lib/relativeTime';
 import { MonitorSparkline } from './MonitorSparkline';
 import { formatNumber, monitorTitle, statusStyle, vsExpected } from './monitorView';
+import { algorithmSummary } from './algorithms';
 import { formatCheckTime } from './scheduleView';
 
 interface Props {
@@ -50,7 +51,7 @@ export function MonitorCard({ monitor, activeTarget, running, onOpen, cardRef, d
         </span>
       </span>
       <span className="text-[11px] text-gray-500 truncate">
-        {monitor.grain}{monitor.dimension ? ` · by ${monitor.dimension}` : ''} · {monitor.sensitivity} sensitivity
+        {monitor.grain}{monitor.dimension ? ` · by ${monitor.dimension}` : ''} · {algorithmSummary(monitor.algorithm ?? 'seasonal', monitor.config ?? {}, monitor.sensitivity)}
         {target ? ` · ${target}` : ''}{monitor.target ? ' (pinned)' : ''}
       </span>
 

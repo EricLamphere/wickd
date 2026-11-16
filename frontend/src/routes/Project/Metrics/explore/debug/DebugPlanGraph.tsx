@@ -55,14 +55,15 @@ export function PlanGraph({ steps, selected, onSelect }: {
             const step = byId.get(n.id)!;
             const active = n.id === selected;
             return (
-              <button key={n.id} onClick={() => onSelect(n.id)} aria-current={active} title={stepPurpose(step.node)}
+              <button key={n.id} onClick={() => onSelect(n.id)} aria-current={active}
+                title={`${stepSummary(step.node)}\n\n${stepPurpose(step.node)}`}
                 style={{ left: n.x, top: n.y, width: PLAN_NODE_W, height: PLAN_NODE_H }}
-                className={`absolute flex flex-col justify-center gap-0.5 px-2 text-left rounded-md border transition-colors ${boxTone(step, active)}`}>
-                <span className="flex items-center gap-1 text-[11px] font-medium text-gray-100">
-                  {KIND_LABELS[step.node.kind] ?? step.node.kind}
+                className={`absolute flex flex-col justify-center gap-0.5 min-w-0 overflow-hidden px-2 py-1 text-left rounded-md border transition-colors ${boxTone(step, active)}`}>
+                <span className="flex items-center gap-1 w-full min-w-0 text-[11px] font-medium text-gray-100">
+                  <span className="min-w-0 truncate">{KIND_LABELS[step.node.kind] ?? step.node.kind}</span>
                   {step.findings.length > 0 && <StatusIcon status={step.status} className="w-3 h-3" />}
                 </span>
-                <span className="text-[10px] leading-tight text-gray-400 truncate">{stepSummary(step.node)}</span>
+                <span className="block w-full min-w-0 text-[10px] leading-tight text-gray-400 [overflow-wrap:anywhere] line-clamp-2">{stepSummary(step.node)}</span>
               </button>
             );
           })}

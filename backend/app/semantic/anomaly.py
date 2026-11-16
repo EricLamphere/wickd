@@ -5,7 +5,9 @@ queries, the API and the UI are public; the detection (baselines, scores, thresh
 level shifts, restatements) and the slice ranking live in wickd_pro. Only plain dicts
 and lists cross the boundary.
 
-    detect(series, *, grain, sensitivity, previous, now) -> {points, summary}
+    detect(series, *, grain, sensitivity, previous, now, algorithm, config) -> {points, summary}
+        algorithm: seasonal (default) | no_data | threshold | change, with its
+                   settings `config` (validated by app/semantic/monitor_algorithms.py)
         series:   [{period: 'YYYY-MM-DD', value: float | None, suppressed?: bool}]
         previous: [{period, value, observed_at}]  values stored before this refresh
         now:      date (the period containing it is partial)
@@ -49,9 +51,17 @@ def is_available() -> bool:
 
 
 def detect(
-    series: list[dict], *, grain: str, sensitivity: str, previous: list[dict] | None, now: date
+    series: list[dict], *, grain: str, sensitivity: str, previous: list[dict] | None, now: date,
+    algorithm: str = "seasonal", config: dict | None = None,
 ) -> dict:
-    return _pro().detect(series, grain=grain, sensitivity=sensitivity, previous=previous, now=now)
+    pro = _pro()
+    if algorithm == "seasonal":  # the only one an older wickd_pro knows
+        return pro.detect(series, grain=grain, sensitivity=sensitivity, previous=previous, now=now)
+    if algorithm not in getattr(pro, "ALGORITHMS", ("seasonal",)):
+        raise AnomalyUnavailable(f"This wickd Pro build doesn't support the {algorithm} monitor algorithm; update wickd Pro.")
+    return pro.detect(
+        series, grain=grain, sensitivity=sensitivity, previous=previous, now=now, algorithm=algorithm, config=config,
+    )
 
 
 def slice_values(totals: list[dict], limit: int) -> list:

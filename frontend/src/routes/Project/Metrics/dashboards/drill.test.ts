@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WidgetResultDto } from '../../../../lib/dashboardsApi';
 import {
-  breakdownDimension, drilledWidgets, drillBodies, drillQuery, drillResult, pickFilters, pickKey, pickLabel, withUniqueIds,
+  breakdownDimension, drilledWidgets, drillBodies, drillQuery, drillResult, isRangeOnly, pickDescription, pickFilters, pickKey, pickLabel,
+  withPickRange, withUniqueIds,
 } from './drill';
 
 const q = (columns: string[], rows: unknown[][], query = {}) => ({ status: 'ok' as const, query, sql: null, columns, rows, truncated: false, ran_at: null, error: null });
@@ -15,6 +16,32 @@ describe('drill', () => {
     expect(pickLabel({ values: [{ dimension: 'a', value: 'x' }, { dimension: 'b', value: '∅' }] })).toBe('x · (empty)');
     expect(pickKey(region)).toBe('customer__region=north');
     expect(pickFilters(region)).toEqual(["{{ Dimension('customer__region') }} = 'north'"]);
+  });
+
+  it('labels date range picks, which add no filter', () => {
+    const range = { values: [], range: { start: '2026-01-01', end: '2026-01-31' } };
+    expect(pickLabel(range)).toBe('Jan 1 – 31, 2026');
+    expect(pickKey(range)).toBe('range=2026-01-01..2026-01-31');
+    expect(pickDescription({ ...range, values: region.values })).toBe('customer__region = north, Jan 1 – 31, 2026');
+    expect(pickFilters(range)).toEqual([]);
+    expect(isRangeOnly(range)).toBe(true);
+    expect(isRangeOnly(region)).toBe(false);
+  });
+
+  it('makes a range pick the dashboard period, keeping the comparison', () => {
+    const doc = { version: 1 as const, title: 'D', widgets: [], period: { current: 'last_30_days' as const, compare: 'previous_year' as const } };
+    const range = { start: '2026-02-01', end: '2026-02-28' };
+    expect(withPickRange(doc, { values: [], range }).period).toEqual({ current: range, compare: 'previous_year' });
+    expect(withPickRange({ version: 1, title: 'D', widgets: [] }, { values: [], range }).period).toEqual({ current: range, compare: 'none' });
+    expect(withPickRange(doc, region)).toBe(doc);
+  });
+
+  it('narrows the dates to a range pick, for the current period only', () => {
+    const ran = { metrics: ['revenue'], start: '2026-01-01', end: '2026-03-31' };
+    const pick = { ...region, range: { start: '2026-02-01', end: '2026-02-28' } };
+    expect(drillQuery(ran, pick, 'day')).toMatchObject({ start: '2026-02-01', end: '2026-02-28' });
+    const bodies = drillBodies(result({ current: q([], [], ran), current_previous: q([], [], { ...ran, start: '2025-10-01', end: '2025-12-31' }) }), pick);
+    expect(bodies?.previous).toMatchObject({ start: '2025-10-01', end: '2025-12-31' });
   });
 
   it('narrows the query the widget ran and groups it over time', () => {
@@ -47,6 +74,9 @@ describe('drill', () => {
       options: { format: 'currency', dimension: 'product__category', top_n: 15, orientation: 'horizontal' } });
     expect(drafts.table).toMatchObject({ id: 'revenue_table', type: 'table', title: 'Revenue · north by period', options: { period_grain: 'auto' } });
     expect(drilledWidgets(source, region, ['breakdown'], null, labels)).toEqual({});
+    const ranged = drilledWidgets(source, { values: [], range: { start: '2026-02-01', end: '2026-02-28' } }, ['summary'], null, labels);
+    expect(ranged.summary).toMatchObject({ title: 'Revenue · Feb 1 – 28, 2026', filters: ['f'],
+      period: { compare: 'none', current: { start: '2026-02-01', end: '2026-02-28' } } });
   });
 
   it('gives widgets ids free on the dashboard', () => {

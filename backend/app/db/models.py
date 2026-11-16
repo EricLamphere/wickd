@@ -564,6 +564,9 @@ class MetricMonitor(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)  # order on the Monitors tab (drag to reorder)
     # auto-check override: NULL follows the project's schedule, "off", or a cron expression
     schedule: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # seasonal | no_data | threshold | change (app/semantic/monitor_algorithms.py) + its settings
+    algorithm: Mapped[str] = mapped_column(String(32), default="seasonal", server_default="seasonal")
+    algorithm_config_json: Mapped[str] = mapped_column(Text, default="{}", server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

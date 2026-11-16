@@ -6,7 +6,7 @@ import { Filter, Microscope, X } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { rangeLabel, sharedDimensions, widgetInfo } from '../dashboardModel';
-import { breakdownDimension, DRILLED_CHARTS, drilledWidgets, pickFilters, pickLabel, type DrilledChart, type Pick } from '../drill';
+import { breakdownDimension, DRILLED_CHARTS, drilledWidgets, pickDescription, pickFilters, pickLabel, type DrilledChart, type Pick } from '../drill';
 import { errorText } from '../useDashboards';
 import { WidgetSettings } from '../builder/WidgetSettings';
 import { AddDrilledMenu } from './AddDrilledMenu';
@@ -88,7 +88,7 @@ export function InspectDialog({ projectId, slug, doc, widget, result, pick, labe
           <div className="flex-1 min-w-0">
             <h2 className="text-sm font-semibold text-gray-100 truncate">{pickLabel(pick)}</h2>
             <p className="text-[11px] text-gray-500 truncate">
-              {pick.values.map((v) => `${v.dimension} = ${v.value}`).join(', ')}
+              {pickDescription(pick)}
               {result.current ? ` · ${rangeLabel(result.current)}` : ''}{result.previous ? ` vs ${rangeLabel(result.previous)}` : ''}
               {' · click a widget to configure it'}
             </p>

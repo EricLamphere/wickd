@@ -10,6 +10,7 @@ function monitor(metric: string, status: MonitorStatus | null, enabled = true, i
   return {
     id, metric, grain: 'day', dimension: null, sensitivity: 'normal', lookback: 180, enabled, target: null,
     slices: [], position: 0, created_at: null, last_checked_at: null, schedule: null, next_check_at: null,
+    algorithm: 'seasonal', algorithm_label: 'Seasonal anomaly', config: {},
     latest: status ? {
       monitor_id: 1, metric, grain: 'day', dimension: null, target: '', status, headline: `${status}!`, since: null,
       latest: null, worst_slice: null, slices: [], truncated: false, error: null, checked_at: '2026-10-28T00:00:00Z',

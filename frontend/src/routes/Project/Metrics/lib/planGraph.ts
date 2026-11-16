@@ -7,7 +7,7 @@ import type { DebugResultDto, PlanNodeDto } from '../../../../lib/metricDebugApi
 import { codeLinesFor } from './planSqlCode';
 
 export const PLAN_NODE_W = 150;
-export const PLAN_NODE_H = 48;
+export const PLAN_NODE_H = 54;
 
 export interface PlacedNode {
   id: string;

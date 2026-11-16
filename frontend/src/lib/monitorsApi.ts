@@ -63,6 +63,24 @@ export interface MonitorResultDto {
   checked_at: string;
 }
 
+/** How a monitor decides a period is wrong (backend app/semantic/monitor_algorithms.py). */
+export type MonitorAlgorithm = 'seasonal' | 'no_data' | 'threshold' | 'change';
+
+/** An algorithm's settings; each uses its own keys (seasonal: none, it uses `sensitivity`). */
+export interface MonitorAlgorithmConfig {
+  /** no_data: flag periods with no data / with a 0 */
+  check_nulls?: boolean;
+  check_zeros?: boolean;
+  /** threshold: the bounds (either may be null) */
+  min?: number | null;
+  max?: number | null;
+  /** change: the largest allowed move from the period before, in % */
+  max_change_pct?: number;
+  direction?: 'both' | 'up' | 'down';
+  /** the rules: alarm when one of the last N complete periods is flagged */
+  periods?: number;
+}
+
 export interface MonitorDto {
   id: number;
   metric: string;
@@ -83,6 +101,9 @@ export interface MonitorDto {
   schedule: string | null;
   /** when the scheduler next checks it (null: no schedule, or disabled) */
   next_check_at: string | null;
+  algorithm: MonitorAlgorithm;
+  algorithm_label: string;
+  config: MonitorAlgorithmConfig;
 }
 
 export interface MonitorRunDto {
@@ -132,6 +153,8 @@ export interface MonitorCreateBody {
   sensitivity?: MonitorSensitivity;
   lookback?: number;
   target?: string | null;
+  algorithm?: MonitorAlgorithm;
+  config?: MonitorAlgorithmConfig;
 }
 
 export interface MonitorPatchBody {
@@ -140,6 +163,8 @@ export interface MonitorPatchBody {
   enabled?: boolean;
   target?: string | null;
   schedule?: string | null;
+  algorithm?: MonitorAlgorithm;
+  config?: MonitorAlgorithmConfig;
 }
 
 export interface MonitorScheduleSettings {

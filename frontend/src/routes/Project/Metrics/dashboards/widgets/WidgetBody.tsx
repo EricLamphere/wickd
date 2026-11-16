@@ -1,7 +1,7 @@
 // A widget's content by type, plus the states before there's data (no metric yet, not run,
 // error). The Pro monitor band is fetched here for an eligible time series.
 import { AlertTriangle, Loader2, MousePointer2, Play } from 'lucide-react';
-import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
+import type { DashboardWidget, DateRange, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import type { MonitorDto } from '../../../../../lib/monitorsApi';
 import { useMonitorSeries } from '../../monitors/useMonitors';
 import { monitorForWidget, opt, overlayFromPoints, requiredRole, type MetricFormat } from '../dashboardModel';
@@ -33,6 +33,9 @@ export interface BodyProps {
   onPickMenu: ((pick: Pick, x: number, y: number) => void) | null;
   /** the drilled value, highlighted */
   drilled: Pick | null;
+  /** a time series' highlighted (zoomed) periods, kept by the frame so the value menu can zoom too */
+  zoom?: DateRange | null;
+  onZoom?: (range: DateRange | null) => void;
   /** what to say while it has no metric (default: drag one onto it, as on a dashboard) */
   emptyHint?: string;
 }
@@ -93,9 +96,11 @@ export function WidgetBody(props: BodyProps) {
   }
   const format = formatOf(widget);
   switch (widget.type) {
-    case 'summary': return <SummaryWidget widget={widget} result={result} labels={labels} format={format} />;
+    case 'summary': return <SummaryWidget widget={widget} result={result} labels={labels} format={format}
+      onMenu={onPickMenu} zoom={props.zoom} onZoom={props.onZoom} />;
     case 'timeseries': return <TimeseriesWidget widget={widget} result={result} labels={labels} height={height} format={format}
-      overlay={monitor && band.data ? overlayFromPoints(band.data.points) : null} />;
+      overlay={monitor && band.data ? overlayFromPoints(band.data.points) : null}
+      onMenu={onPickMenu} zoom={props.zoom} onZoom={props.onZoom} />;
     case 'bar': return <BarWidget widget={widget} result={result} labels={labels} height={height} format={format}
       onPick={dimension ? onPick : null} onMenu={dimension ? onPickMenu : null} selected={drilled} />;
     case 'leaderboard': return <LeaderboardWidget widget={widget} result={result} format={format}

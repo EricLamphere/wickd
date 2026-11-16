@@ -4,9 +4,10 @@
 // carry over). "Drill into…" opens a dialog of draft widgets filtered to the value — a summary,
 // a breakdown by the first dimension no filter uses and a table by period — each configurable
 // like any widget and addable to the dashboard. Pure; tested in drill.test.ts.
-import type { DashboardWidget, WidgetResultDto } from '../../../../lib/dashboardsApi';
+import type { DashboardDoc, DashboardWidget, DateRange, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import type { MetricQueryBody } from '../../../../lib/semanticApi';
 import { filterFor, newWidgetId, widgetInfo, widgetTitle } from './dashboardModel';
+import { rangeLabel } from './periods';
 
 /**
  * The value(s) picked: one dimension for a bar or Top N row, the bar's and the stack's for a
@@ -14,25 +15,48 @@ import { filterFor, newWidgetId, widgetInfo, widgetTitle } from './dashboardMode
  */
 export interface Pick {
   values: { dimension: string; value: string }[];
+  /** a time series' highlighted periods (or the period right-clicked): narrows the dates, not a dimension */
+  range?: DateRange;
 }
 
 export function pickLabel(pick: Pick): string {
-  return pick.values.map((v) => (v.value === '∅' ? '(empty)' : v.value)).join(' · ');
+  const parts = pick.values.map((v) => (v.value === '∅' ? '(empty)' : v.value));
+  return [...parts, ...(pick.range ? [rangeLabel(pick.range)] : [])].join(' · ');
 }
 
 export function pickKey(pick: Pick): string {
-  return pick.values.map((v) => `${v.dimension}=${v.value}`).join('&');
+  const parts = pick.values.map((v) => `${v.dimension}=${v.value}`);
+  return [...parts, ...(pick.range ? [`range=${pick.range.start}..${pick.range.end}`] : [])].join('&');
+}
+
+/** The pick spelled out: `dimension = value`, and the dates of a range. */
+export function pickDescription(pick: Pick): string {
+  const parts = pick.values.map((v) => `${v.dimension} = ${v.value}`);
+  return [...parts, ...(pick.range ? [rangeLabel(pick.range)] : [])].join(', ');
+}
+
+/** Whether the pick is only a date range (a time series' periods). */
+export function isRangeOnly(pick: Pick): boolean {
+  return !!pick.range && pick.values.length === 0;
 }
 
 export function pickFilters(pick: Pick): string[] {
   return pick.values.map((v) => filterFor(v.dimension, v.value));
 }
 
+/** The dashboard with a pick's dates as its current period (comparison kept); unchanged without a range. */
+export function withPickRange(doc: DashboardDoc, pick: Pick): DashboardDoc {
+  if (!pick.range) return doc;
+  return { ...doc, period: { current: { ...pick.range }, compare: doc.period?.compare ?? 'none' } };
+}
+
 /** The widget's query narrowed to the pick and grouped over time (no ordering or limit). */
 export function drillQuery(ran: MetricQueryBody, pick: Pick, grain: string): MetricQueryBody {
   const body: MetricQueryBody = { metrics: ran.metrics ?? [], group_by: [`metric_time__${grain}`], where: [...(ran.where ?? []), ...pickFilters(pick)] };
-  if (ran.start) body.start = ran.start;
-  if (ran.end) body.end = ran.end;
+  const start = pick.range?.start ?? ran.start;
+  const end = pick.range?.end ?? ran.end;
+  if (start) body.start = start;
+  if (end) body.end = end;
   return body;
 }
 
@@ -47,7 +71,8 @@ export function drillBodies(result: WidgetResultDto, pick: Pick): QueryPair | nu
   if (!current) return null;
   const previous = result.queries.current_previous;
   const grain = result.grain ?? 'day';
-  return { current: drillQuery(current.query, pick, grain), previous: previous ? drillQuery(previous.query, pick, grain) : null };
+  return { current: drillQuery(current.query, pick, grain), // a range is the current period's dates: the previous period keeps its own
+    previous: previous ? drillQuery(previous.query, { values: pick.values }, grain) : null };
 }
 
 /** A pseudo widget result for the drill's queries, so the time series renderer can draw it. */
@@ -95,8 +120,9 @@ export function drilledWidgets(source: DashboardWidget, pick: Pick, charts: Dril
   const make = (type: DashboardWidget['type'], options: Record<string, unknown>, title: string): DashboardWidget => {
     const info = widgetInfo(type);
     const metrics = (source.metrics ?? []).slice(0, info.maxMetrics);
+    const period = pick.range ? { ...source.period, current: pick.range } : source.period;
     return { id: `${metrics[0] ?? 'drill'}_${type}`, type, title, width: info.width, height: info.height, metrics, filters,
-      ...(source.period ? { period: source.period } : {}), options: { ...kept, ...options } };
+      ...(period ? { period } : {}), options: { ...kept, ...options } };
   };
   const out: Partial<Record<DrilledChart, DashboardWidget>> = {};
   for (const chart of charts) {

@@ -4,12 +4,12 @@
 // bottom with its timeseries; right-click a value for its menu (show timeseries, dashboard
 // filter, drill into…, explorer). While a
 // metric is dragged over it, it says whether it can take it.
-import { Component, useRef, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
+import { Component, useEffect, useRef, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CopyPlus, FileBarChart, Search, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
 } from 'lucide-react';
-import type { DashboardDoc, DashboardWidget } from '../../../../../lib/dashboardsApi';
+import type { DashboardDoc, DashboardWidget, DateRange } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
 import { relativeTime } from '../../../lib/relativeTime';
 import { monitorUrl, statusStyle, type MetricMonitorState } from '../../monitors/monitorView';
@@ -17,7 +17,7 @@ import { isOpenInFilesClick, OPEN_IN_FILES_CURSOR_CLS } from '../../../lib/openI
 import {
   HEIGHT_LOCK, MAX_HEIGHT, opt, pxToWidth, resized, widthCss, type Resized, type ResizeLimits, type Size,
 } from '../dashboardModel';
-import type { Pick } from '../drill';
+import { isRangeOnly, type Pick } from '../drill';
 import { DrillPanel } from './DrillPanel';
 import { InspectDialog } from './InspectDialog';
 import { ValueMenu } from './ValueMenu';
@@ -84,7 +84,7 @@ export interface FrameActions {
   onResize: (size: Size) => void;
 }
 
-interface Props extends Omit<BodyProps, 'height' | 'onPick' | 'onPickMenu' | 'drilled'>, FrameActions {
+interface Props extends Omit<BodyProps, 'height' | 'onPick' | 'onPickMenu' | 'drilled' | 'zoom' | 'onZoom'>, FrameActions {
   /** a picked value applied to the dashboard's filters */
   onApplyFilter: (pick: Pick) => void;
   /** the widget's query in the explorer, filtered to a picked value */
@@ -243,12 +243,16 @@ export function WidgetFrame(props: Props) {
   const [drill, setDrill] = useState<Pick | null>(null);
   const [menuAt, setMenuAt] = useState<{ pick: Pick; x: number; y: number } | null>(null);
   const [inspect, setInspect] = useState<Pick | null>(null);
+  // a time series' highlighted periods; new results (another period) show it whole again
+  const [zoom, setZoom] = useState<DateRange | null>(null);
+  const resultRange = JSON.stringify(result?.current ?? null);
+  useEffect(() => setZoom(null), [resultRange]);
   // A drill-down on a dimension the widget no longer shows goes away
   const dims = [opt<string | null>(widget, 'dimension', null), opt<string | null>(widget, 'stack_by', null),
     ...opt<string[]>(widget, 'dimensions', [])].filter(Boolean);
   const drilled = drill && drill.values.every((v) => dims.includes(v.dimension)) ? drill : null;
   const valueActions = {
-    onDrill: (p: Pick) => setDrill(p),
+    onDrill: (p: Pick) => (isRangeOnly(p) ? setZoom(p.range!) : setDrill(p)),
     onApplyFilter: props.onApplyFilter,
     onInspect: (p: Pick) => setInspect(p),
     onOpenInExplorer: props.onOpenFiltered,
@@ -323,7 +327,7 @@ export function WidgetFrame(props: Props) {
           <WidgetErrorBoundary resetKey={`${JSON.stringify(widget)}|${result?.ran_at ?? ''}|${result?.status ?? ''}`}>
             <WidgetBody {...props} height={Math.max(40, chartHeight)} drilled={drilled}
               onPick={(p) => setDrill((cur) => (cur && JSON.stringify(cur) === JSON.stringify(p) ? null : p))}
-              onPickMenu={(p, x, y) => setMenuAt({ pick: p, x, y })} />
+              onPickMenu={(p, x, y) => setMenuAt({ pick: p, x, y })} zoom={zoom} onZoom={setZoom} />
           </WidgetErrorBoundary>
         </div>
         {drilled && result && (

@@ -186,5 +186,6 @@ frontend/src/
 ```
 src-tauri/src/
   lib.rs          — desktop shell: spawns the bundled wickd-backend (WICKD_DATA_DIR, WICKD_FRONTEND_DIST, WICKD_PORT, WICKD_INSTANCE_TOKEN), opens the hidden about:blank window at the backend once /api/health echoes the launch token, kills the backend tree on exit; debug-only attach mode (WICKD_SHELL_URL/SIZE/ZOOM, screenshots skill)
+  ../tauri.conf.json — window config; `dragDropEnabled: false` is required: Tauri's native drop handler otherwise swallows every drop on macOS, so HTML5 drag-and-drop (Workspace's drag-to-insert, the file tree) never gets a `drop` event
   backend_port.rs — choose_port() (fixed PREFERRED_PORT 47823, never dev's 8001; free port if taken), new_instance_token(), health_matches(); tested with `cargo test`
 ```

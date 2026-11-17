@@ -6,6 +6,7 @@ import RunButton from './RunButton';
 import Spinner from './Spinner';
 import MonitorsCard from './MonitorsCard';
 import TestGapsCard from './TestGapsCard';
+import PackagesCard from './PackagesCard';
 import { type HealthCheckKind, errorMessage, useHealthRuns, useHealthSummary, useIsStarting } from './useHealth';
 
 interface CardSpec {
@@ -69,6 +70,7 @@ export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: He
             />
           ))}
           {summary.monitors && <MonitorsCard projectId={projectId} check={summary.monitors} />}
+          {summary.packages && <PackagesCard projectId={projectId} check={summary.packages} />}
           <TestGapsCard projectId={projectId} onOpen={onOpenTestGaps} />
         </div>
       )}

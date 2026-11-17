@@ -56,7 +56,7 @@ export function DataDiffSection(props: Props) {
         <p className="flex flex-wrap items-center gap-2 text-amber-300">
           <Info size={12} className="shrink-0" />
           Set DIFF_BASE_TARGET to the target to compare with (e.g. prod) to start diffing.
-          <button onClick={() => navigate(`/projects/${projectId}/environment`)} className={CHECK_BUTTON}>
+          <button onClick={() => navigate(`/projects/${projectId}/environment?tab=settings`)} className={CHECK_BUTTON}>
             <Settings2 size={11} />Environment
           </button>
         </p>

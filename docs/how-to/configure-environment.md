@@ -4,13 +4,11 @@ This guide covers environment variables, dbt targets, profiles, and requirements
 
 ## Opening the Environment tab
 
-Navigate to a project and click **Environment** in the project nav. The page is divided into sections:
+Navigate to a project and click **Environment** in the project nav. The page has three tabs:
 
-- **Global Environment Variables** (read-only here) — defaults shared by every project
-- **Active Profile** — a global profile whose variables are layered on top
-- **Environment Variables** — free-form key/value pairs injected into every dbt subprocess
-- **Profiles** — named sets of env vars you can activate as a group
-- **Settings** — project-specific and global settings
+- **Settings** — project-specific settings (click a value to edit)
+- **Variables** — global environment variables (read-only here), the active global profile, the project's environment variables and its profiles
+- **Packages** — the project's dbt packages; see [Manage dbt packages](manage-packages.md)
 
 > wickd Pro subscription management (license key, cancellation) lives in the **Global Settings** modal, not here — see below.
 
@@ -194,3 +192,5 @@ wickd installs Python requirements into the same venv as the `dbt` binary (not i
 Both are installed during the `base: pip install` step every time you open a project. If neither is configured, the step is skipped.
 
 Use this to install dbt packages, adapters, or other Python dependencies that your models or macros require.
+
+These are Python packages. For dbt packages (`packages.yml`), see [Manage dbt packages](manage-packages.md).

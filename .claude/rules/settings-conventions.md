@@ -6,8 +6,8 @@ All settings must appear in one of two places in the Environment page (`frontend
 
 | Setting type | UI section | Editable from |
 |---|---|---|
-| Global (`app_settings` table) | **Global** sub-section under the Settings tile | Global Settings modal only (read-only on Environment page) |
-| Project (`projects` table columns or `ProjectEnvVar` rows) | **Project** sub-section under the Settings tile | Inline on the Environment page |
+| Global (`app_settings` table) | **Global** sub-section under the Settings tab | Global Settings modal only (read-only on Environment page) |
+| Project (`projects` table columns or `ProjectEnvVar` rows) | **Project** sub-section under the Settings tab | Inline on the Environment page |
 
 **Never add a setting only to the Global Settings modal without also listing it in the read-only Global section of the Environment page. Never add a project-level setting as a free-form env var without also listing it as a named row in the Project section.**
 

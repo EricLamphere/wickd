@@ -23,3 +23,9 @@ export function dbtCoreDrift(status: DbtCoreStatusDto | undefined): DbtCoreDrift
     detail: `${detail} Reinstall to apply your requirements file again.`,
   };
 }
+
+/** An exact pin (`dbt-core==1.10.13`) as its version; null for ranges / unpinned. */
+export function pinnedDbtVersion(requirement: string | null | undefined): string | null {
+  const m = requirement?.match(/^\s*dbt-core\s*==\s*([0-9][0-9A-Za-z.+-]*)\s*$/i);
+  return m ? m[1] : null;
+}

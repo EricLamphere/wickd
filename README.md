@@ -44,6 +44,7 @@ task start
 - **Data preview** — see any model's output (via `dbt show`) in the side panel next to its SQL, and the failing rows behind a failed test
 - **Column profiling & test coverage** — row counts, null %, distinct counts, min/max, and samples per column; an optional DAG overlay shows per-column test coverage
 - **Run history** — every dbt invocation with duration and per-node results, plus per-node trends across recent runs, a timeline of each run showing what every dbt thread was doing, and a DAG overlay of each node's median run time
+- **Package manager** — every dbt package in `packages.yml` with what's locked and installed, the latest release on dbt Hub, and whether it supports your dbt-core; browse dbt Hub (README included) to add one, upgrade one or all compatible packages, or remove one, reviewed as a diff, then run `dbt deps` and see what changed in the lock file. Packages that break your dbt-core are flagged on the home page, in Health, and before you change dbt-core — see [Manage dbt packages](docs/how-to/manage-packages.md)
 - **Environment control** — global default env vars, named env var profiles, dbt target switching, and an init pipeline (`pip install`, `dbt deps`, your own scripts) that runs when a project opens
 - **Integrated terminal & project creation** — multi-tab terminal in the bottom pane of every project page and the home page; `dbt init` runs in an in-app terminal with adapter install and `profiles.yml` setup handled for you
 - **Command palette** — ⌘K to jump to any page, project, or model, or run a dbt command

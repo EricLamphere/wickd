@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api, type RequirementsFileDto } from '../../lib/api';
 import { InlineCode } from './fields';
 import type { DbtCorePlan } from './dbtCorePlan';
+import { PackagesCompatWarning } from '../PackagesCompatWarning';
 
 const FILE_CHECK_DEBOUNCE_MS = 300;
 
@@ -92,6 +93,7 @@ export function DbtCoreVersionPicker({ value, onChange, plan, error }: PickerPro
           <PlanNote plan={plan} version={version} />
         </span>
       )}
+      <PackagesCompatWarning dbtVersion={version || null} />
     </div>
   );
 }

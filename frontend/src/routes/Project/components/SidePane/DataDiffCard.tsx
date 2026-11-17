@@ -60,7 +60,7 @@ export function DataDiffCard({ projectId, model }: { projectId: number; model: M
             </button>
           </div>
         ) : (
-          <button onClick={() => navigate(`/projects/${projectId}/environment`)} className="text-left text-[11px] text-amber-300 hover:underline">
+          <button onClick={() => navigate(`/projects/${projectId}/environment?tab=settings`)} className="text-left text-[11px] text-amber-300 hover:underline">
             Set DIFF_BASE_TARGET in Environment to diff with prod
           </button>
         )}

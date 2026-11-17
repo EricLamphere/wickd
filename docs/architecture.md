@@ -41,6 +41,7 @@ wickd/
 │   │   │   ├── files.py             # /api/projects/{id}/files — file browser
 │   │   │   ├── docs.py              # /api/projects/{id}/docs — native docs browser
 │   │   │   ├── docs_pages.py        # /api/projects/{id}/docs-pages — Markdown pages from the docs folder (plan 28)
+│   │   │   ├── packages.py          # /api/projects/{id}/packages + /api/packages/hub, /compat — package manager (plan 23)
 │   │   │   ├── env.py               # /api/projects/{id}/profiles + dbt-targets + dbt-target (R/W)
 │   │   │   ├── init.py              # /api/projects/{id}/init — steps, pipeline, PTY session
 │   │   │   ├── workspace.py         # /api/projects/{id}/workspace — SQL scratchpad compile/run/path
@@ -624,7 +625,7 @@ POST   /api/projects/{id}/drift                          start async schema drif
 GET    /api/projects/{id}/drift                          get the latest DriftSnapshot for a project
 GET    /api/projects/{id}/drift/{snapshot_id}            get a specific DriftSnapshot by id
 POST   /api/projects/{id}/drift/{snapshot_id}/recheck    re-probe one model ({unique_id}) and update its row; 409 while a scan runs
-GET    /api/projects/{id}/health/summary                 status/headline/issue count/stale reasons for connection, drift and freshness (+ `semantic` for projects with a semantic layer, else null; `runnable` false while MetricFlow is off or incompatible; + `monitors` (Pro) for projects with enabled monitors, else null)
+GET    /api/projects/{id}/health/summary                 status/headline/issue count/stale reasons for connection, drift and freshness (+ `semantic` for projects with a semantic layer, else null; `runnable` false while MetricFlow is off or incompatible; + `monitors` (Pro) for projects with enabled monitors, else null; + `packages` for projects with packages, else null: fail when an installed package's require-dbt-version rejects the installed dbt-core, warn when one isn't installed)
 GET    /api/projects/{id}/semantic/status?want_cli=       Semantic layer: {available, can_query, mode, mode_source, reason_code, reason, warning, dbt_core, python, engine_version, sidecar, spec, adapter_type, counts, compatible_dbt_versions, recommended_version, cli_release}
 GET    /api/projects/{id}/semantic/catalog               metrics with dimensions, and saved queries, as MetricFlow sees them; 409 {error, message, status} when unavailable
 POST   /api/projects/{id}/semantic/explain               body {metrics, group_by, where, order_by, limit, start, end, saved_query} → {sql, columns}; 400 invalid_query
@@ -781,6 +782,13 @@ PUT    /api/workspace/docs/profile                       set it (`{profile_id}`,
 GET    /api/workspace/docs-pages                         shared docs folders (WICKD_SHARED_DOCS_PATHS) for combined docs' Pages tab: `{folders: [{id, name, path, pages}]}`; id = position in the setting, missing folders left out (api/workspace_docs_pages.py)
 GET    /api/workspace/docs-pages/{folder_id}/content     one page (`?path=`, same shape as a project's; docs blocks aren't matched to nodes, `project_path` null); 404 for an unknown folder
 GET    /api/workspace/docs-pages/{folder_id}/asset       an image from the folder (`?path=`, safe_join; SVGs served inert)
+GET    /api/projects/{id}/packages                   package manager (plan 23, Base): `{file, lock_present, install_path, dbt_version, hub_unreachable, rows, lock, errors}`; a row per packages.yml / dependencies.yml entry (requested, locked, installed, latest, latest_compatible, upgrade_to, compatible = its require-dbt-version accepts the installed dbt-core, notes) plus packages installed only as dependencies; git URLs redacted (app/dbt/package_rows.py)
+POST   /api/projects/{id}/packages/propose           `{changes: [{op: add|set_version|remove, key, version?}]}` → the packages file spliced (comments kept, re-parse verified; app/dbt/packages_yaml.py) as an `ai_proposals` row of kind `packages` (Base, in BASE_KINDS); 400 bad name/version, 422 when the file can't be edited safely (e.g. an inline `packages: [...]`)
+POST   /api/projects/{id}/packages/deps              `{upgrade}` → `dbt deps` (+ `--upgrade` on dbt ≥ 1.7) through the runner as a custom command; run_finished (command `deps`) signals it's done
+GET    /api/packages/hub/search                      `?q=` → `{reachable, results}` dbt Hub package names (exact, then prefix, then substring; max 50)
+GET    /api/packages/hub/{namespace}/{name}          a Hub package's versions with require_dbt_version and `compatible` for the installed dbt-core, latest / latest_compatible; 404 when unknown or the Hub is unreachable
+GET    /api/packages/hub/{namespace}/{name}/readme   `?version=` → `{text}` the README (raw.githubusercontent.com only), null when there is none
+GET    /api/packages/compat                          `?dbt_version=` (default: installed) → projects whose installed packages reject it: `{dbt_version, projects: [{project_id, name, incompatible}]}`; local files only (home cards, dbt-core pickers, drift banner)
 GET    /api/global-profiles
 POST   /api/global-profiles
 DELETE /api/global-profiles/{profile_id}
@@ -1244,6 +1252,10 @@ The Global Settings modal's "Subscription" tab (`components/SubscriptionSection.
 **Cmd+click navigation** — `ref('model')` and `source('schema', 'table')` spans are underlined when Cmd/Ctrl is held. Clicking navigates to `/projects/:id/files?model=<unique_id>`, which the File Explorer resolves to the model's source file and rewrites (with replace) as `?path=<file>`. `?path=` is the File Explorer's open file, so opening files is part of the header's back/forward history.
 
 Session state (`sessionStorage`) persists open file path, expanded tree nodes, active tab, and last query results across navigation within a browser session.
+
+### 11a. Package manager (plan 23, Base)
+
+The Environment page's **Packages** tab (`?tab=packages`, beside Settings and Variables; `routes/Project/Packages/`) joins three local sources with dbt Hub: what `packages.yml` (or `dependencies.yml`) asks for, what `package-lock.yml` resolved, and what `dbt deps` installed under `packages-install-path` (`app/dbt/packages.py`, pure). Installed versions come from the lock file (hub) or the pinned tag (git), because packages often never bump their own `dbt_project.yml` `version:`; the installed folder's `require-dbt-version` decides compatibility with the installed dbt-core (`app/dbt/installed_version.py`, `dbt --version` cached until the entry script changes). Hub data (`app/dbt/hub.py`: `/api/v1/index.json` and `/api/v1/<ns>/<name>.json`) is cached on disk under `<data_dir>/hub/` for a day; a failed fetch falls back to the stale cache, else versions show as unknown. Version checks cover hub packages and git packages pinned to a release tag (a GitHub repo is matched to its Hub package by owner/repo). Add / upgrade / "Upgrade all compatible" / remove become a `packages` proposal reviewed in the usual diff window; once accepted, Run dbt deps (with `--upgrade` when versions changed) goes through the runner, and the tab diffs the lock file before vs after. Compatibility also surfaces on home cards (`GET /api/packages/compat`), the Health overview's Packages card, and before changing dbt-core (setup wizard picker, MetricFlow compat dialog, the dbt-core drift banner). Git URLs are redacted (`user:token@`, Jinja) wherever they're shown or logged.
 
 ### 12. Health Check (dbt debug)
 

@@ -1,7 +1,10 @@
 import { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Plus, Trash2, Check, X } from 'lucide-react';
+import { Plus, Trash2, Check, X } from 'lucide-react';
+import type { PageTabItem } from '../../components/PageTabs';
+import { useUrlTab } from '../../lib/useUrlTab';
+import { PackagesTab } from './Packages/PackagesTab';
 import { api, type EnvVarDto, type Project } from '../../lib/api';
 import NavRail from './components/NavRail';
 import { PageHeader } from './components/PageHeader';
@@ -11,35 +14,19 @@ import { alertError, confirmDialog } from '../../lib/dialogs';
 import { monitorsApi } from '../../lib/monitorsApi';
 import { StateSourceTest } from './components/slim/StateSourceTest';
 
-// ---- Collapsible tile wrapper ----
+// ---- Tabs ----
 
-function Tile({ title, children }: { title: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(true);
-
-  return (
-    <div className="border border-gray-800 rounded-xl overflow-hidden">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 px-4 py-3 bg-surface-panel hover:bg-surface-elevated/40 transition-colors text-left"
-      >
-        {open
-          ? <ChevronDown className="w-4 h-4 text-gray-500 shrink-0" />
-          : <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" />
-        }
-        <span className="text-sm font-semibold text-gray-200">{title}</span>
-      </button>
-      {open && (
-        <div className="border-t border-gray-800 p-6 flex flex-col gap-6 bg-surface-app">
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
+type EnvTab = 'settings' | 'variables' | 'packages';
+const ENV_TABS: readonly PageTabItem<EnvTab>[] = [
+  { id: 'settings', label: 'Settings' },
+  { id: 'variables', label: 'Variables' },
+  { id: 'packages', label: 'Packages' },
+];
 
 export default function EnvironmentPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const id = Number(projectId);
+  const [tab, setTab] = useUrlTab<EnvTab>('tab', ENV_TABS.map((t) => t.id), 'settings');
 
   const { data: project } = useQuery({
     queryKey: ['project', id],
@@ -52,20 +39,22 @@ export default function EnvironmentPage() {
 
       <div className="flex-1 flex flex-col min-w-0">
         <div className="sticky top-0 z-10">
-          <PageHeader page="environment" />
+          <PageHeader page="environment" tabs={{ items: ENV_TABS, active: tab, onChange: setTab }} />
         </div>
-        <div className="flex-1 p-6 flex flex-col gap-4">
-          <Tile title="Settings">
+        {tab === 'settings' && (
+          <div className="flex-1 p-6 flex flex-col gap-6">
             <ProjectSettingsSection projectId={id} project={project ?? null} />
-          </Tile>
-
-          <Tile title="Environment">
+          </div>
+        )}
+        {tab === 'variables' && (
+          <div className="flex-1 p-6 flex flex-col gap-6">
             <EnvPrecedenceNote className="-mb-2" />
             <GlobalEnvVarsReadOnly />
             <GlobalProfileSelector projectId={id} />
             <EnvironmentVariablesSection projectId={id} />
-          </Tile>
-        </div>
+          </div>
+        )}
+        {tab === 'packages' && <PackagesTab projectId={id} />}
       </div>
     </div>
   );

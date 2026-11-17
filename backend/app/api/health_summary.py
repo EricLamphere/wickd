@@ -27,6 +27,7 @@ from app.health.summary import (
     summarize_drift,
     summarize_freshness,
     summarize_metric_monitors,
+    summarize_packages,
     summarize_semantic,
 )
 from app.logging_setup import get_logger
@@ -55,6 +56,8 @@ class HealthSummaryDto(BaseModel):
     semantic: CheckSummaryDto | None = None
     # null without monitors or without Pro (statuses are Pro-derived)
     monitors: CheckSummaryDto | None = None
+    # null when the project has no packages (no packages.yml / dependencies.yml entries)
+    packages: CheckSummaryDto | None = None
     current_target: str | None
 
 
@@ -88,12 +91,29 @@ async def get_health_summary(
     }
     semantic = await _semantic_summary(session, project)
     monitors = await _monitors_summary(session, project_id, current_target)
+    packages = await _packages_summary(project)
     return HealthSummaryDto(
         **{k: CheckSummaryDto(**asdict(v)) for k, v in summaries.items()},
         semantic=CheckSummaryDto(**asdict(semantic)) if semantic else None,
         monitors=CheckSummaryDto(**asdict(monitors)) if monitors else None,
+        packages=CheckSummaryDto(**asdict(packages)) if packages else None,
         current_target=current_target,
     )
+
+
+async def _packages_summary(project: Project) -> CheckSummary | None:
+    """Installed packages vs the installed dbt-core (local files only, no Hub)."""
+    from app.dbt.installed_version import installed_dbt_version
+    from app.dbt.package_rows import build_rows
+    from app.dbt.packages import read_project_packages
+
+    root = Path(project.path)
+    packages = await asyncio.to_thread(read_project_packages, root)
+    if not packages.specs:
+        return None
+    dbt_version = await installed_dbt_version()
+    rows = build_rows(packages, root, dbt_version, {})
+    return summarize_packages([asdict(r) for r in rows], dbt_version=dbt_version)
 
 
 async def _monitors_summary(session: AsyncSession, project_id: int, current_target: str | None) -> CheckSummary | None:

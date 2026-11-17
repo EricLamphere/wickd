@@ -3,6 +3,7 @@ import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/
 import { api } from '../../../../lib/api';
 import { semanticApi } from '../../../../lib/semanticApi';
 import { useProjectEvents } from '../../../../lib/sse';
+import { isDepsFinished } from '../../Packages/packagesView';
 
 export type HealthCheckKind = 'connection' | 'drift' | 'freshness' | 'semantic';
 
@@ -27,7 +28,7 @@ export function useHealthSummary(projectId: number) {
     retry: false,
   });
   useProjectEvents(projectId, useCallback((event) => {
-    if (SUMMARY_EVENTS.has(event.type)) {
+    if (SUMMARY_EVENTS.has(event.type) || isDepsFinished(event)) {
       qc.invalidateQueries({ queryKey: ['health-summary', projectId] });
     }
   }, [projectId, qc]));

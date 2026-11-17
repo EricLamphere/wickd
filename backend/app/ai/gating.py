@@ -11,7 +11,7 @@ UNIT_TEST_KIND = "unit_test"
 # semantic_status() reason codes that mean MetricFlow can't run here at all
 BLOCKING_SEMANTIC_REASONS = frozenset({"off", "too_old", "latest_spec_needs_1_12", "no_cli_release", "unknown_version"})
 # proposals made by Base features (no AI, no Pro engine): reviewing them is free
-BASE_KINDS = frozenset({"document_stub", "exposure", "saved_query", "charts_board", "unit_test_rebaseline"})
+BASE_KINDS = frozenset({"document_stub", "exposure", "saved_query", "charts_board", "unit_test_rebaseline", "packages"})
 
 
 async def require_ai(session: AsyncSession) -> None:

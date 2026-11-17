@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FolderOpen, Pin, Plus } from 'lucide-react';
+import { AlertTriangle, FolderOpen, Pin, Plus } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { api, type Project, type ProjectSummary } from '../../lib/api';
+import { packagesApi, type ProjectCompatDto } from '../../lib/packagesApi';
 
 // ── Platform config ───────────────────────────────────────────────────────────
 
@@ -94,6 +95,30 @@ export function useProjectSummaries<T>(select: (all: ProjectSummary[]) => T) {
   }).data;
 }
 
+/** Installed packages that don't support the installed dbt-core, per project (one request for every card). */
+export function usePackagesCompat(projectId: number): ProjectCompatDto | undefined {
+  return useQuery({
+    queryKey: ['packages-compat'],
+    queryFn: () => packagesApi.compat(),
+    staleTime: 60_000,
+    select: (all) => all.projects.find((p) => p.project_id === projectId),
+  }).data;
+}
+
+function PackagesCompatBadge({ compat }: { compat: ProjectCompatDto }) {
+  const n = compat.incompatible.length;
+  const names = compat.incompatible.map((p) => p.name).join(', ');
+  return (
+    <span
+      title={`${names} ${n === 1 ? "doesn't" : "don't"} support the installed dbt-core`}
+      className="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-red-950/40 text-red-300 border border-red-900/60"
+    >
+      <AlertTriangle className="w-3 h-3" />
+      {n} package{n === 1 ? '' : 's'}
+    </span>
+  );
+}
+
 // ── Project card ──────────────────────────────────────────────────────────────
 
 interface ProjectCardProps {
@@ -117,6 +142,7 @@ export function ProjectCard({ project, focused, shortcutKey, cardRef, onClick, o
   const latest = summary?.latest_run ?? null;
   // A project that has never been compiled has no manifest — show zeros, not "loading…".
   const counts = summary === undefined ? null : summary.counts ?? EMPTY_COUNTS;
+  const compat = usePackagesCompat(project.id);
 
   return (
     <button
@@ -152,6 +178,7 @@ export function ProjectCard({ project, focused, shortcutKey, cardRef, onClick, o
               {shortcutKey}
             </span>
           )}
+          {compat && <PackagesCompatBadge compat={compat} />}
           {latest && <StatusPill status={latest.status} />}
         </div>
       </div>

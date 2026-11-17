@@ -8,6 +8,7 @@ import { useGlobalSetupRun } from '../../../../components/globalSetup/useGlobalS
 import { defaultChoice, dialogTitle, otherVersionError, versionOptions } from './compatDialog';
 import { ChangePreview } from './ChangePreview';
 import { useSetMetricflowMode } from './useSemantic';
+import { PackagesCompatWarning } from '../../../../components/PackagesCompatWarning';
 
 interface Props {
   projectId: number;
@@ -129,6 +130,7 @@ function ChooseStep({ projectId, status, wantCli, onInstall, onClose }: Omit<Pro
         </fieldset>
 
         {version && <ChangePreview plan={plan.data} loading={plan.isFetching} error={plan.error} />}
+        <PackagesCompatWarning dbtVersion={version} />
 
         {pins.length > 0 && (
           <div className="flex flex-col gap-1.5">

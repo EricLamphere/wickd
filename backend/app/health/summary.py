@@ -253,3 +253,23 @@ def _iso(dt: datetime | None) -> str | None:
 
 def _s(n: int) -> str:
     return "" if n == 1 else "s"
+
+
+def summarize_packages(rows: list[dict[str, Any]], *, dbt_version: str | None) -> CheckSummary:
+    """`rows`: the project's package rows (local files only: `compatible`, `installed`,
+    `direct`, `name`). Packages that reject the installed dbt-core fail; direct packages
+    not installed warn."""
+    bad = [r for r in rows if r.get("compatible") is False]
+    missing = [r for r in rows if r.get("direct") and not r.get("installed")]
+    direct = sum(1 for r in rows if r.get("direct"))
+    if bad:
+        names = ", ".join(str(r.get("name")) for r in bad[:3]) + ("…" if len(bad) > 3 else "")
+        headline = f"{len(bad)} package{_s(len(bad))} don't support dbt {dbt_version or 'core'}: {names}"
+        if len(bad) == 1:
+            headline = f"{bad[0].get('name')} doesn't support dbt {dbt_version or 'core'}"
+        return CheckSummary(status="fail", headline=headline, issues=len(bad) + len(missing), finished_at=None, target=None)
+    if missing:
+        return CheckSummary(status="warn", headline=f"{len(missing)} package{_s(len(missing))} not installed: run dbt deps",
+                            issues=len(missing), finished_at=None, target=None)
+    return CheckSummary(status="ok", headline=f"{direct} package{_s(direct)} installed", issues=0,
+                        finished_at=None, target=None)

@@ -9,6 +9,7 @@ Step-by-step guides for using wickd.
 | [Create a project](create-project.md) | Run `dbt init` interactively, set up profiles.yml, and open your first project |
 | [Run, build, and test models](run-models.md) | Select models in the DAG, execute runs, read output from the Run panel, and schedule runs |
 | [Configure environment and targets](configure-environment.md) | Set env vars, switch dbt targets, manage profiles, and install requirements |
+| [Manage dbt packages](manage-packages.md) | See installed packages with their latest version and dbt-core compatibility, add packages from dbt Hub, upgrade or remove them as a reviewed change, run dbt deps and see what changed in the lock file |
 | [Customize the init pipeline](init-pipeline.md) | Add, reorder, and link init steps; capture env vars from custom shell scripts |
 | [Navigate and filter the DAG](navigate-dag.md) | Use the DAG view, filter bar (selectors and dropdowns), and the side panel |
 | [Browse project docs and Markdown pages](browse-docs.md) | Browse dbt docs by project, database, group or tag, and read your docs folder's Markdown pages (GFM, mermaid, links to models) |

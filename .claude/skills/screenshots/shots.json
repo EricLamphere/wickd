@@ -942,6 +942,30 @@
       }
     },
     {
+      "name": "packages",
+      "tier": "base",
+      "caption": "Package manager — packages with locked, installed and latest versions and dbt-core compatibility, plus dbt Hub search",
+      "features": [
+        "Package manager"
+      ],
+      "steps": [
+        {
+          "goto": "/projects/{pid:duckdb_dbt}/environment?tab=packages"
+        },
+        {
+          "wait": "Upgrade all compatible"
+        },
+        {
+          "settle": true
+        }
+      ],
+      "label": "Package manager",
+      "alt": "wickd Environment page Packages tab listing dbt packages with requested, locked, installed and latest versions and a dbt-core compatibility column",
+      "site": {
+        "gallery": "more"
+      }
+    },
+    {
       "name": "init_pipeline",
       "tier": "base",
       "caption": "Initialization — pip install, dbt deps and your own setup scripts as one pipeline",

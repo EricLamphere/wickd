@@ -333,6 +333,8 @@ export interface HealthSummary {
   semantic: CheckSummary | null;
   /** Metric monitors (Pro); null without monitors or without Pro */
   monitors?: CheckSummary | null;
+  /** Packages vs the installed dbt-core (plan 23); null when the project has no packages */
+  packages?: CheckSummary | null;
   current_target: string | null;
 }
 

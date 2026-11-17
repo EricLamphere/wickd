@@ -52,6 +52,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'dbt Charts boards — build, view live & validate charts/ boards; export dashboards as boards', base: true, pro: true },
   { label: 'Metric debugging — plan steps, warehouse checks (fan-out, nulls, coverage) & reconcile with SQL', base: true, pro: true },
   { label: 'Slim builds — build changed vs prod, defer, clone & retry', base: true, pro: true },
+  { label: 'Package manager — dbt Hub search, upgrades, dbt deps & dbt-core compatibility', base: true, pro: true },
   { label: 'Column-level lineage tracing', base: false, pro: true },
   { label: 'Column-level impact analysis, incl. filter & join effects', base: false, pro: true },
   { label: 'Contract checks — breaking column changes & who still uses them, before you merge', base: false, pro: true },

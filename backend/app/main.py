@@ -45,6 +45,7 @@ from app.api import metric_notes as metric_notes_api
 from app.api import metric_queries as metric_queries_api
 from app.api import models as models_api
 from app.api import monitor_expectations as monitor_expectations_api
+from app.api import packages as packages_api
 from app.api import performance as performance_api
 from app.api import projects as projects_api
 from app.api import propagation as propagation_api
@@ -196,6 +197,8 @@ app.include_router(terminal_api.router)
 app.include_router(git_api.router)
 app.include_router(workspace_api.router)
 app.include_router(docs_pages_api.router)
+app.include_router(packages_api.router)
+app.include_router(packages_api.hub_router)
 
 
 _PROJECT_ID_RE = re.compile(r"/api/projects/(\d+)/")

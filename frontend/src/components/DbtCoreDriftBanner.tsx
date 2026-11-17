@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { DbtCoreStatusDto } from '../lib/api';
-import { dbtCoreDrift } from '../lib/dbtCoreDrift';
+import { dbtCoreDrift, pinnedDbtVersion } from '../lib/dbtCoreDrift';
 import { GlobalSetupModal } from './GlobalSetupModal';
+import { PackagesCompatWarning } from './PackagesCompatWarning';
 
 /** Home page warning when the installed dbt-core has drifted from the chosen one;
  *  Reinstall runs global setup, which installs the requirements file or the pinned version. */
@@ -16,6 +17,8 @@ export function DbtCoreDriftBanner({ status }: { status: DbtCoreStatusDto | unde
           <div className="flex flex-col flex-1 gap-0.5">
             <p className="text-sm font-medium text-amber-300">{drift.title}</p>
             <p className="text-xs text-amber-500">{drift.detail}</p>
+            {/* reinstalling the chosen version would break these */}
+            <PackagesCompatWarning dbtVersion={pinnedDbtVersion(status?.expected)} className="mt-1" />
           </div>
           <button
             onClick={() => setReinstalling(true)}

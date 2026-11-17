@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import cases from '../../../../../../../backend/tests/fixtures/notes/match_cases.json';
 import type { MetricNoteDto } from '../../../../../lib/notesApi';
 import {
-  dayMs, expectedPrefill, expectedTitle, filterNotes, groupByMonth, noteMatches, notesFor, notesOnSeries, periodEnd,
+  dayMs, expectedPrefill, type NoteSortBy, type NoteSortDir, expectedTitle, filterNotes, groupByMonth, noteMatches, notesFor, notesOnSeries, periodEnd,
   pinnedDims, prefillFrom, type NoteScope,
 } from './metricNotes';
 
@@ -137,5 +137,21 @@ describe('listing', () => {
     expect(groupByMonth(list).map((g) => [g.label, g.notes.map((n) => n.slug)])).toEqual([
       ['November 2026', ['a']], ['October 2026', ['b']], ["Couldn't be read", ['c']],
     ]);
+  });
+  it('sorts and groups by start, end or date added, either direction', () => {
+    const notes = [
+      note({ slug: 'x', title: 'x', start: '2026-09-01', end: '2026-11-30', created: '2026-09-02T10:00:00Z' }),
+      note({ slug: 'y', title: 'y', start: '2026-10-01', end: '2026-10-02', created: null, modified_at: '2026-08-15T09:00:00Z' }),
+      note({ slug: 'z', title: 'z', start: '2026-10-05', end: '2026-10-05', created: null, modified_at: null }),
+    ];
+    const slugs = (by: NoteSortBy, dir?: NoteSortDir) => groupByMonth(notes, by, dir).flatMap((g) => g.notes.map((n) => n.slug));
+    expect(slugs('start')).toEqual(['z', 'y', 'x']);
+    expect(slugs('start', 'asc')).toEqual(['x', 'y', 'z']);
+    expect(slugs('end')).toEqual(['x', 'z', 'y']);
+    expect(groupByMonth(notes, 'end')[0].label).toBe('November 2026');
+    // added falls back to the file's last change; no date at all goes last either way
+    expect(slugs('added')).toEqual(['x', 'y', 'z']);
+    expect(slugs('added', 'asc')).toEqual(['y', 'x', 'z']);
+    expect(groupByMonth(notes, 'added').map((g) => g.label)).toEqual(['September 2026', 'August 2026', 'No date']);
   });
 });

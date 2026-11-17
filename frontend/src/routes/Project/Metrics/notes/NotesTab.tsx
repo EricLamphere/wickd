@@ -1,17 +1,19 @@
-// Metrics page → Notes (?tab=notes): every metric note, newest first, grouped by month, filterable
-// by text, metric, dimension and dates. `?note=<slug>` opens one (part of history).
+// Metrics page → Notes (?tab=notes): every metric note, grouped by month and sorted by start, end or
+// date added (newest first by default; remembered per project), filterable by text, metric, dimension and dates. `?note=<slug>` opens one (part of history).
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Plus, StickyNote } from 'lucide-react';
+import { AlertTriangle, ArrowDownWideNarrow, ArrowUpNarrowWide, Plus, StickyNote } from 'lucide-react';
 import type { MetricNoteDto } from '../../../../lib/notesApi';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { NoteView } from './NoteView';
 import { addMetricNote, openMetricNote } from './noteEvents';
-import { filterNotes, groupByMonth, rangeText, type NotesFilter } from './lib/metricNotes';
+import { useStickyTab } from '../../../../lib/useUrlTab';
+import { NOTE_SORT_BY, NOTE_SORT_DIR, filterNotes, groupByMonth, rangeText, type NoteSortBy, type NotesFilter } from './lib/metricNotes';
 import { useNotes } from './useNotes';
 
 export const NOTE_PARAM = 'note';
 const INPUT = 'px-2 py-1 rounded border border-gray-700 bg-surface-app text-xs text-gray-200 outline-none focus:border-brand-600';
+const SORT_LABELS: Record<NoteSortBy, string> = { added: 'Date added', start: 'Start date', end: 'End date' };
 const EMPTY: NotesFilter = { text: '', metric: null, dimension: null, start: null, end: null };
 
 function excerpt(body: string): string {
@@ -41,7 +43,9 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
   const [params, setParams] = useSearchParams();
   const [filter, setFilter] = useState<NotesFilter>(EMPTY);
   const notes = useMemo(() => data?.notes ?? [], [data]);
-  const groups = useMemo(() => groupByMonth(filterNotes(notes, filter)), [notes, filter]);
+  const [sortBy, setSortBy] = useStickyTab(`metric-notes-sort:${projectId}`, NOTE_SORT_BY, 'start');
+  const [sortDir, setSortDir] = useStickyTab(`metric-notes-sort-dir:${projectId}`, NOTE_SORT_DIR, 'desc');
+  const groups = useMemo(() => groupByMonth(filterNotes(notes, filter), sortBy, sortDir), [notes, filter, sortBy, sortDir]);
   const dimensions = useMemo(() => [...new Set(catalog.metrics.flatMap((m) => m.dimensions.filter((d) => d.type !== 'time').map((d) => d.name)))].sort(), [catalog]);
   const openSlug = params.get(NOTE_PARAM);
   const open = openSlug ? notes.find((n) => n.slug === openSlug) ?? null : null;
@@ -72,6 +76,15 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
         <input type="date" value={filter.end ?? ''} onChange={(e) => set({ end: e.target.value || null })} aria-label="To" className={INPUT} />
         {filtered && <button onClick={() => setFilter(EMPTY)} className="text-[11px] text-gray-400 hover:text-gray-200">Clear</button>}
         <div className="flex-1" />
+        <span className="text-[11px] text-gray-500">Sort by</span>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as NoteSortBy)} aria-label="Sort by" className={INPUT}>
+          {NOTE_SORT_BY.map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
+        </select>
+        <button onClick={() => setSortDir(sortDir === 'desc' ? 'asc' : 'desc')}
+          title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'} aria-label={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
+          className="p-1 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800">
+          {sortDir === 'desc' ? <ArrowDownWideNarrow className="w-3.5 h-3.5" /> : <ArrowUpNarrowWide className="w-3.5 h-3.5" />}
+        </button>
         {data && <span className="text-[10px] text-gray-500" title="Notes are Markdown files in the project, shared through git">{data.folder}/</span>}
         <button onClick={() => addMetricNote({ kind: 'metric', metric: filter.metric })}
           className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-brand-600 text-white hover:bg-brand-500">

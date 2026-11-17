@@ -47,7 +47,7 @@ Hover a pin for the titles; click it to read the note (or pick one when several 
 
 ## The Notes tab
 
-**Metrics → Notes** lists every note, newest first, grouped by month. Filter by text, metric,
+**Metrics → Notes** lists every note, grouped by month. Sort by start date (the default), end date or date added, newest or oldest first (the arrow button); the choice is remembered per project. Filter by text, metric,
 dimension or dates. Open one to read it, **Edit** it, **Open file** in Files, or **Delete** it
 (deleting offers to remove the screenshots only that note uses). A metric or dimension that's no
 longer in the semantic layer shows a warning on the note rather than breaking it.

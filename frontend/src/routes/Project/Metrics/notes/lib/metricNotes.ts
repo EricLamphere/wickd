@@ -277,15 +277,38 @@ export function filterNotes<T extends MetricNoteDto>(notes: readonly T[], f: Not
   });
 }
 
-/** Newest first (by start), grouped by the month a note starts in; unreadable files last. */
-export function groupByMonth<T extends MetricNoteDto>(notes: readonly T[]): { key: string; label: string; notes: T[] }[] {
-  const sorted = [...notes].sort((a, b) => (b.start ?? '').localeCompare(a.start ?? '') || a.title.localeCompare(b.title));
+export type NoteSortBy = 'added' | 'start' | 'end';
+export type NoteSortDir = 'desc' | 'asc';
+export const NOTE_SORT_BY: readonly NoteSortBy[] = ['added', 'start', 'end'];
+export const NOTE_SORT_DIR: readonly NoteSortDir[] = ['desc', 'asc'];
+
+/** The date a note sorts and groups by: added = `created`, else the file's last change. */
+export function noteSortDate(n: MetricNoteDto, by: NoteSortBy): string | null {
+  if (by === 'added') return n.created ?? n.modified_at;
+  return by === 'start' ? n.start : n.end;
+}
+
+/**
+ * Sorted by the chosen date (newest first by default), grouped by that date's month; notes
+ * without one (unreadable files, or no added date) last.
+ */
+export function groupByMonth<T extends MetricNoteDto>(
+  notes: readonly T[], by: NoteSortBy = 'start', dir: NoteSortDir = 'desc',
+): { key: string; label: string; notes: T[] }[] {
+  const sign = dir === 'desc' ? -1 : 1;
+  const sorted = [...notes].sort((a, b) => {
+    const da = noteSortDate(a, by);
+    const db = noteSortDate(b, by);
+    if (!da || !db) return (da ? -1 : 0) + (db ? 1 : 0) || a.title.localeCompare(b.title);
+    return sign * da.localeCompare(db) || a.title.localeCompare(b.title);
+  });
   const groups: { key: string; label: string; notes: T[] }[] = [];
   for (const n of sorted) {
-    const key = n.start ? n.start.slice(0, 7) : 'invalid';
+    const date = noteSortDate(n, by);
+    const key = date ? date.slice(0, 7) : n.error ? 'invalid' : 'undated';
     const last = groups[groups.length - 1];
     if (last?.key === key) last.notes.push(n);
-    else groups.push({ key, label: n.start ? monthLabel(n.start) : "Couldn't be read", notes: [n] });
+    else groups.push({ key, label: date ? monthLabel(date.slice(0, 10)) : n.error ? "Couldn't be read" : 'No date', notes: [n] });
   }
   return groups;
 }

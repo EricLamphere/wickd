@@ -1,4 +1,5 @@
 import { AlertTriangle, ChevronRight } from 'lucide-react';
+import { Fragment } from 'react';
 import type { CheckSummary } from '../../../../lib/api';
 import { relativeTime } from '../../lib/relativeTime';
 import { TONE_DOT, TONE_TEXT, toneFor } from './healthStatus';
@@ -59,18 +60,22 @@ export default function HealthOverview({ projectId, onOpen, onOpenTestGaps }: He
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {cards.map((card) => (
-            <HealthCard
-              key={card.kind}
-              spec={card}
-              check={summary[card.kind]!}
-              starting={starting[card.kind]}
-              startError={runs[card.kind].error}
-              onRun={() => runs[card.kind].mutate(undefined)}
-              onOpen={() => onOpen(card.kind)}
-            />
+            <Fragment key={card.kind}>
+              <HealthCard
+                spec={card}
+                check={summary[card.kind]!}
+                starting={starting[card.kind]}
+                startError={runs[card.kind].error}
+                onRun={() => runs[card.kind].mutate(undefined)}
+                onOpen={() => onOpen(card.kind)}
+              />
+              {/* Packages sits right after Connection */}
+              {card.kind === 'connection' && summary.packages && (
+                <PackagesCard projectId={projectId} check={summary.packages} />
+              )}
+            </Fragment>
           ))}
           {summary.monitors && <MonitorsCard projectId={projectId} check={summary.monitors} />}
-          {summary.packages && <PackagesCard projectId={projectId} check={summary.packages} />}
           <TestGapsCard projectId={projectId} onOpen={onOpenTestGaps} />
         </div>
       )}

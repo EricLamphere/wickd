@@ -15,6 +15,36 @@ function titles(notes: readonly MetricNoteDto[]): string {
   return notes.map((n) => `${n.title} (${rangeText(n.start, n.end)})`).join('\n');
 }
 
+/** A note's title, then its date range (and slice). */
+function NoteSummary({ note }: { note: MetricNoteDto }) {
+  return (
+    <>
+      <span className="flex items-center gap-1.5 text-xs text-gray-200"><StickyNote className="w-3 h-3 shrink-0 text-amber-300" /><span className="truncate">{note.title}</span></span>
+      <span className="pl-[18px] text-[10px] text-gray-500 truncate">
+        {[rangeText(note.start, note.end), note.dimension ? `${note.dimension} = ${note.value}` : null].filter(Boolean).join(' · ')}
+      </span>
+    </>
+  );
+}
+
+/** Hover card for a chart pin: each note's title and range, beside the pointer (above the chart's own tooltip). */
+function NotesHoverCard({ notes, x, y }: { notes: readonly MetricNoteDto[]; x: number; y: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x + 12, top: y + 12 });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setPos({ left: Math.min(x + 12, window.innerWidth - el.offsetWidth - 8), top: Math.min(y + 12, window.innerHeight - el.offsetHeight - 8) });
+  }, [x, y]);
+  return createPortal(
+    <div ref={ref} role="tooltip" style={pos}
+      className="fixed z-[70] max-w-72 flex flex-col gap-1 px-3 py-1.5 bg-surface-elevated border border-gray-700 rounded shadow-xl pointer-events-none">
+      {notes.map((n) => <div key={n.slug} className="flex flex-col min-w-0"><NoteSummary note={n} /></div>)}
+      <span className="text-[10px] text-gray-600">Click to open</span>
+    </div>,
+    document.body,
+  );
+}
+
 /** The notes at a pin, at the pointer; one note opens straight away. */
 export function NotesPopover({ notes, x, y, onClose }: { notes: MetricNoteDto[]; x: number; y: number; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -37,10 +67,7 @@ export function NotesPopover({ notes, x, y, onClose }: { notes: MetricNoteDto[];
       {notes.map((n) => (
         <button key={n.slug} role="menuitem" onClick={() => { onClose(); openMetricNote(n.slug); }}
           className="flex flex-col w-full px-3 py-1.5 text-left hover:bg-gray-800">
-          <span className="flex items-center gap-1.5 text-xs text-gray-200"><StickyNote className="w-3 h-3 shrink-0 text-amber-300" /><span className="truncate">{n.title}</span></span>
-          <span className="pl-[18px] text-[10px] text-gray-500 truncate">
-            {[rangeText(n.start, n.end), n.dimension ? `${n.dimension} = ${n.value}` : null].filter(Boolean).join(' · ')}
-          </span>
+          <NoteSummary note={n} />
         </button>
       ))}
     </div>,
@@ -80,10 +107,14 @@ interface PinViewBox { x?: number; y?: number; width?: number }
 function PinLabel({ viewBox, notes, onOpen }: { viewBox?: PinViewBox; notes: MetricNoteDto[]; onOpen: (notes: MetricNoteDto[], x: number, y: number) => void }) {
   const cx = (viewBox?.x ?? 0) + (viewBox?.width ?? 0) / 2;
   const cy = (viewBox?.y ?? 0) + 6;
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
   return (
     <g style={{ cursor: 'pointer' }} onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onOpen(notes, e.clientX, e.clientY); }}>
-      <title>{titles(notes)}</title>
+      onMouseEnter={(e) => setHover({ x: e.clientX, y: e.clientY })}
+      onMouseMove={(e) => setHover({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setHover(null)}
+      onClick={(e) => { e.stopPropagation(); setHover(null); onOpen(notes, e.clientX, e.clientY); }}>
+      {hover && <NotesHoverCard notes={notes} x={hover.x} y={hover.y} />}
       <circle cx={cx} cy={cy} r={6} fill={NOTE_FILL} stroke="rgb(var(--surface-panel, 24 24 27))" strokeWidth={1.5} />
       {notes.length > 1 && <text x={cx} y={cy + 3} textAnchor="middle" fontSize={8} fontWeight={700} fill="#1c1917">{notes.length}</text>}
     </g>

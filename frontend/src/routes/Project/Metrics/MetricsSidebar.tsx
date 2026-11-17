@@ -17,7 +17,7 @@ export const TYPE_CLS: Record<string, string> = {
   simple: 'bg-gray-800 text-gray-400 border-gray-700',
   ratio: 'bg-purple-950/40 text-purple-300 border-purple-900/60',
   cumulative: 'bg-sky-950/40 text-sky-300 border-sky-900/60',
-  derived: 'bg-amber-950/40 text-amber-300 border-amber-900/60',
+  derived: 'bg-emerald-950/40 text-emerald-300 border-emerald-900/60',
   conversion: 'bg-rose-950/40 text-rose-300 border-rose-900/60',
 };
 

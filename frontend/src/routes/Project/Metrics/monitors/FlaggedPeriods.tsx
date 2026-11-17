@@ -58,7 +58,7 @@ export function FlaggedPeriods({ projectId, monitor, slice, flagged, notes, expe
   const mark = async (p: MonitorPointDto) => {
     const result = await onSuppress(slice, p.period, true);
     if (!result || !askForNote(projectId) || covering(p).length) return;
-    noteFor(p, result.expectation_id, `Marked ${p.period} as expected. Write down why, so everyone looking at ${monitor.metric} sees it?`, true);
+    noteFor(p, result.expectation_id, `Marked ${p.period} as expected. Write down why, so everyone looking at ${monitor.metric} sees it.`, true);
   };
 
   const undo = async (p: MonitorPointDto) => {

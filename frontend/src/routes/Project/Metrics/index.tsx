@@ -6,6 +6,7 @@
 // arrival (lib/exploreWidget.ts). Back/forward steps index → page → query.
 // Dashboards tab (?tab=dashboards): metric queries pinned as tiles, YAML files in the project (dashboards/).
 // Monitors tab (?tab=monitors, Pro): metrics watched for anomalies (monitors/).
+// Notes tab (?tab=notes): metric notes, Markdown files in the project (notes/, plan 30).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -18,6 +19,7 @@ import { useOpenInFiles } from '../lib/openInFiles';
 import { useUrlTab } from '../../../lib/useUrlTab';
 import type { MonitorDraft } from './monitors/CreateMonitorDialog';
 import { MonitorsTab } from './monitors/MonitorsTab';
+import { NotesTab } from './notes/NotesTab';
 import { widgetFromQuery, widgetTitle } from './dashboards/dashboardModel';
 import { DashboardsTab } from './dashboards/DashboardsTab';
 import { ProLabel } from '../../../components/ProLabel';
@@ -82,8 +84,8 @@ function MetricsContent({ id }: { id: number }) {
   return <MetricsTabs projectId={id} catalog={catalogQuery.data} />;
 }
 
-const TABS = ['explore', 'dashboards', 'monitors'] as const;
-const TAB_LABELS = { explore: 'Metrics', dashboards: 'Dashboards' } as const;
+const TABS = ['explore', 'dashboards', 'monitors', 'notes'] as const;
+const TAB_LABELS = { explore: 'Metrics', dashboards: 'Dashboards', notes: 'Notes' } as const;
 
 function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: SemanticCatalogDto }) {
   const [tab, setTab] = useUrlTab('tab', TABS, 'explore');
@@ -140,6 +142,7 @@ function MetricsTabs({ projectId, catalog }: { projectId: number; catalog: Seman
             onOpenMetric={openMetricPage} />
         )}
         {tab === 'monitors' && <MonitorsTab projectId={projectId} catalog={catalog} draft={draft} onDraftHandled={() => setDraft(null)} />}
+        {tab === 'notes' && <NotesTab projectId={projectId} catalog={catalog} />}
       </div>
     </div>
   );

@@ -7,7 +7,7 @@
 // items every chart menu shares (chartMenu/useChartExports: View SQL, Open in Workspace,
 // Download PNG / CSV).
 import { useRef, useState } from 'react';
-import { LayoutDashboard, Loader2, Play } from 'lucide-react';
+import { LayoutDashboard, Loader2, Play, StickyNote } from 'lucide-react';
 import type { CatalogMetric, SemanticCatalogDto } from '../../../../lib/semanticApi';
 import type { DashboardWidget, WidgetResultDto } from '../../../../lib/dashboardsApi';
 import { relativeTime } from '../../lib/relativeTime';
@@ -18,6 +18,8 @@ import { BarWidget } from '../dashboards/widgets/BarWidget';
 import { WidgetMenuButton } from '../dashboards/widgets/WidgetMenu';
 import { SummaryWidget } from '../dashboards/widgets/SummaryWidget';
 import { TimeseriesWidget } from '../dashboards/widgets/TimeseriesWidget';
+import { useAddNoteMenu } from '../notes/AddNoteMenu';
+import { addMetricNote } from '../notes/noteEvents';
 import { BREAKDOWN_TOP_N, pageResult, WIDGET_ROLES, type MetricPeriod, type PageRole } from '../lib/metricPage';
 import { compareLabel, currentLabel, rangeLabel } from '../dashboards/periods';
 import { PeriodControl } from './PeriodControl';
@@ -109,9 +111,12 @@ export function MetricCharts({ projectId, catalog, metric, label, period, onPeri
     `${currentLabel(period.current)}${data.queries.current ? ` (${rangeLabel(data.queries.current)})` : ''}`,
     data.queries.previous ? `vs ${compareLabel(period.compare).toLowerCase()} (${rangeLabel(data.queries.previous)})` : null,
   ].filter(Boolean).join(' ');
+  const noteMenu = useAddNoteMenu();
   const menu = (id: string, chart: string, w: DashboardWidget, r: WidgetResultDto | null) => (
     <WidgetMenuButton items={[
       { label: 'Add to dashboard', icon: <LayoutDashboard className="w-3.5 h-3.5" />, onClick: () => setAdding(w) },
+      { label: 'Add note…', icon: <StickyNote className="w-3.5 h-3.5" />,
+        onClick: () => addMetricNote({ kind: 'metric', metric: metric.name, range: r?.current ?? null }) },
       saveQuery.item(r),
       ...exports.items({
         result: r, element: () => cards.current[id] ?? null, title: `${label} — ${chart}`, name: [metric.name, chart],
@@ -140,7 +145,9 @@ export function MetricCharts({ projectId, catalog, metric, label, period, onPeri
         <Card id="over-time" cardRef={cardRef('over-time')} title="Over time" className="lg:col-span-2"
           menu={menu('over-time', 'Over time', overTimeWidget, overTime)}>
           <ChartState loading={loading} running={data.running} error={error} result={overTime}>
-            {(r) => <TimeseriesWidget result={r} labels={labels} height={CHART_PX} format={{}} widget={overTimeWidget} />}
+            {(r) => <TimeseriesWidget result={r} labels={labels} height={CHART_PX} format={{}} widget={overTimeWidget}
+              onMenu={(pick, x, y) => noteMenu.openAt(x, y, `${label} · ${pick.range?.start ?? ''}`,
+                { kind: 'metric', metric: metric.name, range: pick.range ?? r.current })} />}
           </ChartState>
         </Card>
         {dimension && barWidget && (
@@ -162,6 +169,7 @@ export function MetricCharts({ projectId, catalog, metric, label, period, onPeri
       )}
       {exports.modal}
       {saveQuery.modal}
+      {noteMenu.menu}
     </section>
   );
 }

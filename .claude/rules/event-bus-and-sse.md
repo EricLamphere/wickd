@@ -104,6 +104,8 @@ Use `sse_response_with_replay` for PTY sessions (both `init:{session_id}` and `t
 | `data_diff_finished` | project | `data_diff/job.py` — includes `snapshot_ids`, `ok`, `counts` (done/error/different) or `cancelled: true` |
 | `dashboards_changed` | project | `api/dashboards.py` (create/save/delete/exposure) and `watcher/service.py` (a `.yml` in the project's DASHBOARDS_PATH changed on disk) — includes `slug` |
 | `docs_pages_changed` | project + global | `watcher/service.py` — a Markdown page (`.md`/`.markdown`) or image in the project's docs folder (DOCS_PATH, or `docs/` in the project or repo root) changed on disk; includes `paths` (relative to the folder). Also published on the global stream with `project_id` added, for the home page's combined docs Pages tab (`routes/Home/CombinedPages.tsx`). A shared docs folder (WICKD_SHARED_DOCS_PATHS) changing publishes only on the global stream, with `shared_folder` (its id) instead of `project_id` |
+| `metric_notes_changed` | project | `api/metric_notes.py` (create/save/delete) and `watcher/service.py` (a `.md` file in the project's NOTES_PATH changed on disk) — includes `slug` |
+| `metric_monitor_expectations_changed` | project | `api/monitor_expectations.py` `publish_changed()` — from POST …/points/suppress (mark/undo) and PATCH …/expectations/{id} (link a note); includes `expectation_id` (null on undo) |
 | `charts_changed` | project | `watcher/service.py` — a board file under `charts/` (YAML / Markdown) or `dbt_charts.yml` changed on disk |
 | `charts_build_started` | project | `api/charts.py` — a static dbt Charts board build started; includes `board` |
 | `charts_build_finished` | project | `api/charts.py` — includes `board`, `ok`, `error` |

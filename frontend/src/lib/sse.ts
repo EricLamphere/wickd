@@ -19,7 +19,7 @@ const PROJECT_EVENT_TYPES = [
   'semantic_check_started', 'semantic_check_finished',
   'metric_monitor_started', 'metric_monitor_progress', 'metric_monitor_finished',
   'metric_queries_finished', 'metric_queries_progress',
-  'dashboards_changed',
+  'dashboards_changed', 'metric_notes_changed', 'metric_monitor_expectations_changed',
   'contract_check_started', 'contract_check_progress', 'contract_check_finished',
   'data_diff_started', 'data_diff_progress', 'data_diff_finished',
   'charts_changed', 'charts_build_started', 'charts_build_finished',

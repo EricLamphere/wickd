@@ -7,6 +7,7 @@ import { api, type FileContentDto, type GraphDto, type ModelNode } from '../../.
 import { readStored, writeStored } from '../../../../lib/stickyTab';
 import { useTheme } from '../../../../lib/useTheme';
 import { registerExtractCteAction } from './extractCteAction';
+import { registerMetricNoteAction } from './metricNoteAction';
 import { registerUnitTestAction } from './unitTestAction';
 import { findUnitTestLine } from './unitTestLine';
 
@@ -407,6 +408,8 @@ export function ViewPane({
 
               // YAML cursor tracking: when cursor moves, find which test block it's in
               const isYamlFile = openFile.path.endsWith('.yml') || openFile.path.endsWith('.yaml');
+              // "Add metric note…" (plan 30) for the metric under the cursor in YAML files
+              const noteAction = isYamlFile ? registerMetricNoteAction(editor) : null;
               const cursorDisposable = editor.onDidChangeCursorPosition((e) => {
                 if (!onTestSelectedRef.current) return;
                 if (!isYamlFile) return;
@@ -754,6 +757,7 @@ export function ViewPane({
                 cursorDisposable.dispose();
                 extractAction?.dispose();
                 unitTestAction?.dispose();
+                noteAction?.dispose();
                 decorations.clear();
                 editorRef.current = null;
               };

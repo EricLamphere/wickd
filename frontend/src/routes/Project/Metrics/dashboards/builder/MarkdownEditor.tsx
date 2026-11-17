@@ -1,7 +1,8 @@
 // The text widget's editor: a Markdown textarea with a formatting toolbar and shortcuts
 // (⌘B bold, ⌘I italic, ⌘⇧X strikethrough, ⌘E code, ⌘K link, Tab / ⇧Tab indent, Enter continues
-// a list). Edits go through the browser's insertText command, so ⌘Z undoes them.
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+// a list). Edits go through the browser's insertText command, so ⌘Z undoes them. With `onImages`
+// (metric notes), pasting or dropping images uploads them and inserts their Markdown at the cursor.
+import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Bold, Code, Heading1, Heading2, Heading3, Italic, Link, List, ListChecks, ListOrdered, Quote, Strikethrough } from 'lucide-react';
 import {
   continueList, indentLines, insertLink, toggleLineFormat, toggleWrap, type LineFormat, type TextEdit,
@@ -52,8 +53,50 @@ function apply(el: HTMLTextAreaElement, edit: TextEdit, onChange: (text: string)
   requestAnimationFrame(() => el.setSelectionRange(edit.start, edit.end));
 }
 
-export function MarkdownEditor({ value, onChange }: { value: string; onChange: (text: string) => void }) {
+interface EditorProps {
+  value: string;
+  onChange: (text: string) => void;
+  rows?: number;
+  /** pasted or dropped images → the Markdown to insert for them (uploads them first) */
+  onImages?: (files: File[]) => Promise<string>;
+  placeholder?: string;
+}
+
+const imagesIn = (list: FileList | null | undefined): File[] => Array.from(list ?? []).filter((f) => f.type.startsWith('image/'));
+
+export function MarkdownEditor({ value, onChange, rows = 10, onImages, placeholder }: EditorProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const insertImages = async (files: File[]) => {
+    const el = ref.current;
+    if (!el || !onImages || !files.length) return;
+    const at = { start: el.selectionStart, end: el.selectionEnd };
+    setUploading(true);
+    try {
+      const md = await onImages(files);
+      if (!md) return;
+      const text = el.value;
+      const before = at.start > 0 && text[at.start - 1] !== '\n' ? '\n' : '';
+      const insert = `${before}${md}\n`;
+      const cursor = at.start + insert.length;
+      apply(el, { text: text.slice(0, at.start) + insert + text.slice(at.end), start: cursor, end: cursor }, onChange);
+    } finally {
+      setUploading(false);
+    }
+  };
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = imagesIn(e.clipboardData?.files);
+    if (!onImages || !files.length) return;
+    e.preventDefault();
+    void insertImages(files);
+  };
+  const onDrop = (e: DragEvent<HTMLTextAreaElement>) => {
+    const files = imagesIn(e.dataTransfer?.files);
+    if (!onImages || !files.length) return;
+    e.preventDefault();
+    e.stopPropagation();
+    void insertImages(files);
+  };
   const run = (command: Command) => {
     const el = ref.current;
     if (!el) return false;
@@ -89,9 +132,11 @@ export function MarkdownEditor({ value, onChange }: { value: string; onChange: (
             </button>
           ))}
       </div>
-      <textarea ref={ref} value={value} rows={10} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
-        aria-label="Text" spellCheck data-keyboard-owner=""
+      <textarea ref={ref} value={value} rows={rows} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
+        onPaste={onPaste} onDrop={onDrop} onDragOver={(e) => { if (onImages && e.dataTransfer?.types.includes('Files')) e.preventDefault(); }}
+        aria-label="Text" spellCheck data-keyboard-owner="" placeholder={placeholder}
         className="w-full px-2 py-1 bg-transparent text-xs text-gray-200 font-mono leading-5 outline-none resize-y" />
+      {uploading && <p className="px-2 py-1 text-[10px] text-gray-500 border-t border-gray-800">Adding image…</p>}
     </div>
   );
 }

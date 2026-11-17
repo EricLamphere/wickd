@@ -867,6 +867,29 @@ async def run_migrations() -> None:
                 "ALTER TABLE metric_monitors ADD COLUMN algorithm_config_json TEXT NOT NULL DEFAULT '{}'"
             ))
             await session.commit()
+        # plan 30: the Marked as expected log (outlives the points, which are trimmed to the lookback)
+        if not await _table_exists(session, "metric_monitor_expectations"):
+            await session.execute(text(
+                "CREATE TABLE metric_monitor_expectations ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "monitor_id INTEGER NOT NULL REFERENCES metric_monitors(id) ON DELETE CASCADE, "
+                "target TEXT NOT NULL DEFAULT '', "
+                "slice TEXT NOT NULL DEFAULT '', "
+                "period VARCHAR(10) NOT NULL, "
+                "metric TEXT NOT NULL DEFAULT '', "
+                "dimension TEXT, "
+                "value FLOAT, "
+                "expected FLOAT, "
+                "kind VARCHAR(32) NOT NULL DEFAULT '', "
+                "note_slug VARCHAR(80), "
+                "marked_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+                "CONSTRAINT uq_metric_monitor_expectation UNIQUE (monitor_id, target, slice, period))"
+            ))
+            await session.commit()
+            await session.execute(text(
+                "CREATE INDEX ix_metric_monitor_expectations_monitor_id ON metric_monitor_expectations (monitor_id)"
+            ))
+            await session.commit()
 
 async def init_db() -> None:
     await ensure_db_initialized()

@@ -7,6 +7,23 @@
     ],
     "prepare": [
       {
+        "api": {
+          "method": "POST",
+          "path": "/api/projects/{pid:duckdb_dbt}/metric-notes",
+          "body": {
+            "title": "Mid-month promo email",
+            "start": "2026-10-14",
+            "end": "2026-10-16",
+            "metrics": [
+              "sessions"
+            ],
+            "dimension": null,
+            "value": null,
+            "body": "The 20% off email went to the full list on Oct 14, and sessions ran high for three days.\n\nExpect the same lift for the November send."
+          }
+        }
+      },
+      {
         "goto": "/projects/{pid:duckdb_dbt}/health"
       },
       {
@@ -309,9 +326,10 @@
     {
       "name": "metric_dashboard",
       "tier": "base",
-      "caption": "Metric dashboards — a drag-and-drop builder over YAML files in your project",
+      "caption": "Metric dashboards — a drag-and-drop builder over YAML files in your project, with metric notes on the charts they explain",
       "features": [
-        "Metric dashboards"
+        "Metric dashboards",
+        "Metric notes"
       ],
       "steps": [
         {
@@ -336,7 +354,7 @@
         }
       ],
       "label": "Metric dashboards",
-      "alt": "wickd dashboard builder with metrics on the left, widgets on the right and charts on the canvas",
+      "alt": "wickd dashboard builder with metrics on the left, widgets on the right and charts on the canvas, one shaded by a metric note",
       "site": {
         "gallery": "main"
       }

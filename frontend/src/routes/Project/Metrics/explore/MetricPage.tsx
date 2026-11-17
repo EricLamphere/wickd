@@ -6,7 +6,7 @@
 // usage and health.
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Bot, FileCode2, Microscope, Radar } from 'lucide-react';
+import { ArrowLeft, Bot, FileCode2, Microscope, Radar, StickyNote } from 'lucide-react';
 import type { CatalogMetric, SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { ProFeatureButton } from '../../../../components/ProFeatureButton';
 import { useOpenInFiles } from '../../lib/openInFiles';
@@ -17,6 +17,7 @@ import { chartQueries, metricIssues, metricLineage, metricUsage, type MetricPeri
 import { emptyExploreWidget } from '../lib/exploreWidget';
 import type { DashboardWidget } from '../../../../lib/dashboardsApi';
 import { MetricCharts } from './MetricCharts';
+import { addMetricNote } from '../notes/noteEvents';
 import { MetricFacts } from './MetricFacts';
 import { DimensionsSection, HealthSection, LineageSection, UsageSection } from './MetricPageSections';
 import { useMetricContext } from './useMetricPages';
@@ -83,6 +84,8 @@ export function MetricPage({ projectId, catalog, metric, period, onPeriod, onInd
           {uid && node?.original_file_path && (
             <button onClick={() => openFile(uid)} className={BTN} title="Open its YAML in Files"><FileCode2 className="w-3.5 h-3.5" />YAML</button>
           )}
+          <button onClick={() => addMetricNote({ kind: 'metric', metric: metric.name })} className={BTN}
+            title="Write down why this metric moved, for everyone who looks at it"><StickyNote className="w-3.5 h-3.5" />Add note</button>
           {/* Pro actions, together after the rest */}
           <span className="w-px h-5 mx-1 bg-gray-800" aria-hidden="true" />
           <ProFeatureButton title="Watch it for anomalies (Pro)"

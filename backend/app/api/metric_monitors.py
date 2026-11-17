@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.monitor_expectations import publish_changed as publish_expectations_changed
 from app.api.semantic import _http_error, _project, _require_available, _semantic_http
 from app.db.engine import get_session
 from app.db.models import MetricMonitor, MetricMonitorRun, ProjectEnvVar
@@ -23,8 +24,10 @@ from app.logging_setup import get_logger
 from app.scheduling import cron
 from app.semantic import anomaly, monitor_points, monitors, service
 from app.semantic import monitor_algorithms as algos
+from app.semantic import monitor_expectations as expectations
 from app.semantic import monitor_queries as mq
 from app.semantic import monitor_schedule as ms
+from app.semantic.notes import SLUG_PATTERN
 from app.semantic.runtime import RuntimeUnavailable
 
 router = APIRouter(prefix="/api/projects", tags=["metric-monitors"])
@@ -67,6 +70,8 @@ class SuppressDto(BaseModel):
     slice: str = Field(default=mq.UNSLICED, max_length=500)
     period: Period
     suppressed: bool = True
+    # link the metric note written about it (plan 30); later links: PATCH …/expectations/{id}
+    note_slug: Annotated[str, StringConstraints(pattern=SLUG_PATTERN)] | None = None
 
 
 class OrderDto(BaseModel):
@@ -422,14 +427,36 @@ async def suppress(
     project_id: int, monitor_id: int, dto: SuppressDto, target: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Mark a period as expected (or not): it's no longer flagged nor used in baselines."""
+    """Mark a period as expected (or not): it's no longer flagged nor used in baselines.
+    Marking also writes the Marked as expected log row (what detection said about the period
+    before it was marked); undoing removes it (a linked note, a file, stays)."""
     await _project(session, project_id)
     await _gate(session)
     m = await _monitor(session, project_id, monitor_id)
     target_name = target if target is not None else (m.target or await _active_target(session, project_id))
+    point = await _detected_point(m, target_name, dto.slice, dto.period, session) if dto.suppressed else None
     if not await monitor_points.set_suppressed(
         session, m.id, target_name, dto.slice, dto.period, dto.suppressed, grain=m.grain
     ):
         raise HTTPException(status_code=404, detail="no stored value for that period")
+    expectation_id = None
+    if dto.suppressed:
+        row = await expectations.record(session, m, target_name, dto.slice, dto.period, point, dto.note_slug)
+        expectation_id = row.id
+    else:
+        await expectations.remove(session, m.id, target_name, dto.slice, dto.period)
     await session.commit()
-    return {"ok": True}
+    await publish_expectations_changed(project_id, expectation_id)
+    return {"ok": True, "expectation_id": expectation_id}
+
+
+async def _detected_point(m: MetricMonitor, target: str, slice_: str, period: str, session: AsyncSession) -> dict | None:
+    """What detection says about `period` now (value, expected, kind), for the log; None when
+    the algorithm can't run."""
+    since = mq.window_start(date.today(), m.grain, m.lookback, has_history=False).isoformat()
+    stored = await monitor_points.series(session, m.id, target, slice_, since)
+    try:
+        detected = monitors.detect_for(monitors.spec_of(m), stored, previous=None, today=date.today())
+    except anomaly.AnomalyUnavailable:
+        return None
+    return expectations.detected_point(detected["points"], period)

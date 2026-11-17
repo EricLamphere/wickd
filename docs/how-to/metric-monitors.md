@@ -86,6 +86,8 @@ baselines. This works for missing periods too (no data at all). **Undo** flags i
 Because a marked period is left out of the baseline, marking or undoing one can change the
 expected values, normal range and scores of other periods in the chart and stored history.
 
+Marking a period also offers to write a [metric note](metric-notes.md#mark-as-expected--note-pro) about it, and every marked period is listed under **Marked as expected** on the Monitors tab, with its note.
+
 ## When monitors are checked
 
 - **After a build:** a successful `run` or `build` that includes a model upstream of a

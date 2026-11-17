@@ -1,11 +1,13 @@
 // Left column of the Metrics page: metrics grouped by semantic model, then saved queries.
+// Right-click a metric: Open YAML, Add note… (plan 30).
 import { useMemo } from 'react';
-import { Bookmark, LayoutGrid, Pencil } from 'lucide-react';
+import { Bookmark, FileCode2, LayoutGrid, Pencil } from 'lucide-react';
 import type { CatalogMetric, CatalogSavedQuery, SemanticCatalogDto } from '../../../lib/semanticApi';
 import { OPEN_IN_FILES_TITLE, isOpenInFilesClick } from '../lib/openInFiles';
 import { filterMetrics, filterSavedQueries } from './lib/sidebarFilter';
 import { MetricFilterBar, useMetricFilter } from './MetricFilterBar';
 import { RailHandle, useRailWidth, type RailSpec } from './dashboards/builder/RailResize';
+import { useAddNoteMenu } from './notes/AddNoteMenu';
 
 /** Drag the sidebar's right edge to widen it (double-click resets); remembered across sessions. */
 const SIDEBAR_RAIL: RailSpec = { key: 'wickd:metrics-sidebar-width', side: 'left', initial: 256, min: 200, max: 560 };
@@ -48,10 +50,12 @@ export function MetricsSidebar({ catalog, selected, savedQuery, onSelectMetric, 
   const metrics = useMemo(() => filterMetrics(catalog.metrics, filter), [catalog.metrics, filter]);
   const saved = useMemo(() => filterSavedQueries(catalog.saved_queries, catalog.metrics, filter), [catalog.saved_queries, catalog.metrics, filter]);
   const rail = useRailWidth(SIDEBAR_RAIL);
+  const noteMenu = useAddNoteMenu();
 
   return (
     <aside style={{ width: rail.width }} className="relative flex flex-col shrink-0 border-r border-gray-800 bg-surface-panel min-h-0">
       <RailHandle side="left" onPointerDown={rail.onPointerDown} onReset={rail.reset} />
+      {noteMenu.menu}
       <button onClick={onShowIndex} className={`flex items-center gap-2 mx-2 mt-2 px-2 py-1.5 text-xs rounded text-left ${
         indexActive ? 'bg-brand-950/40 text-brand-200' : 'text-gray-300 hover:bg-gray-800/60'}`}>
         <LayoutGrid className="w-3.5 h-3.5" />All metrics
@@ -67,6 +71,8 @@ export function MetricsSidebar({ catalog, selected, savedQuery, onSelectMetric, 
                 <button
                   key={m.name}
                   onClick={(e) => (isOpenInFilesClick(e) && onOpenYaml ? onOpenYaml(m.name) : onSelectMetric(m.name))}
+                  onContextMenu={(e) => noteMenu.open(e, m.label || m.name, { kind: 'metric', metric: m.name },
+                    onOpenYaml ? [{ label: 'Open YAML', icon: <FileCode2 className="w-3.5 h-3.5" />, run: () => onOpenYaml(m.name) }] : [])}
                   aria-current={on ? 'page' : undefined}
                   title={[m.description, onOpenYaml ? OPEN_IN_FILES_TITLE : ''].filter(Boolean).join('\n')}
                   className={`flex items-center gap-2 w-full px-3 py-1 text-left text-xs border-l-2 transition-colors ${

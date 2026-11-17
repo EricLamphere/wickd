@@ -187,6 +187,32 @@ export const monitorsApi = {
     put<MonitorScheduleSettings>(`${base(projectId)}/settings`, body),
   series: (projectId: number, id: number, slice: string) =>
     get<MonitorSeriesDto>(`${base(projectId)}/${id}/series?slice=${encodeURIComponent(slice)}`),
-  suppress: (projectId: number, id: number, body: { slice: string; period: string; suppressed: boolean }) =>
-    post<{ ok: boolean }>(`${base(projectId)}/${id}/points/suppress`, body),
+  suppress: (projectId: number, id: number, body: { slice: string; period: string; suppressed: boolean; note_slug?: string | null }) =>
+    post<{ ok: boolean; expectation_id: number | null }>(`${base(projectId)}/${id}/points/suppress`, body),
+  /** the Marked as expected log (plan 30), newest first */
+  expectations: (projectId: number, monitorId?: number) =>
+    get<{ expectations: MonitorExpectationDto[] }>(
+      `${base(projectId)}/expectations${monitorId != null ? `?monitor_id=${monitorId}` : ''}`),
+  linkExpectationNote: (projectId: number, expectationId: number, noteSlug: string | null) =>
+    patch<MonitorExpectationDto>(`${base(projectId)}/expectations/${expectationId}`, { note_slug: noteSlug }),
 };
+
+/** A period someone marked as expected, with what detection said about it then. */
+export interface MonitorExpectationDto {
+  id: number;
+  monitor_id: number;
+  target: string | null;
+  /** the slice's dimension value ('' = unsliced) */
+  slice: string;
+  period: string;
+  metric: string;
+  dimension: string | null;
+  value: number | null;
+  expected: number | null;
+  /** what it was flagged as ('' = not flagged) */
+  kind: PointKind | '';
+  note_slug: string | null;
+  /** the linked note's file is gone (deleted or renamed outside wickd) */
+  note_missing: boolean;
+  marked_at: string | null;
+}

@@ -1,11 +1,11 @@
 // Right-click menu on a value (a bar, a stacked bar segment, a Top N row, a table row, a time
 // series' periods): show it over time in the widget (a time series zooms on its periods instead),
 // apply it as a dashboard filter (periods become the dashboard's date range), drill into it
-// (InspectDialog), or open the explorer filtered to it. Rendered on document.body
+// (InspectDialog), open the explorer filtered to it, or add a metric note about it. Rendered on document.body
 // at the pointer, kept inside the window.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CalendarRange, Filter, LineChart, Microscope, Search, ZoomIn } from 'lucide-react';
+import { CalendarRange, Filter, LineChart, Microscope, Search, StickyNote, ZoomIn } from 'lucide-react';
 import { isRangeOnly, pickDescription, pickLabel, type Pick } from '../drill';
 
 export interface ValueActions {
@@ -13,6 +13,8 @@ export interface ValueActions {
   onApplyFilter: (pick: Pick) => void;
   onInspect: (pick: Pick) => void;
   onOpenInExplorer: (pick: Pick) => void;
+  /** a metric note prefilled with the value and its period (plan 30) */
+  onAddNote?: (pick: Pick) => void;
 }
 
 export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: number; y: number; actions: ValueActions; onClose: () => void }) {
@@ -41,6 +43,7 @@ export function ValueMenu({ pick, x, y, actions, onClose }: { pick: Pick; x: num
       icon: range ? <CalendarRange className="w-3.5 h-3.5" /> : <Filter className="w-3.5 h-3.5" />, run: actions.onApplyFilter },
     { label: `Drill into ${label}`, icon: <Search className="w-3.5 h-3.5" />, run: actions.onInspect },
     { label: 'Investigate', icon: <Microscope className="w-3.5 h-3.5" />, run: actions.onOpenInExplorer },
+    ...(actions.onAddNote ? [{ label: 'Add note…', icon: <StickyNote className="w-3.5 h-3.5" />, run: actions.onAddNote }] : []),
   ];
   return createPortal(
     <div ref={ref} role="menu" aria-label={`Actions for ${label}`} style={pos} onContextMenu={(e) => e.preventDefault()}

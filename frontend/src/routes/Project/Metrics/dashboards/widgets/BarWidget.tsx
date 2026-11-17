@@ -7,6 +7,9 @@
 // bar's value alone. The picked bar or segment stays bright.
 import { useRef, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { sameDimension } from '../../notes/lib/metricNotes';
+import { widgetNoteContext } from '../../notes/lib/widgetNotes';
+import { useMatchingNotes } from '../../notes/useNotes';
 import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import { categories, formatMetric, opt, separateCharts, type MetricFormat } from '../dashboardModel';
 import type { Pick } from '../drill';
@@ -50,7 +53,26 @@ function tooltipRows(data: Shaped, row: Record<string, unknown>, segment: BarSer
   ];
 }
 
-function Chart({ data, height, horizontal, format, toPick, onPick, onMenu, selected, isBright }: {
+const NOTE_TICK = 'rgb(251 191 36)';
+const shortLabel = (v: string) => (v.length > 14 ? `${v.slice(0, 13)}…` : v);
+
+/** A category tick; a value a metric note is about gets a pin dot and the note color (plan 30). */
+function CategoryTick({ x = 0, y = 0, payload, textAnchor, noted, horizontal }: {
+  x?: number; y?: number; payload?: { value?: unknown }; textAnchor?: string; noted: Set<string>; horizontal: boolean;
+}) {
+  const value = String(payload?.value ?? '');
+  const on = noted.has(value.toLowerCase());
+  const anchor = (textAnchor as 'start' | 'middle' | 'end' | undefined) ?? (horizontal ? 'end' : 'middle');
+  return (
+    <text x={x} y={y} dy={horizontal ? 4 : 12} textAnchor={anchor} fontSize={AXIS_TICK.fontSize} fill={on ? NOTE_TICK : AXIS_TICK.fill}>
+      {on && <title>A metric note is about {value}</title>}
+      {on ? '● ' : ''}{shortLabel(value)}
+    </text>
+  );
+}
+
+function Chart({ data, height, horizontal, format, toPick, onPick, onMenu, selected, isBright, noted }: {
+  noted: Set<string>;
   data: Shaped; height: number; horizontal: boolean; format: MetricFormat;
   /** the bar `x`, narrowed to a stacked segment's value when the pointer is on one */
   toPick: (x: string, stack: string | null) => Pick;
@@ -70,8 +92,8 @@ function Chart({ data, height, horizontal, format, toPick, onPick, onMenu, selec
     return x === null ? null : toPick(x, segment.current?.stack ?? null);
   };
   const valueAxis = { tick: AXIS_TICK, tickFormatter: (v: number) => formatMetric(v, format, true), stroke: GRID };
-  const catAxis = { dataKey: 'x', type: 'category' as const, tick: AXIS_TICK, stroke: GRID,
-    tickFormatter: (v: string) => (v.length > 14 ? `${v.slice(0, 13)}…` : v) };
+  const catAxis = { dataKey: 'x', type: 'category' as const, stroke: GRID,
+    tick: (props: object) => <CategoryTick {...props} noted={noted} horizontal={horizontal} /> };
   const interactive = !!(onPick || onMenu);
   return (
     <div className="flex flex-col gap-1 min-w-0" data-export-series={exportSeries('category', data.rows.map((r) => String(r.x)),
@@ -126,7 +148,10 @@ export function BarWidget({ widget, result, labels, height, format, onPick, onMe
     values: [{ dimension, value: x }, ...(stackBy && stack !== null ? [{ dimension: stackBy, value: stack }] : [])],
   });
   const isBright = (x: string, stack: string | undefined) => isPicked(selected, dimension, stackBy, x, stack);
-  const chartProps = { horizontal: opt<string>(widget, 'orientation', 'vertical') === 'horizontal', format, toPick, onPick, onMenu, selected, isBright };
+  // values of the bar dimension a metric note is about (their ticks get a pin)
+  const notes = useMatchingNotes(widgetNoteContext(widget, result));
+  const noted = new Set(notes.filter((n) => n.dimension && dimension && sameDimension(n.dimension, dimension)).map((n) => String(n.value ?? '').toLowerCase()));
+  const chartProps = { horizontal: opt<string>(widget, 'orientation', 'vertical') === 'horizontal', format, toPick, onPick, onMenu, selected, isBright, noted };
   const maxima = metrics.map((m) => Math.max(0, ...categories(result.queries.current, null, dimension, m).map((c) => Math.abs(c.value ?? 0))));
   // stacked: one chart per metric (several metrics' stacks side by side would share colors)
   const separate = stackBy ? metrics.length > 1 : separateCharts(maxima, opt(widget, 'layout', 'auto'));

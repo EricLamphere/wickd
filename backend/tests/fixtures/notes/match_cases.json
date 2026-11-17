@@ -1,0 +1,28 @@
+{
+  "_comment": "Shared by tests/test_metric_notes.py and frontend/src/routes/Project/Metrics/notes/lib/metricNotes.test.ts so noteMatches() and matches() agree.",
+  "notes": {
+    "rev_eu": {"start": "2026-11-03", "end": "2026-11-04", "metrics": ["revenue"], "dimension": "order__region", "value": "EU"},
+    "rev": {"start": "2026-11-03", "end": "2026-11-03", "metrics": ["revenue"], "dimension": null, "value": null},
+    "company": {"start": "2026-11-10", "end": "2026-11-12", "metrics": [], "dimension": null, "value": null},
+    "eu_only": {"start": "2026-11-03", "end": "2026-11-03", "metrics": [], "dimension": "region", "value": "EU"},
+    "two": {"start": "2026-11-01", "end": "2026-11-30", "metrics": ["revenue", "orders"], "dimension": null, "value": null}
+  },
+  "cases": [
+    {"name": "overlap inside", "note": "rev", "ctx": {"start": "2026-11-01", "end": "2026-11-30", "metric": "revenue"}, "expect": true},
+    {"name": "touching start edge", "note": "rev_eu", "ctx": {"start": "2026-11-04", "end": "2026-11-10", "metric": "revenue"}, "expect": true},
+    {"name": "touching end edge", "note": "rev_eu", "ctx": {"start": "2026-10-01", "end": "2026-11-03", "metric": "revenue"}, "expect": true},
+    {"name": "before the range", "note": "rev", "ctx": {"start": "2026-11-04", "end": "2026-11-10", "metric": "revenue"}, "expect": false},
+    {"name": "after the range", "note": "rev", "ctx": {"start": "2026-10-01", "end": "2026-11-02", "metric": "revenue"}, "expect": false},
+    {"name": "other metric", "note": "rev", "ctx": {"start": "2026-11-01", "end": "2026-11-30", "metric": "orders"}, "expect": false},
+    {"name": "no metric in context", "note": "rev", "ctx": {"start": "2026-11-01", "end": "2026-11-30"}, "expect": true},
+    {"name": "note without metric applies to any", "note": "company", "ctx": {"start": "2026-11-12", "end": "2026-11-20", "metric": "orders"}, "expect": true},
+    {"name": "several metrics", "note": "two", "ctx": {"start": "2026-11-05", "end": "2026-11-05", "metric": "orders"}, "expect": true},
+    {"name": "dimension pinned to same value", "note": "rev_eu", "ctx": {"start": "2026-11-01", "end": "2026-11-30", "metric": "revenue", "dims": {"order__region": "eu"}}, "expect": true},
+    {"name": "dimension pinned to other value", "note": "rev_eu", "ctx": {"start": "2026-11-01", "end": "2026-11-30", "metric": "revenue", "dims": {"order__region": "US"}}, "expect": false},
+    {"name": "short and qualified dimension names", "note": "rev_eu", "ctx": {"start": "2026-11-01", "end": "2026-11-30", "metric": "revenue", "dims": {"region": "US"}}, "expect": false},
+    {"name": "dimension unpinned", "note": "rev_eu", "ctx": {"start": "2026-11-01", "end": "2026-11-30", "metric": "revenue", "dims": {"order__channel": "web"}}, "expect": true},
+    {"name": "dimension-only note, metric has it", "note": "eu_only", "ctx": {"start": "2026-11-03", "end": "2026-11-03", "metric": "orders", "metric_dimensions": ["customer__region", "metric_time"]}, "expect": true},
+    {"name": "dimension-only note, metric lacks it", "note": "eu_only", "ctx": {"start": "2026-11-03", "end": "2026-11-03", "metric": "orders", "metric_dimensions": ["order__channel"]}, "expect": false},
+    {"name": "dimension-only note, dimensions unknown", "note": "eu_only", "ctx": {"start": "2026-11-03", "end": "2026-11-03", "metric": "orders"}, "expect": true}
+  ]
+}

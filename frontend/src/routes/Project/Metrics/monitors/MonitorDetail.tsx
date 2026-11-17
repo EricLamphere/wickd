@@ -1,7 +1,8 @@
 // One monitor: the history chart with its expected band, flagged periods (mark as
-// expected), restated periods, every stored point, and the monitor's settings.
-import { useState } from 'react';
-import { ArrowLeft, Check, RotateCcw, Trash2 } from 'lucide-react';
+// expected, with metric notes), restated periods, every stored point, and the monitor's settings.
+// Notes covering its periods are bands on the chart; right-click a period to add one (plan 30).
+import { useMemo, useState } from 'react';
+import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
 import { DataTable } from '../../../../components/DataTable';
 import { Switch } from '../../../../components/Switch';
 import { confirmDialog } from '../../../../lib/dialogs';
@@ -9,8 +10,13 @@ import type { MonitorDto, MonitorListDto, MonitorPatchBody, MonitorPointDto } fr
 import { AlgorithmFields, type AlgorithmValue } from './AlgorithmFields';
 import { configProblem } from './algorithms';
 import { MonitorChart } from './MonitorChart';
+import { FlaggedPeriods, type SuppressResult } from './FlaggedPeriods';
+import { useExpectations } from './useExpectations';
+import { useAddNoteMenu } from '../notes/AddNoteMenu';
+import { notesFor, periodEnd } from '../notes/lib/metricNotes';
+import { useProjectNotes } from '../notes/useNotes';
 import { MonitorScheduleSetting } from './ScheduleControls';
-import { clampBand, formatNumber, KIND_LABEL, kindTone, monitorTitle, statusStyle } from './monitorView';
+import { clampBand, formatNumber, KIND_LABEL, monitorTitle, statusStyle } from './monitorView';
 import { errorText, useMonitorSeries } from './useMonitors';
 
 const FIELD_CLS = 'px-2 py-1 bg-surface-app border border-gray-700 rounded text-xs text-gray-200 outline-none focus:border-brand-600';
@@ -29,7 +35,9 @@ interface Props {
   onUpdate: (body: MonitorPatchBody) => Promise<unknown>;
   onDelete: () => void;
   onRefresh: () => void;
-  onSuppress: (slice: string, period: string, suppressed: boolean) => void;
+  onSuppress: (slice: string, period: string, suppressed: boolean) => Promise<SuppressResult>;
+  /** the metric's label, for note titles */
+  label?: string | null;
   /** the last failed action (save, check, mark as expected), if any */
   error: string | null;
 }
@@ -41,12 +49,22 @@ function pointRow(p: MonitorPointDto): unknown[] {
   return [p.period, round(p.value), round(p.expected), round(p.low), round(p.high), round(p.score), flag];
 }
 
-export function MonitorDetail({ projectId, monitor, targets, running, project, onBack, onUpdate, onDelete, onRefresh, onSuppress, error }: Props) {
+export function MonitorDetail({ projectId, monitor, targets, running, project, onBack, onUpdate, onDelete, onRefresh, onSuppress, label = null, error }: Props) {
   const [slice, setSlice] = useState(monitor.latest?.worst_slice ?? (monitor.dimension ? String(monitor.slices[0] ?? '') : ''));
   const series = useMonitorSeries(projectId, monitor.id, slice);
   const data = series.data;
   const style = statusStyle(data?.summary.status, running);
   const flagged = (data?.points ?? []).filter((p) => (p.kind !== 'none' || p.suppressed) && !p.partial).reverse();
+  const expectations = useExpectations(projectId);
+  const allNotes = useProjectNotes();
+  const points = data?.points ?? [];
+  const first = points[0]?.period;
+  const last = points[points.length - 1]?.period;
+  const notes = useMemo(() => (first && last ? notesFor(allNotes, {
+    start: first, end: periodEnd(last, monitor.grain), metrics: [monitor.metric],
+    dims: monitor.dimension && slice ? { [monitor.dimension]: slice } : {},
+  }) : []), [allNotes, first, last, monitor.grain, monitor.metric, monitor.dimension, slice]);
+  const noteMenu = useAddNoteMenu();
 
   const remove = async () => {
     if (await confirmDialog(`Delete the monitor on ${monitor.metric}? Its stored history goes too.`, { confirmLabel: 'Delete', danger: true })) onDelete();
@@ -87,7 +105,11 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
         <p className={`text-xs ${style.text}`}>{data?.summary.headline ?? (series.isLoading ? 'Loading…' : '')}</p>
         {series.error ? <p className="text-xs text-red-400">{errorText(series.error)}</p> : null}
         {monitor.latest?.error && <p className="text-xs text-red-400 break-words">Last refresh failed: {monitor.latest.error}</p>}
-        <MonitorChart points={data?.points ?? []} grain={monitor.grain} />
+        <MonitorChart points={points} grain={monitor.grain} notes={notes}
+          onPeriodMenu={(period, e) => noteMenu.open(e, `${monitor.metric} · ${period}`, {
+            kind: 'period', metric: monitor.metric, period, grain: monitor.grain, dimension: monitor.dimension, value: slice || null,
+          })} />
+        {noteMenu.menu}
         <p className="text-[11px] text-gray-600">
           Shaded: the normal range. Red: anomalies, missing or zero periods and level shifts; amber: warnings and restated values.
           {data?.target ? ` Target ${data.target}.` : ''}
@@ -97,25 +119,8 @@ export function MonitorDetail({ projectId, monitor, targets, running, project, o
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="flex flex-col gap-2">
           <h3 className="text-xs font-medium text-gray-300">Flagged periods</h3>
-          {flagged.length === 0 ? <p className="text-[11px] text-gray-600">Nothing flagged in the stored history.</p> : (
-            <ul className="flex flex-col divide-y divide-gray-800 border border-gray-800 rounded max-h-64 overflow-auto">
-              {flagged.map((p) => (
-                <li key={p.period} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                  <span className="font-mono text-gray-300 w-24 shrink-0">{p.period}</span>
-                  <span className={`flex-1 truncate ${p.suppressed ? 'text-gray-500' : kindTone(p.kind) === 'fail' ? 'text-red-300' : 'text-amber-300'}`}>
-                    {p.suppressed ? 'Marked as expected' : KIND_LABEL[p.kind]} · {formatNumber(p.value)}
-                    {p.expected !== null ? ` vs ~${formatNumber(p.expected)}` : ''}
-                  </span>
-                  <button onClick={() => onSuppress(slice, p.period, !p.suppressed)}
-                    title={p.suppressed ? 'Flag this period again' : 'Not a problem: stop flagging it and leave it out of the baseline (other periods\' expected values may change)'}
-                    className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-gray-700 text-[11px] text-gray-400 hover:text-gray-200">
-                    {p.suppressed ? <RotateCcw className="w-3 h-3" /> : <Check className="w-3 h-3" />}
-                    {p.suppressed ? 'Undo' : 'Mark as expected'}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <FlaggedPeriods projectId={projectId} monitor={monitor} slice={slice} flagged={flagged} notes={notes}
+            expectations={expectations.data?.expectations ?? []} label={label} onSuppress={onSuppress} />
           {flagged.length > 0 && (
             <p className="text-[11px] text-gray-600 leading-relaxed">
               A period marked as expected is left out of the baseline, so the expected values, normal range and

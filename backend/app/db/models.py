@@ -596,6 +596,37 @@ class MetricMonitorPoint(Base):
     )
 
 
+class MetricMonitorExpectation(Base):
+    """A monitor period someone marked as expected (plan 30's Marked as expected log).
+
+    Written with the point's `suppressed` flag and removed on undo, but never trimmed with
+    the points. `value` / `expected` / `kind` are what detection said when it was marked
+    (kind '' = it wasn't flagged); `note_slug` links the metric note written about it.
+    `metric` / `dimension` are copied from the monitor so the entry reads the same later.
+    """
+
+    __tablename__ = "metric_monitor_expectations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    monitor_id: Mapped[int] = mapped_column(
+        ForeignKey("metric_monitors.id", ondelete="CASCADE"), index=True
+    )
+    target: Mapped[str] = mapped_column(Text, default="")
+    slice: Mapped[str] = mapped_column(Text, default="")
+    period: Mapped[str] = mapped_column(String(10))
+    metric: Mapped[str] = mapped_column(Text, default="")
+    dimension: Mapped[str | None] = mapped_column(Text, nullable=True)
+    value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected: Mapped[float | None] = mapped_column(Float, nullable=True)
+    kind: Mapped[str] = mapped_column(String(32), default="")
+    note_slug: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    marked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("monitor_id", "target", "slice", "period", name="uq_metric_monitor_expectation"),
+    )
+
+
 class MetricMonitorRun(Base):
     """One monitor refresh: `trigger` build | manual | interval; results per monitor."""
 

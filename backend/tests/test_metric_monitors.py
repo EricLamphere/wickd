@@ -699,3 +699,55 @@ async def test_reorder_monitors(db, tmp_path, client, worker, shim, entitled, mo
     assert (await client.put(f"{base}/order", json={"ids": [a["id"], a["id"]]})).status_code == 400
     d = (await client.post(base, json={"metric": "order_count", "grain": "week"})).json()
     assert [m["id"] for m in (await client.get(base)).json()["monitors"]][-1] == d["id"]
+
+
+async def test_mark_as_expected_log(db, tmp_path, client, shim, entitled) -> None:
+    """Plan 30: marking writes a log row (detect()'s value / expected / kind); undo removes it;
+    trimming the points keeps it; a linked note whose file is gone reads note_missing."""
+    from app.semantic import monitor_points
+
+    project = await _project(db, tmp_path)
+    m = await _monitor(db, project, dimension="customer__region")
+    for period, value in [("2026-10-01", 5.0), ("2026-10-02", 1500.0)]:
+        db.add(MetricMonitorPoint(monitor_id=m.id, target="", slice="EU", period=period, value=value))
+    await db.commit()
+    base = f"/api/projects/{project.id}/metric-monitors"
+    marked = await client.post(f"{base}/{m.id}/points/suppress", json={"period": "2026-10-02", "slice": "EU"})
+    assert marked.status_code == 200 and marked.json()["expectation_id"]
+    log = (await client.get(f"{base}/expectations")).json()["expectations"]
+    assert len(log) == 1
+    entry = log[0]
+    assert (entry["metric"], entry["dimension"], entry["slice"], entry["period"]) == ("revenue", "customer__region", "EU", "2026-10-02")
+    assert (entry["value"], entry["expected"], entry["kind"]) == (1500.0, 10.0, "anomaly")
+    assert entry["note_slug"] is None and entry["note_missing"] is False
+
+    linked = await client.patch(f"{base}/expectations/{entry['id']}", json={"note_slug": "eu-spike"})
+    assert linked.status_code == 200 and linked.json()["note_missing"] is True
+    notes_dir = Path(project.path) / "wickd" / "notes"
+    notes_dir.mkdir(parents=True)
+    (notes_dir / "eu-spike.md").write_text("---\ntitle: x\nstart: 2026-10-02\nend: 2026-10-02\n---\n")
+    assert (await client.get(f"{base}/expectations")).json()["expectations"][0]["note_missing"] is False
+    assert (await client.patch(f"{base}/expectations/9999", json={"note_slug": "x"})).status_code == 404
+    assert (await client.patch(f"{base}/expectations/{entry['id']}", json={"note_slug": "Bad Slug"})).status_code == 422
+
+    await monitor_points.trim(db, m.id, "", "2026-11-01")
+    await db.commit()
+    assert len((await client.get(f"{base}/expectations", params={"monitor_id": m.id})).json()["expectations"]) == 1
+
+    db.add(MetricMonitorPoint(monitor_id=m.id, target="", slice="EU", period="2026-10-02", value=1500.0, suppressed=True))
+    await db.commit()
+    undo = await client.post(f"{base}/{m.id}/points/suppress", json={"period": "2026-10-02", "slice": "EU", "suppressed": False})
+    assert undo.status_code == 200 and undo.json()["expectation_id"] is None
+    assert (await client.get(f"{base}/expectations")).json()["expectations"] == []
+    assert (notes_dir / "eu-spike.md").exists()
+
+
+async def test_mark_as_expected_with_note_slug(db, tmp_path, client, shim, entitled) -> None:
+    project = await _project(db, tmp_path)
+    m = await _monitor(db, project)
+    db.add(MetricMonitorPoint(monitor_id=m.id, target="", slice="", period="2026-10-01", value=5.0))
+    await db.commit()
+    base = f"/api/projects/{project.id}/metric-monitors"
+    await client.post(f"{base}/{m.id}/points/suppress", json={"period": "2026-10-01", "note_slug": "launch"})
+    entry = (await client.get(f"{base}/expectations")).json()["expectations"][0]
+    assert entry["note_slug"] == "launch" and entry["kind"] == ""

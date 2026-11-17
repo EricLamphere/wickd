@@ -184,3 +184,31 @@ async def test_handle_changes_mirrors_docs_pages_changed_on_global_stream(tmp_pa
         assert (event.type, event.data) == ("docs_pages_changed", {"project_id": 9902, "paths": ["b.md"]})
     finally:
         await bus.unsubscribe("global", queue)
+
+
+def test_notes_dir_in_plan_and_slugs(tmp_path: Path) -> None:
+    _, (p1,) = _repo_with_projects(tmp_path, "a")
+    plan = build_plan([(1, p1)], None, None, None, {1: "notes"})
+    folder = plan.projects[0].notes_dir
+    assert folder == (p1 / "notes").resolve()
+    assert build_plan([(1, p1)]).projects[0].notes_dir == (p1 / "wickd" / "notes").resolve()
+    assert build_plan([(1, p1)], None, None, None, {1: "../../x"}).projects[0].notes_dir is None
+    changed = [folder / "outage.md", folder / ".outage.md.wickd-tmp", folder / "x.png", p1 / "models" / "a.md"]
+    assert service.note_slugs(folder, changed) == ["outage"]
+    assert service.note_slugs(None, changed) == []
+
+
+async def test_handle_changes_publishes_metric_notes_changed(tmp_path: Path) -> None:
+    proj = tmp_path.resolve() / "proj"
+    folder = proj / "wickd" / "notes"
+    folder.mkdir(parents=True)
+    topic = "project:9903"
+    queue = await bus.subscribe(topic)
+    try:
+        await WatcherManager()._handle_changes(
+            9903, proj, None, topic, {(Change.modified, str(folder / "n.md"))}, None, None, folder,
+        )
+        event = await asyncio.wait_for(queue.get(), timeout=2.0)
+        assert (event.type, event.data) == ("metric_notes_changed", {"slug": "n"})
+    finally:
+        await bus.unsubscribe(topic, queue)

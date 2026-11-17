@@ -271,6 +271,8 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
   const workspacePath = envVars.find((v) => v.key === 'WORKSPACE_PATH')?.value ?? '';
   const dashboardsPath = envVars.find((v) => v.key === 'DASHBOARDS_PATH')?.value ?? '';
   const docsPath = envVars.find((v) => v.key === 'DOCS_PATH')?.value ?? '';
+  const notesPath = envVars.find((v) => v.key === 'NOTES_PATH')?.value ?? '';
+  const notesImgPath = envVars.find((v) => v.key === 'NOTES_IMG_PATH')?.value ?? '';
   const propagateTags = envVars.find((v) => v.key === 'PROPAGATE_TAGS')?.value ?? '';
   const monitorInterval = envVars.find((v) => v.key === 'MONITOR_INTERVAL_HOURS')?.value ?? '';
   const monitorSchedule = envVars.find((v) => v.key === 'MONITOR_SCHEDULE')?.value ?? '';
@@ -305,19 +307,20 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
   };
 
-  // Metric dashboards' folder (YAML files), relative to the project; empty = wickd/dashboards
-  const handleSaveDashboardsPath = async (val: string) => {
+  // Folders inside the project, empty = the default: metric dashboards' YAML (DASHBOARDS_PATH,
+  // wickd/dashboards), metric notes and their screenshots (NOTES_PATH / NOTES_IMG_PATH, plan 30)
+  const saveProjectFolder = (key: string, example: string, cacheKey: string) => async (val: string) => {
     const normalized = val.trim().replace(/\/+$/, '');
     if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
-      throw new Error('DASHBOARDS_PATH must be a folder inside the project, e.g. wickd/dashboards');
+      throw new Error(`${key} must be a folder inside the project, e.g. ${example}`);
     }
     if (normalized) {
-      await api.init.setEnvVar(projectId, 'DASHBOARDS_PATH', normalized);
+      await api.init.setEnvVar(projectId, key, normalized);
     } else {
-      await api.init.deleteEnvVar(projectId, 'DASHBOARDS_PATH');
+      await api.init.deleteEnvVar(projectId, key);
     }
     qc.invalidateQueries({ queryKey: ['env-vars', projectId] });
-    qc.invalidateQueries({ queryKey: ['dashboards', projectId] });
+    qc.invalidateQueries({ queryKey: [cacheKey, projectId] });
   };
 
   const handleSaveDocsPath = async (val: string) => {
@@ -468,7 +471,25 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
               value={dashboardsPath}
               placeholder="wickd/dashboards"
               kind="default"
-              onSave={handleSaveDashboardsPath}
+              onSave={saveProjectFolder('DASHBOARDS_PATH', 'wickd/dashboards', 'dashboards')}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
+              label="NOTES_PATH"
+              value={notesPath}
+              placeholder="wickd/notes"
+              kind="default"
+              onSave={saveProjectFolder('NOTES_PATH', 'wickd/notes', 'metric-notes')}
+              labelWidth={labelWidth}
+              onResizeLabel={handleResizeLabel}
+            />
+            <ProjectSettingRow
+              label="NOTES_IMG_PATH"
+              value={notesImgPath}
+              placeholder="wickd/img (screenshots in metric notes)"
+              kind="default"
+              onSave={saveProjectFolder('NOTES_IMG_PATH', 'wickd/img', 'metric-notes')}
               labelWidth={labelWidth}
               onResizeLabel={handleResizeLabel}
             />
@@ -562,7 +583,7 @@ function ProjectSettingsSection({ projectId, project }: { projectId: number; pro
 }
 
 // Keys managed by other UI sections — excluded from the user-facing env vars list
-const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'METRIC_QUERY_TIMEOUT', 'METRIC_QUERY_CONCURRENCY', 'state_defer', 'active_global_profile_id', 'dbt_target']);
+const RESERVED_ENV_KEYS = new Set(['REQUIREMENTS_PATH', 'WORKSPACE_PATH', 'DASHBOARDS_PATH', 'NOTES_PATH', 'NOTES_IMG_PATH', 'PROPAGATE_TAGS', 'MONITOR_INTERVAL_HOURS', 'MONITOR_SCHEDULE', 'DIFF_BASE_TARGET', 'STATE_SOURCE', 'METRIC_QUERY_TIMEOUT', 'METRIC_QUERY_CONCURRENCY', 'state_defer', 'active_global_profile_id', 'dbt_target']);
 
 // ---- Environment Variables ----
 

@@ -1,6 +1,7 @@
 // One monitor on the Monitors tab: status pill, sparkline + expected band, latest value
 // vs expected, "since" and the slices with their own status. Draggable to reorder
-// (MonitorGrid passes the dnd-kit props).
+// (MonitorGrid passes the dnd-kit props). A pin shows when a metric note covers its latest flagged
+// period; right-click to add a note about the latest period (plan 30).
 import type { CSSProperties, HTMLAttributes } from 'react';
 import { AlertTriangle, Clock, GripVertical, PauseCircle } from 'lucide-react';
 import type { MonitorDto } from '../../../../lib/monitorsApi';
@@ -9,6 +10,10 @@ import { MonitorSparkline } from './MonitorSparkline';
 import { formatNumber, monitorTitle, statusStyle, vsExpected } from './monitorView';
 import { algorithmSummary } from './algorithms';
 import { formatCheckTime } from './scheduleView';
+import { useAddNoteMenu } from '../notes/AddNoteMenu';
+import { NotePin } from '../notes/NoteMarkers';
+import { periodEnd } from '../notes/lib/metricNotes';
+import { useMatchingNotes } from '../notes/useNotes';
 
 interface Props {
   monitor: MonitorDto;
@@ -28,12 +33,23 @@ export function MonitorCard({ monitor, activeTarget, running, onOpen, cardRef, d
   const comparison = vsExpected(point?.value, point?.expected);
   const target = monitor.target ?? activeTarget;
   const otherTarget = latest && !monitor.target && (latest.target || null) !== (activeTarget || null);
+  const flaggedPeriod = latest && (latest.status === 'anomaly' || latest.status === 'warn') ? point?.period ?? null : null;
+  const slice = monitor.dimension && latest?.worst_slice ? latest.worst_slice : null;
+  const covering = useMatchingNotes(flaggedPeriod ? {
+    start: flaggedPeriod, end: periodEnd(flaggedPeriod, monitor.grain), metrics: [monitor.metric],
+    dims: slice && monitor.dimension ? { [monitor.dimension]: slice } : {},
+  } : null);
+  const noteMenu = useAddNoteMenu();
+  const onContextMenu = (e: React.MouseEvent) => noteMenu.open(e, monitorTitle(monitor), point
+    ? { kind: 'period', metric: monitor.metric, period: point.period, grain: monitor.grain, dimension: monitor.dimension, value: slice }
+    : { kind: 'metric', metric: monitor.metric });
 
   return (
     <button
       type="button"
       ref={cardRef}
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       style={dragStyle}
       {...dragProps}
       title={dragProps ? 'Click to open · drag to reorder' : undefined}
@@ -45,6 +61,7 @@ export function MonitorCard({ monitor, activeTarget, running, onOpen, cardRef, d
             aria-hidden />
         )}
         <span className="flex-1 text-sm font-medium text-gray-100 truncate" title={monitorTitle(monitor)}>{monitor.metric}</span>
+        <NotePin notes={covering} />
         {!monitor.enabled && <PauseCircle className="w-3.5 h-3.5 text-gray-500" aria-label="Paused" />}
         <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium ${style.pill}`}>
           {monitor.enabled ? style.label : 'Paused'}
@@ -91,6 +108,7 @@ export function MonitorCard({ monitor, activeTarget, running, onOpen, cardRef, d
           </span>
         )}
       </span>
+      {noteMenu.menu}
     </button>
   );
 }

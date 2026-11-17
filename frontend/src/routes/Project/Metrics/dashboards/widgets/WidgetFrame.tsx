@@ -2,12 +2,13 @@
 // and resize handles (right edge, bottom edge, corner). Click selects it (its settings open in
 // the right rail). Clicking a value (bar, stacked segment, Top N row) splits the widget top and
 // bottom with its timeseries; right-click a value for its menu (show timeseries, dashboard
-// filter, drill into…, explorer). While a
-// metric is dragged over it, it says whether it can take it.
+// filter, drill into…, explorer, add note). While a
+// metric is dragged over it, it says whether it can take it. Metric notes covering what it shows
+// get a pin in the header (time series draw them as bands instead); ⋯ → Add note… writes one.
 import { Component, useEffect, useRef, useState, type ErrorInfo, type MouseEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  CopyPlus, FileBarChart, Search, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Ban,
+  CopyPlus, FileBarChart, Search, GripVertical, Loader2, MoreHorizontal, Plus, RefreshCw, StickyNote, Trash2, Ban,
 } from 'lucide-react';
 import type { DashboardDoc, DashboardWidget, DateRange } from '../../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../../lib/semanticApi';
@@ -27,6 +28,10 @@ import { useChartExports } from '../../chartMenu/useChartExports';
 import { useSaveAsSavedQuery } from '../../chartMenu/useSaveAsSavedQuery';
 import { compareLabel, currentLabel, rangeLabel } from '../periods';
 import { formatOf, WidgetBody, type BodyProps } from './WidgetBody';
+import { addMetricNote } from '../../notes/noteEvents';
+import { NotePin } from '../../notes/NoteMarkers';
+import { widgetNoteContext } from '../../notes/lib/widgetNotes';
+import { useMatchingNotes } from '../../notes/useNotes';
 
 const HEADER_PX = 28;
 
@@ -256,7 +261,14 @@ export function WidgetFrame(props: Props) {
     onApplyFilter: props.onApplyFilter,
     onInspect: (p: Pick) => setInspect(p),
     onOpenInExplorer: props.onOpenFiltered,
+    onAddNote: (p: Pick) => addMetricNote({
+      kind: 'value', metrics: widget.metrics ?? [], range: p.range ?? result?.current ?? null,
+      dimension: p.values[0]?.dimension ?? null, value: p.values[0]?.value ?? null,
+    }),
   };
+  const noteCtx = widgetNoteContext(widget, result);
+  const notesHere = useMatchingNotes(noteCtx && widget.type !== 'timeseries' ? noteCtx : null);
+  const addNote = () => addMetricNote({ kind: 'widget', metrics: widget.metrics ?? [], range: result?.current ?? null, dims: noteCtx?.dims });
   const size = preview ?? widget;
   const height = size.height;
   const notes = result?.notes ?? [];
@@ -291,6 +303,7 @@ export function WidgetFrame(props: Props) {
         )}
         {(!text || widget.title) && <h3 className="flex-1 min-w-0 text-xs font-medium text-gray-200 truncate" title={title}>{title}</h3>}
         {text && !widget.title && <div className="flex-1" />}
+        <NotePin notes={notesHere} />
         {pill && monitorStatus && <MonitorPill projectId={props.projectId} state={monitorStatus} label={pill.label} cls={pill.pill} />}
         {result?.ran_at && (
           <span className="shrink-0 text-[10px] text-gray-500" title={new Date(result.ran_at).toLocaleString()} data-export-asof={result.ran_at}>
@@ -308,6 +321,7 @@ export function WidgetFrame(props: Props) {
                 ...(text ? [] : [
                   ...openMetricItem(widget.metrics ?? [], props.labels, props.onOpenMetric),
                   ...(props.onInvestigate ? [{ label: 'Investigate', icon: <Search className="w-3.5 h-3.5" />, onClick: props.onInvestigate }] : []),
+                  ...(widget.metrics?.length ? [{ label: 'Add note…', icon: <StickyNote className="w-3.5 h-3.5" />, onClick: addNote }] : []),
                   saveQuery.item(result),
                   ...exports.items({
                     result, element: () => sectionRef.current, title: `${props.doc.title} — ${title}`, name: [props.slug, title],

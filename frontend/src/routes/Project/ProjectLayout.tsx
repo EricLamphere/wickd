@@ -8,6 +8,7 @@ import { ActivityBubble } from './components/ActivityBubble/ActivityBubble';
 import { BottomPane } from './components/BottomPane';
 import { CommandPalette } from './components/CommandPalette';
 import { RefactorHost } from './components/refactor/RefactorHost';
+import { NoteHost } from './Metrics/notes/NoteHost';
 import { ScheduleFailureToast } from '../../components/schedule/ScheduleFailureToast';
 import { WickyPane } from './components/Wicky/WickyPane';
 import { useStatePreviewCache } from './components/slim/useStatePreviewCache';
@@ -111,6 +112,7 @@ export default function ProjectLayout() {
       </div>
       <WickyPane projectId={id} graph={graph ?? null} selectedNodeId={selectedNodeId} />
       <RefactorHost projectId={id} />
+      <NoteHost projectId={id} />
       <ScheduleFailureToast projectId={id} />
         {paletteOpen && (
           <CommandPalette

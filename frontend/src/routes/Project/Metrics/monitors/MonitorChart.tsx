@@ -1,10 +1,15 @@
 // A monitor's history: the value line over its expected band (low..high), flagged
 // periods marked (red alarms, amber warnings, hollow while the period is in progress).
-// Hover shows the value, expected range, flag and score.
+// Hover shows the value, expected range, flag and score. Metric notes covering its periods are
+// shaded bands with a pin; right-click a period to add a note about it (plan 30).
+import { useMemo, type MouseEvent as ReactMouseEvent } from 'react';
 import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { MonitorGrain, MonitorPointDto } from '../../../../lib/monitorsApi';
 import { formatTime, formatValue } from '../lib/metricSeries';
 import { clampBand, formatNumber, KIND_LABEL, kindTone } from './monitorView';
+import type { MetricNoteDto } from '../../../../lib/notesApi';
+import { isoDay, notesOnSeries } from '../notes/lib/metricNotes';
+import { noteBandElements, useNotesPopover } from '../notes/NoteMarkers';
 
 const AXIS_TICK = { fill: 'rgb(var(--text-secondary))', fontSize: 11 };
 const GRID = 'rgb(var(--border-default))';
@@ -71,12 +76,26 @@ function FlagDot({ cx, cy, index = 0, payload }: DotProps) {
   return <circle key={index} cx={cx} cy={cy} r={5} fill={tone === 'fail' ? MARKER.fail : MARKER.warn} stroke={SURFACE} strokeWidth={2} />;
 }
 
-export function MonitorChart({ points, grain, height = 260 }: { points: MonitorPointDto[]; grain: MonitorGrain; height?: number }) {
+export function MonitorChart({ points, grain, height = 260, notes = [], onPeriodMenu }: {
+  points: MonitorPointDto[]; grain: MonitorGrain; height?: number;
+  notes?: MetricNoteDto[];
+  /** right-click on a period (its start, YYYY-MM-DD) */
+  onPeriodMenu?: (period: string, e: ReactMouseEvent) => void;
+}) {
   const data = toData(points);
+  const notePopover = useNotesPopover();
+  const xs = useMemo(() => data.map((d) => d.x), [data]);
+  const bands = useMemo(() => notesOnSeries(notes, xs, grain), [notes, xs, grain]);
   if (data.length === 0) return <p className="py-10 text-center text-xs text-gray-500">No history stored yet.</p>;
   return (
+    <>
     <ResponsiveContainer width="100%" height={height}>
-      <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+      <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}
+        onContextMenu={(state, e) => {
+          const x = Number((state as { activeLabel?: unknown } | null)?.activeLabel);
+          if (!onPeriodMenu || Number.isNaN(x)) return;
+          onPeriodMenu(isoDay(x), e as unknown as ReactMouseEvent);
+        }}>
         <CartesianGrid vertical={false} stroke={GRID} />
         <XAxis dataKey="x" type="number" scale="time" domain={['dataMin', 'dataMax']} tick={AXIS_TICK}
           tickFormatter={(v: number) => formatTime(v, grain)} stroke={GRID} minTickGap={32} />
@@ -87,7 +106,10 @@ export function MonitorChart({ points, grain, height = 260 }: { points: MonitorP
           activeDot={false} />
         <Line type="linear" dataKey="value" stroke={LINE} strokeWidth={2} dot={FlagDot}
           activeDot={{ r: 4, fill: LINE, stroke: SURFACE, strokeWidth: 2 }} connectNulls={false} isAnimationActive={false} />
+        {noteBandElements(bands, notePopover.show)}
       </ComposedChart>
     </ResponsiveContainer>
+    {notePopover.popover}
+    </>
   );
 }

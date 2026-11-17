@@ -26,7 +26,7 @@ from app.docs_pages import shared as shared_docs
 from app.events.bus import Event, bus
 from app.git.repo import find_repo_root
 from app.logging_setup import get_logger
-from app.semantic import autoparse
+from app.semantic import autoparse, note_store
 from app.semantic import dashboards as dashboard_store
 
 log = get_logger(__name__)
@@ -55,6 +55,7 @@ class WatchedProject:
     git_dir: Path | None
     dashboards_dir: Path | None = None  # DASHBOARDS_PATH, resolved; changes → dashboards_changed
     docs_dir: Path | None = None  # DOCS_PATH (or docs/), resolved; .md / image changes → docs_pages_changed
+    notes_dir: Path | None = None  # NOTES_PATH, resolved; note file changes → metric_notes_changed
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,13 @@ def _dashboards_dir(path: Path, setting: str | None) -> Path | None:
         return None
 
 
+def _notes_dir(path: Path, setting: str | None) -> Path | None:
+    try:
+        return note_store.folders(path, setting, None).notes
+    except note_store.NoteError:
+        return None
+
+
 def _docs_dir(path: Path, repo_root: Path | None, setting: str | None) -> Path | None:
     try:
         return docs_pages.resolve_docs_dir(path, repo_root, setting)
@@ -98,10 +106,12 @@ def build_plan(
     dashboard_settings: dict[int, str] | None = None,
     docs_settings: dict[int, str] | None = None,
     shared_docs_setting: str | None = None,
+    notes_settings: dict[int, str] | None = None,
 ) -> WatchPlan:
     """Resolve each existing project's git dir and the minimal set of roots to watch."""
     settings = dashboard_settings or {}
     docs = docs_settings or {}
+    notes_by_id = notes_settings or {}
     watched: list[WatchedProject] = []
     for project_id, path in projects:
         if not path.is_dir():
@@ -112,7 +122,7 @@ def build_plan(
             git_dir = None  # worktree/submodule .git file — nothing to watch
         watched.append(WatchedProject(
             project_id, path, git_dir, _dashboards_dir(path, settings.get(project_id)),
-            _docs_dir(path, repo_root, docs.get(project_id)),
+            _docs_dir(path, repo_root, docs.get(project_id)), _notes_dir(path, notes_by_id.get(project_id)),
         ))
     roots = (
         [w.path for w in watched]
@@ -152,6 +162,16 @@ def dashboard_slugs(dashboards_dir: Path | None, changed: list[Path]) -> list[st
     return sorted({
         f.stem for f in changed
         if f.suffix == dashboard_store.SUFFIX and f.parent.resolve() == dashboards_dir and not f.name.startswith(".")
+    })
+
+
+def note_slugs(notes_dir: Path | None, changed: list[Path]) -> list[str]:
+    """Slugs of note files among `changed` (created, edited or deleted)."""
+    if notes_dir is None:
+        return []
+    return sorted({
+        f.stem for f in changed
+        if f.suffix == note_store.SUFFIX and f.parent.resolve() == notes_dir and not f.name.startswith(".")
     })
 
 
@@ -263,9 +283,12 @@ class WatcherManager:
             docs_settings = dict((await session.execute(
                 select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == docs_pages.SETTING_KEY)
             )).all())
+            notes_settings = dict((await session.execute(
+                select(ProjectEnvVar.project_id, ProjectEnvVar.value).where(ProjectEnvVar.key == note_store.SETTING_KEY)
+            )).all())
             shared_setting = await shared_docs.load_setting(session)
         started = time.perf_counter()
-        plan = await asyncio.to_thread(build_plan, rows, settings, docs_settings, shared_setting)
+        plan = await asyncio.to_thread(build_plan, rows, settings, docs_settings, shared_setting, notes_settings)
         plan_ms = round((time.perf_counter() - started) * 1000)
         if plan == self._plan:
             return
@@ -320,7 +343,7 @@ class WatcherManager:
                 try:
                     await self._handle_changes(
                         project_id, wp.path, wp.git_dir, f"project:{project_id}", project_changes,
-                        wp.dashboards_dir, wp.docs_dir,
+                        wp.dashboards_dir, wp.docs_dir, wp.notes_dir,
                     )
                 except Exception as exc:  # noqa: BLE001 — error is logged/reported below
                     log.warning("watcher_dispatch_error", project_id=project_id, error=str(exc))
@@ -344,6 +367,7 @@ class WatcherManager:
         changes: set[tuple[Change, str]],
         dashboards_dir: Path | None = None,
         docs_dir: Path | None = None,
+        notes_dir: Path | None = None,
     ) -> None:
         changed_files = [Path(p) for _, p in changes]
 
@@ -359,6 +383,9 @@ class WatcherManager:
 
         for slug in dashboard_slugs(dashboards_dir, changed_files):
             await bus.publish(Event(topic=topic, type="dashboards_changed", data={"slug": slug}))
+
+        for slug in note_slugs(notes_dir, changed_files):
+            await bus.publish(Event(topic=topic, type="metric_notes_changed", data={"slug": slug}))
 
         if chart_board_changes(project_path, changed_files):
             await bus.publish(Event(topic=topic, type="charts_changed", data={}))

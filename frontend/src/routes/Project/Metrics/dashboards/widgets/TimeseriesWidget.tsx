@@ -4,8 +4,8 @@
 // 10× get their own charts (layout auto), else they share one. Drag across the chart to
 // highlight periods: it zooms on them (Reset zoom goes back). Right-click offers the value menu
 // for the highlighted periods (or the one under the pointer), e.g. apply them as the dashboard's
-// date range.
-import { useState } from 'react';
+// date range. Metric notes covering its periods show as shaded bands with a pin (plan 30).
+import { useMemo, useState } from 'react';
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceArea, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from 'recharts';
 import type { DashboardWidget, DateRange, WidgetResultDto } from '../../../../../lib/dashboardsApi';
 import { formatTime } from '../../lib/metricSeries';
@@ -16,6 +16,11 @@ import { AXIS_TICK, BAND, exportSeries, GRID, Legend, MARKER, PREVIOUS, seriesCo
 import { toNumber } from '../../lib/metricSeries';
 import { rangeBetween, zoomedIndexes } from '../timeRange';
 import { rangePick, ResetZoom, useZoom, type Interaction, type ZoomProps } from './zoom';
+import type { MetricNoteDto } from '../../../../../lib/notesApi';
+import { notesFor, notesOnSeries } from '../../notes/lib/metricNotes';
+import { widgetNoteContext } from '../../notes/lib/widgetNotes';
+import { noteBandElements, useNotesPopover } from '../../notes/NoteMarkers';
+import { useProjectNotes } from '../../notes/useNotes';
 
 interface Props extends ZoomProps {
   widget: DashboardWidget;
@@ -91,10 +96,12 @@ const pointX = (s: { activeLabel?: unknown } | null | undefined): number | null 
   return s?.activeLabel == null || Number.isNaN(x) ? null : x;
 };
 
-function Chart({ data, height, grain, format, style, zero, overlay, interaction }: {
+function Chart({ data, height, grain, format, style, zero, overlay, interaction, notes = [] }: {
   data: ChartData; height: number; grain: string; format: MetricFormat; style: string; zero: boolean; overlay?: MonitorOverlay | null;
-  interaction: Interaction;
+  interaction: Interaction; notes?: MetricNoteDto[];
 }) {
+  const notePopover = useNotesPopover();
+  const bands = useMemo(() => notesOnSeries(notes, data.xs, grain), [notes, data.xs, grain]);
   const { zoom, onZoom, onMenu } = interaction;
   // a drag in progress: where it started and where the pointer is
   const [drag, setDrag] = useState<{ a: number; b: number } | null>(null);
@@ -157,6 +164,7 @@ function Chart({ data, height, grain, format, style, zero, overlay, interaction 
             <Area key={l.key} dataKey={l.key} stroke={l.color} fill={l.color} fillOpacity={stacked ? 0.35 : 0.15} strokeWidth={2}
               stackId={stacked ? 'stack' : undefined} isAnimationActive={false} connectNulls={false} />
           )))}
+          {noteBandElements(bands, notePopover.show)}
           {drag && drag.a !== drag.b && (
             <ReferenceArea x1={Math.min(drag.a, drag.b)} x2={Math.max(drag.a, drag.b)} fill="rgb(var(--brand-500))" fillOpacity={0.15}
               stroke="rgb(var(--brand-500))" strokeOpacity={0.5} ifOverflow="hidden" />
@@ -169,6 +177,7 @@ function Chart({ data, height, grain, format, style, zero, overlay, interaction 
           )}
         </ComposedChart>
       </ResponsiveContainer>
+      {notePopover.popover}
     </div>
   );
 }
@@ -184,6 +193,9 @@ export function TimeseriesWidget(props: Props) {
   const style = opt(widget, 'style', 'line');
   const zero = opt(widget, 'zero_baseline', true);
   const split = opt<string | null>(widget, 'split_by', null);
+  const allNotes = useProjectNotes();
+  const noteCtx = widgetNoteContext(widget, result);
+  const notesOf = (ms: string[]) => (noteCtx ? notesFor(allNotes, { ...noteCtx, metrics: ms }) : []);
   const maxima = metrics.map((m) => Math.max(0, ...series(cur.columns, cur.rows, m, `metric_time__${grain}`).map((p) => Math.abs(p.v ?? 0))));
   const separate = !split && separateCharts(maxima, opt(widget, 'layout', 'auto'));
   if (!separate) {
@@ -193,7 +205,7 @@ export function TimeseriesWidget(props: Props) {
       <div className="relative h-full">
         {reset}
         <Chart data={data} height={height - (data.lines.length > 1 ? 16 : 0)} grain={grain} format={format} style={style} zero={zero}
-          overlay={metrics.length === 1 ? overlay : null} interaction={interaction} />
+          overlay={metrics.length === 1 ? overlay : null} interaction={interaction} notes={notesOf(metrics)} />
       </div>
     );
   }
@@ -205,7 +217,7 @@ export function TimeseriesWidget(props: Props) {
         <div key={m} className="min-w-0">
           <span className="text-[10px] text-gray-400">{labels.get(m) ?? m}</span>
           <Chart data={zoomed(metricLines(widget, result, [m], labels), zoom)} height={each} grain={grain} format={format} style={style} zero={zero}
-            interaction={interaction} />
+            interaction={interaction} notes={notesOf([m])} />
         </div>
       ))}
     </div>

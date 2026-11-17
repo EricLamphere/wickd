@@ -13,6 +13,7 @@ import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { UpgradeModal } from '../../components/UpgradeModal';
 import { CreateMonitorDialog, type MonitorDraft } from './CreateMonitorDialog';
 import { MonitorGrid } from './MonitorGrid';
+import { ExpectationsLog } from './ExpectationsLog';
 import { MonitorDetail } from './MonitorDetail';
 import { ProjectScheduleControl } from './ScheduleControls';
 import { errorText, useMonitorActions, useMonitors } from './useMonitors';
@@ -87,6 +88,7 @@ export function MonitorsTab({ projectId, catalog, draft, onDraftHandled }: Props
           onDelete={async () => { await actions.remove(selected.id); select(null); }}
           onRefresh={() => actions.refresh([selected.id])}
           onSuppress={(slice, period, suppressed) => actions.suppress(selected.id, slice, period, suppressed)}
+          label={catalog.metrics.find((m) => m.name === selected.metric)?.label ?? null}
           error={dialogOpen ? null : actions.error}
         />
         {dialog}
@@ -127,6 +129,7 @@ export function MonitorsTab({ projectId, catalog, draft, onDraftHandled }: Props
         <MonitorGrid monitors={data.monitors} activeTarget={data.active_target} running={monitors.running}
           onOpen={select} onReorder={actions.reorder} />
       )}
+      <ExpectationsLog projectId={projectId} monitors={data.monitors} onOpenMonitor={select} />
       {dialog}
     </div>
   );

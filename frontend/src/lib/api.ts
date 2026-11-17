@@ -64,6 +64,11 @@ export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' });
 }
 
+/** multipart POST (uploads); the browser sets the multipart Content-Type */
+export function postForm<T>(path: string, form: FormData): Promise<T> {
+  return request<T>(path, { method: 'POST', body: form, headers: {} });
+}
+
 export function patch<T>(path: string, body?: unknown): Promise<T> {
   return request<T>(path, {
     method: 'PATCH',

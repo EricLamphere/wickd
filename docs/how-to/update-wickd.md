@@ -33,6 +33,8 @@ If you're offline, or GitHub can't be reached, the automatic check fails silentl
 
 Only the official app from the website updates itself. Apps you build yourself (`task package:app`) never offer an update. Rebuild them instead. Versions before automatic updates arrived must install the first version that has them by hand. Every version after that updates itself.
 
+wickd 1.4.0 and 1.4.1 have automatic updates but can't run them: Global Settings → Updates says "from source: update with git pull" and there's no **Check now**. Install 1.4.2 or later from the website by hand, the same way as the first time. Later versions update themselves.
+
 ## For maintainers: trying an update without releasing
 
 1. Build version N with the endpoint pointed at your machine:
@@ -42,4 +44,4 @@ Only the official app from the website updates itself. Apps you build yourself (
 3. In a folder, put N+1's `src-tauri/target/release/bundle/macos/wickd.app.tar.gz`, renamed `wickd_<N+1>_aarch64.app.tar.gz`, and a manifest edited to point at it:
    `backend/.venv/bin/python backend/scripts/updater_manifest.py --version <N+1> --sig src-tauri/target/release/bundle/macos/wickd.app.tar.gz.sig --out latest.json`.
    Change the manifest's `url` to `http://127.0.0.1:8765/wickd_<N+1>_aarch64.app.tar.gz`, then serve the folder with `python3 -m http.server 8765`.
-4. Put version N back in `/Applications`, open it, and click **Update & restart**. Check that it relaunches on N+1 with your projects and data intact, and that Pro is still active.
+4. Put version N back in `/Applications` and open it. Global Settings → Updates must show **Check now** ("from source" means the shell rejected the updater commands: see `src-tauri/capabilities/default.json`), and the update bar must appear. Click **Update & restart**. Check that it relaunches on N+1 with your projects and data intact, and that Pro is still active.

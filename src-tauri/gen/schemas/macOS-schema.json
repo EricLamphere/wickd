@@ -345,6 +345,30 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the relaunch_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-relaunch-app",
+          "markdownDescription": "Enables the relaunch_app command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the updater_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-updater-enabled",
+          "markdownDescription": "Enables the updater_enabled command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the relaunch_app command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-relaunch-app",
+          "markdownDescription": "Denies the relaunch_app command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the updater_enabled command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-updater-enabled",
+          "markdownDescription": "Denies the updater_enabled command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

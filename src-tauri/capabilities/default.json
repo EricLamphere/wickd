@@ -1,7 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the main window",
+  "description": "Default capability for the main window. The window loads the UI from the backend at http://127.0.0.1:<port> (the port changes every launch), which Tauri treats as a remote origin, so the capability must list it or every command is rejected. allow-* are our own commands, declared in build.rs.",
   "windows": ["main"],
-  "permissions": ["core:default", "opener:allow-open-url", "updater:default"]
+  "remote": { "urls": ["http://127.0.0.1:*"] },
+  "permissions": [
+    "core:default",
+    "opener:allow-open-url",
+    "updater:default",
+    "allow-updater-enabled",
+    "allow-relaunch-app"
+  ]
 }

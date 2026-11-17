@@ -49,3 +49,48 @@ mod tests {
         assert!(!flag_enabled(false, Some("0")));
     }
 }
+
+/// The real capability and app manifest, through Tauri's IPC access check. The window
+/// loads the UI from http://127.0.0.1:<port>, a remote origin to Tauri; 1.4.0 and 1.4.1
+/// shipped without a capability for it, so `updater_enabled` was rejected and the app
+/// said "from source" and never offered an update.
+#[cfg(test)]
+mod ipc_access_tests {
+    use tauri::test::{get_ipc_response, mock_builder, INVOKE_KEY};
+    use tauri::webview::InvokeRequest;
+
+    fn invoke_from(origin: &str) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![super::updater_enabled, super::relaunch_app])
+            .build(tauri::generate_context!("tauri.conf.json", test = true))
+            .expect("failed to build the mock app");
+        // Labelled like the real window: the capability applies to "main" only.
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("failed to build the main window");
+        get_ipc_response(
+            &window,
+            InvokeRequest {
+                cmd: "updater_enabled".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: origin.parse().unwrap(),
+                body: tauri::ipc::InvokeBody::default(),
+                headers: Default::default(),
+                invoke_key: INVOKE_KEY.to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn the_backend_origin_can_call_our_commands() {
+        let result = invoke_from("http://127.0.0.1:51234/");
+        assert!(result.is_ok(), "rejected from the backend's origin: {result:?}");
+    }
+
+    #[test]
+    fn other_origins_still_cannot() {
+        assert!(invoke_from("https://example.com/").is_err());
+        assert!(invoke_from("http://localhost:51234/").is_err());
+    }
+}

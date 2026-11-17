@@ -4955,7 +4955,7 @@ dependencies = [
 
 [[package]]
 name = "wickd"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "reqwest 0.12.28",
  "serde",

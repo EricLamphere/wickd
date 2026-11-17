@@ -110,6 +110,13 @@
           "find": "    page_views <= 1 as is_bounced,\n",
           "replace": "    page_views <= 1 or session_duration_sec < 10 as is_bounced,\n"
         }
+      ],
+      "no_slow_hook": [
+        {
+          "file": "duckdb_dbt/models/silver/int_sales_enriched.sql",
+          "find": "{{ config(pre_hook=\"select sum(i % 7) from range(4000000000) t(i)\") }}\n",
+          "replace": ""
+        }
       ]
     },
     "seed_edits": [
@@ -129,6 +136,11 @@
       {
         "file": "duckdb_dbt/wickd/workspace/top_customers_by_country.sql",
         "content": "-- Each country's most valuable customers, and how recently we've seen them\nwith customer_value as (\n\n    select\n        customer_id,\n        first_name || ' ' || last_name as customer_name,\n        country,\n        loyalty_tier,\n        segment,\n        orders_count,\n        lifetime_net_revenue,\n        rfm_recency_days\n    from {{ ref('mart_customer_360') }}\n    where orders_count > 0\n\n),\n\nranked as (\n\n    select\n        *,\n        rank() over (\n            partition by country\n            order by lifetime_net_revenue desc\n        ) as country_rank,\n        round(\n            100.0 * lifetime_net_revenue\n                / sum(lifetime_net_revenue) over (partition by country),\n            1\n        ) as pct_of_country_revenue\n    from customer_value\n\n)\n\nselect\n    country,\n    country_rank,\n    customer_name,\n    loyalty_tier,\n    segment,\n    orders_count,\n    round(lifetime_net_revenue, 2) as lifetime_revenue,\n    pct_of_country_revenue,\n    rfm_recency_days as days_since_last_order\nfrom ranked\nwhere country_rank <= 3\norder by country, country_rank\n"
+      },
+      {
+        "file": "duckdb_dbt/wickd/dashboards/executive-overview.yml",
+        "find": "- id: text\n  type: text\n  title: The Title\n  width: 100.0\n  height: 164\n  options:\n    body: \"## Section\\n\\n* here's a bullet\\n  * sub bullet\\n\\n[google](www.google.com)\\n\\n\"\n",
+        "replace": ""
       }
     ]
   },
@@ -542,23 +554,23 @@
         },
         {
           "wait": {
-            "text": "Data PRO",
+            "text": "Data diff PRO",
             "exact": true
           },
           "timeout": 30000
         },
         {
           "click": {
-            "text": "Data PRO",
+            "text": "Data diff PRO",
             "exact": true
           }
         },
         {
-          "wait": "changed model",
+          "wait": "Diff changed",
           "timeout": 30000
         },
         {
-          "click": "changed model"
+          "click": "Diff changed"
         },
         {
           "sleep": 3000
@@ -698,18 +710,23 @@
       ],
       "steps": [
         {
+          "api": {
+            "method": "POST",
+            "path": "/api/projects/{pid:duckdb_dbt}/run",
+            "body": {
+              "threads": 4
+            }
+          }
+        },
+        {
           "goto": "/projects/{pid:duckdb_dbt}/runs"
         },
         {
-          "wait": "Run History"
+          "wait": "Page 1 of"
         },
         {
-          "settle": true,
-          "timeout": 30000
-        },
-        {
-          "js": "const row=await shot.waitFor(()=>[...document.querySelectorAll('tbody tr')].find(r=>{const t=r.innerText; return /\\bprod\\b/.test(t)&&/\\brun\\b/.test(t)&&/\\ball\\b/.test(t)&&/\\bok\\b/.test(t)&&!/\\berr\\b/.test(t);}),20000,'a full prod run with no failures'); row.click(); return row.innerText.slice(0,40);",
-          "timeout": 30000
+          "js": "const row=await shot.waitFor(()=>{const r=document.querySelector('tbody tr'); const t=r?r.innerText:''; return /\\brun\\b/.test(t)&&/\\ball\\b/.test(t)&&/\\b14 ok\\b/.test(t)&&/success/.test(t)?r:null;},90000,'the 4-thread run to finish at the top'); await shot.sleep(1000); row.click(); return row.innerText.slice(0,40);",
+          "timeout": 100000
         },
         {
           "wait": "Timeline"
@@ -733,7 +750,8 @@
       },
       "storage": {
         "wickd:run-history-pane-width": "1200"
-      }
+      },
+      "edits": "no_slow_hook"
     },
     {
       "name": "scheduled_runs",
@@ -944,7 +962,7 @@
     {
       "name": "packages",
       "tier": "base",
-      "caption": "Package manager — packages with locked, installed and latest versions and dbt-core compatibility, plus dbt Hub search",
+      "caption": "Package manager — browse dbt Hub with each version's dbt-core compatibility and the README, next to your packages' locked, installed and latest versions",
       "features": [
         "Package manager"
       ],
@@ -957,10 +975,44 @@
         },
         {
           "settle": true
+        },
+        {
+          "click": "Add package"
+        },
+        {
+          "type": {
+            "sel": "input[placeholder=\"Search packages…\"]",
+            "value": "codegen"
+          }
+        },
+        {
+          "wait": {
+            "text": "dbt-labs/codegen",
+            "exact": true
+          },
+          "timeout": 30000
+        },
+        {
+          "click": {
+            "text": "dbt-labs/codegen",
+            "exact": true
+          }
+        },
+        {
+          "wait": "require-dbt-version",
+          "timeout": 30000
+        },
+        {
+          "wait": "Macros that generate dbt code",
+          "timeout": 30000
+        },
+        {
+          "settle": true,
+          "timeout": 30000
         }
       ],
       "label": "Package manager",
-      "alt": "wickd Environment page Packages tab listing dbt packages with requested, locked, installed and latest versions and a dbt-core compatibility column",
+      "alt": "wickd Environment page Packages tab with the Add package dialog open: dbt Hub search results, the selected package's versions with compatibility, and its README",
       "site": {
         "gallery": "more"
       }

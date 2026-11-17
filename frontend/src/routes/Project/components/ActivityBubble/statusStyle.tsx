@@ -5,10 +5,10 @@ import type { BubbleStatus } from '../../lib/activityView';
 /** Bubble fill + ring per status: blue running, green success, red error, amber warn, gray idle. */
 export const BUBBLE_TONE: Record<BubbleStatus, string> = {
   idle: 'bg-gray-900/90 border-gray-600/70 text-gray-300',
-  running: 'bg-blue-950/90 border-blue-500/70 text-blue-100',
-  success: 'bg-green-950/90 border-green-500/70 text-green-100',
-  error: 'bg-red-950/90 border-red-500/70 text-red-100',
-  warn: 'bg-amber-950/90 border-amber-500/70 text-amber-100',
+  running: 'bg-blue-950/90 border-blue-500/70 text-blue-200',
+  success: 'bg-green-950/90 border-green-500/70 text-green-200',
+  error: 'bg-red-950/90 border-red-500/70 text-red-200',
+  warn: 'bg-amber-950/90 border-amber-500/70 text-amber-200',
 };
 
 export const BAR_TONE: Record<ActivityStatus, string> = {

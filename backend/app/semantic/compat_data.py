@@ -72,6 +72,14 @@ DBT_METRICFLOW_RELEASES = [
         "python_max_exclusive": "3.15",
         "engine": "==0.213.0",
         "license": "Apache-2.0"
+    },
+    {
+        "dbt_metricflow": "0.16.0",
+        "dbt_core": "<1.13,>=1.11",
+        "python_min": "3.10",
+        "python_max_exclusive": "3.15",
+        "engine": "==0.214.0",
+        "license": "Apache-2.0"
     }
 ]
 

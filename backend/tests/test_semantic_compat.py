@@ -43,7 +43,7 @@ def test_check_matrix(dbt_core, python, latest, want_cli, ok, code) -> None:
 
 def test_cli_release_matches_dbt_core_and_python() -> None:
     assert cli_release_for("1.10.13", "3.12")["dbt_metricflow"] == "0.13.0"
-    assert cli_release_for("1.12.6", "3.14")["dbt_metricflow"] == "0.15.0"
+    assert cli_release_for("1.12.6", "3.14")["dbt_metricflow"] == "0.16.0"
     assert cli_release_for("1.7.19", "3.11")["dbt_metricflow"] == "0.6.0"
     assert cli_release_for("1.7.19", "3.12") is None
     assert check("1.10.13", "3.12", uses_latest_spec=False, want_cli=True).cli_release == "0.13.0"

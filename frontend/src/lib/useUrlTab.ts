@@ -13,6 +13,17 @@ const queueRestore = createRestoreQueue((entries) => {
 });
 
 /**
+ * Restore a remembered search param (a page's open item, e.g. Metrics → Dashboards'
+ * `?dashboard=`) through the same queue as the sticky tabs. Writing it with its own
+ * `replace` in the same tick as a tab restore would start from the same old URL, so
+ * one of the two writes would undo the other.
+ */
+export function restoreSearchParam(setter: SetURLSearchParams, param: string, value: string): void {
+  latestSetter = setter;
+  queueRestore(param, value);
+}
+
+/**
  * In-page tab state kept in a URL search param, so switching tabs pushes a
  * history entry the header back/forward arrows can step through.
  *

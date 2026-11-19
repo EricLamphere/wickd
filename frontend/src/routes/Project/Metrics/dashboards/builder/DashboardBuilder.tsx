@@ -159,6 +159,9 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
 
   if (detail.isLoading) return <p className="p-6 text-xs text-gray-500">Loading…</p>;
   if (!detail.data) return <p className="p-6 text-xs text-red-400">Couldn't load the dashboard: {errorText(detail.error)}</p>;
+  // A valid file whose doc the editor hasn't taken in yet (its effect runs after the first
+  // render with the loaded detail): still loading, not invalid
+  if (!doc && detail.data.dashboard) return <p className="p-6 text-xs text-gray-500">Loading…</p>;
   if (!doc) {
     return (
       <div className="flex flex-col gap-2 p-6">

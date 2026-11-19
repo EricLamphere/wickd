@@ -7,6 +7,7 @@ import { AlertTriangle, LayoutDashboard, Link2, Plus } from 'lucide-react';
 import { dashboardsApi, type DashboardWidget } from '../../../../lib/dashboardsApi';
 import { alertDialog, promptDialog } from '../../../../lib/dialogs';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
+import { restoreSearchParam } from '../../../../lib/useUrlTab';
 import { relativeTime } from '../../lib/relativeTime';
 import { DashboardBuilder } from './builder/DashboardBuilder';
 import { errorText, useDashboardList } from './useDashboards';
@@ -40,19 +41,20 @@ export function DashboardsTab({ projectId, catalog, labels, target, onOpenExplor
   const slug = params.get(PARAM);
   const list = useDashboardList(projectId);
 
-  const open = (next: string | null, replace = false) => {
+  const open = (next: string | null) => {
     remember(projectId, next);
     setParams((prev) => {
       const p = new URLSearchParams(prev);
       if (next) p.set(PARAM, next); else p.delete(PARAM);
       return p;
-    }, { replace });
+    });
   };
 
   useEffect(() => {
     if (slug) { remember(projectId, slug); return; }
     const last = remembered(projectId);
-    if (last && list.data?.dashboards.some((d) => d.slug === last)) open(last, true);
+    // queued with the Metrics tab's own restore (useUrlTab), so the two land in one URL write
+    if (last && list.data?.dashboards.some((d) => d.slug === last)) restoreSearchParam(setParams, PARAM, last);
   }, [slug, list.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (slug) {

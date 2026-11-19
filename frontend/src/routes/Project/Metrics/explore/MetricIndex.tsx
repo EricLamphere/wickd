@@ -79,7 +79,7 @@ function Card({ metric, item, grain, usage, issues, monitor, onOpen }: {
         )}
       </div>
       <div className="flex items-center gap-2 text-[10px] text-gray-500">
-        <span>{usage ? `Used in ${usage}` : 'Not used yet'}</span>
+        <span>{usage ? `Used in ${usage} ${usage === 1 ? 'place' : 'places'}` : 'Not used yet'}</span>
         {issues > 0 && <span className="flex items-center gap-0.5 text-amber-300"><AlertTriangle className="w-3 h-3" />{issues}</span>}
         {monitor && <span className={`px-1 rounded border ${monitor.pill}`}>{monitor.label}</span>}
         {item?.result?.ran_at && (

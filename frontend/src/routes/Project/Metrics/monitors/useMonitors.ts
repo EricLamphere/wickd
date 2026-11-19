@@ -11,7 +11,8 @@ import { useProjectEvents } from '../../../../lib/sse';
 import { useProEntitled } from '../../RunHistory/usePerformance';
 import { statusesByMetric, type MetricMonitorState } from './monitorView';
 
-const STALE_EVENTS = new Set(['metric_monitor_started', 'metric_monitor_finished']);
+// expectations_changed: marking a period as expected re-scores the monitor's stored status
+const STALE_EVENTS = new Set(['metric_monitor_started', 'metric_monitor_finished', 'metric_monitor_expectations_changed']);
 
 const noRetryWhenSettled = (count: number, err: unknown) =>
   !isProFeatureRequiredError(err) && !(err instanceof ApiError && err.status === 503) && count < 2;

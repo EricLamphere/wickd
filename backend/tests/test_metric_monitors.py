@@ -106,7 +106,7 @@ def shim(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
                       "algorithm": algorithm, "config": config})
         points = [{**p, "expected": 10.0, "low": 5.0, "high": 15.0, "score": 0.0, "kind": "none", "partial": False,
                    "restated": False, "previous": None} for p in series]
-        last = series[-1]["value"] if series else None
+        last = series[-1]["value"] if series and not series[-1].get("suppressed") else None
         status_ = "anomaly" if last is not None and last >= 1000 else "ok"
         if points and status_ == "anomaly":
             points[-1]["kind"] = "anomaly"
@@ -634,6 +634,30 @@ async def test_series_suppress_and_latest(db, tmp_path, client, worker, shim, en
     missing = await client.post(f"{base}/{m.id}/points/suppress", json={"period": "1999-01-01"})
     assert missing.status_code == 404
     assert (await client.get(f"{base}/999/series")).status_code == 404
+
+
+async def test_suppress_rescores_the_stored_status(db, tmp_path, client, worker, shim, entitled, batches) -> None:
+    """Marking the flagged period as expected clears the monitor's stored status (dashboard pills,
+    DAG dots read it) without a re-check; undoing flags it again."""
+    project = await _project(db, tmp_path)
+    m = await _monitor(db, project)
+    base = f"/api/projects/{project.id}/metric-monitors"
+    batches[0]["last"] = 5000
+    await client.post(f"{base}/refresh", json={})
+    await _settle()
+
+    async def latest() -> dict:
+        listed = (await client.get(base)).json()["monitors"]
+        return next(x for x in listed if x["id"] == m.id)["latest"]
+
+    before = await latest()
+    assert before["status"] == "anomaly"
+    period = before["since"]
+    assert (await client.post(f"{base}/{m.id}/points/suppress", json={"period": period})).status_code == 200
+    after = await latest()
+    assert after["status"] == "ok" and after["checked_at"] == before["checked_at"]
+    await client.post(f"{base}/{m.id}/points/suppress", json={"period": period, "suppressed": False})
+    assert (await latest())["status"] == "anomaly"
 
 
 async def test_suppress_a_gap_period_stores_it(db, tmp_path, client, shim, entitled) -> None:

@@ -378,6 +378,38 @@ async def _store_and_detect(plan: _Plan, res: BatchResult, target: str, today: d
     return result
 
 
+async def rescore_stored(session: Any, row: Any, target: str, today: date) -> None:
+    """Re-score the monitor's stored history and rewrite its stored status (`last_result_json`),
+    without querying the warehouse: after a period is marked as expected (or unmarked), the
+    status that dashboard pills, DAG dots and Health read changes with it. Only when the stored
+    result is for `target`; keeps its `checked_at`, `truncated` and per-slice restated counts."""
+    try:
+        stored = json.loads(row.last_result_json or "null")
+    except ValueError:
+        return
+    if not isinstance(stored, dict) or stored.get("error") or (stored.get("target") or "") != (target or ""):
+        return
+    m = spec_of(row)
+    since = mq.window_start(today, m.grain, m.lookback, has_history=False).isoformat()
+    restated = {s.get("slice"): s.get("restated") or 0 for s in stored.get("slices") or []}
+    slices = []
+    for key in _slice_keys(m):
+        series = await monitor_points.series(session, m.id, target, key, since)
+        try:
+            detected = detect_for(m, series, previous=None, today=today)
+        except (anomaly.AnomalyUnavailable, ValueError) as exc:
+            log.warning("monitor_rescore_failed", monitor_id=m.id, error=str(exc))
+            return
+        result = slice_result(key, detected)
+        slices.append({**result, "restated": max(result["restated"], restated.get(key, 0))})
+    if not slices:
+        return
+    checked_at = _as_utc(datetime.fromisoformat(stored["checked_at"])) if stored.get("checked_at") else datetime.now(UTC)
+    row.last_result_json = json.dumps(
+        monitor_result(m, target, slices, truncated=bool(stored.get("truncated")), checked_at=checked_at)
+    )
+
+
 def detect_for(m: MonitorSpec, series: list[dict], *, previous: list[dict] | None, today: date) -> dict:
     """The monitor's algorithm over one slice's stored series."""
     return anomaly.detect(

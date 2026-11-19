@@ -445,6 +445,8 @@ async def suppress(
         expectation_id = row.id
     else:
         await expectations.remove(session, m.id, target_name, dto.slice, dto.period)
+    await session.flush()
+    await monitors.rescore_stored(session, m, target_name, date.today())
     await session.commit()
     await publish_expectations_changed(project_id, expectation_id)
     return {"ok": True, "expectation_id": expectation_id}

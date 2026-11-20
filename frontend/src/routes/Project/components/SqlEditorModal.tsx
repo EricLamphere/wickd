@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Editor from '@monaco-editor/react';
 import { api } from '../../../lib/api';
 import { useTheme } from '../../../lib/useTheme';
+import { isSaveShortcut } from '../../../lib/editorKeys';
 
 interface Props {
   projectId: number;
@@ -56,7 +57,7 @@ export default function SqlEditorModal({ projectId, uniqueId, onClose }: Props) 
 
   // Cmd/Ctrl+S to save
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+    if (isSaveShortcut(e)) {
       e.preventDefault();
       if (isDirty) handleSave();
     }

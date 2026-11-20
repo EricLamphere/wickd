@@ -9,7 +9,8 @@ import { useTheme } from '../../../../lib/useTheme';
 import { registerExtractCteAction } from './extractCteAction';
 import { registerMetricNoteAction } from './metricNoteAction';
 import { registerUnitTestAction } from './unitTestAction';
-import { findUnitTestLine } from './unitTestLine';
+import { findTestLineInYaml, findYamlTargetRange, type YamlTarget } from './yamlTarget';
+import { flashRange } from './flashRange';
 
 type ViewTab = 'code' | 'compiled';
 
@@ -30,10 +31,8 @@ interface ViewPaneProps {
   graph: GraphDto | null;
   /** called when a ref/source link is cmd+clicked */
   onNavigateToFile: (path: string) => void;
-  /** YAML: test node to scroll the editor to when the file opens */
-  targetTestNode?: ModelNode | null;
-  /** unit test deep-link: reveal this unit test's `- name:` line */
-  targetUnitTest?: string | null;
+  /** YAML deep link (test, unit test, metric, source, column…): scrolled to and briefly highlighted */
+  yamlTarget?: YamlTarget | null;
   /** YAML: called when the cursor moves into a test block; null if not in a test */
   onTestSelected?: (testNode: ModelNode | null) => void;
 }
@@ -67,105 +66,10 @@ function formatSql(sql: string): string {
   return formatted.replace(/__JINJA_(\d+)__/g, (_, i) => tokens[Number(i)] ?? '');
 }
 
-/**
- * For a YAML schema file, find the 1-based line number where a test is defined.
- * Searches for: model name block → column name block (if column_name) → test type.
- * Falls back to a simple text search for the test type name if the structured search fails.
- */
-function findTestLineInYaml(
-  content: string,
-  testMetadataName: string | null,
-  columnName: string | null,
-  attachedNode: string | null,
-): number | null {
-  if (!testMetadataName) return null;
-  const lines = content.split('\n');
-
-  // Normalise attached_node to just the model name (last segment of uid)
-  const modelName = attachedNode ? attachedNode.split('.').pop() ?? null : null;
-
-  let inModelBlock = modelName === null; // if no model name, search everywhere
-  let inColumnBlock = columnName === null; // if no column name, search everywhere
-  let modelIndent = -1;
-  let columnIndent = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trimStart();
-    const indent = line.length - trimmed.length;
-
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    // Detect model name block: "- name: <modelName>" under "models:"
-    if (modelName && !inModelBlock) {
-      const m = trimmed.match(/^-?\s*name:\s*(.+)$/);
-      if (m && m[1].trim() === modelName) {
-        inModelBlock = true;
-        modelIndent = indent;
-        continue;
-      }
-    }
-
-    // Once inside a model block, detect when we leave it (dedent to same or lower level)
-    if (inModelBlock && modelName && indent <= modelIndent && trimmed.startsWith('-')) {
-      const m = trimmed.match(/^-?\s*name:\s*(.+)$/);
-      if (m && m[1].trim() !== modelName) {
-        inModelBlock = false;
-        inColumnBlock = columnName === null;
-        modelIndent = -1;
-        columnIndent = -1;
-        continue;
-      }
-    }
-
-    if (!inModelBlock) continue;
-
-    // Detect column name block: "- name: <columnName>" under "columns:"
-    if (columnName && !inColumnBlock) {
-      const m = trimmed.match(/^-?\s*name:\s*(.+)$/);
-      if (m && m[1].trim() === columnName) {
-        inColumnBlock = true;
-        columnIndent = indent;
-        continue;
-      }
-    }
-
-    // Detect when we leave a column block
-    if (inColumnBlock && columnName && indent <= columnIndent && trimmed.startsWith('-')) {
-      const m = trimmed.match(/^-?\s*name:\s*(.+)$/);
-      if (m && m[1].trim() !== columnName) {
-        inColumnBlock = false;
-        columnIndent = -1;
-        continue;
-      }
-    }
-
-    if (!inColumnBlock) continue;
-
-    // Match test entry: "- <testName>" or "- <testName>:" or "- name: <testName>"
-    const testSimple = trimmed.match(/^-\s*(\w+)\s*(?::|$)/);
-    const testNamed = trimmed.match(/^-?\s*name:\s*(\w+)\s*$/);
-    const matched = testSimple ? testSimple[1] : testNamed ? testNamed[1] : null;
-    if (matched && matched === testMetadataName) {
-      return i + 1; // 1-based line number
-    }
-  }
-
-  // Fallback: search for the test name as a standalone YAML key/value
-  for (let i = 0; i < lines.length; i++) {
-    const trimmed = lines[i].trimStart();
-    if (trimmed === `- ${testMetadataName}` || trimmed.startsWith(`- ${testMetadataName}:`)) {
-      return i + 1;
-    }
-  }
-
-  return null;
-}
-
 export function ViewPane({
   projectId, openFile, edited, onEdit, onSave, onDelete,
   saving, saveStatus, saveError, isDirty, modelUid, graph, onNavigateToFile,
-  targetTestNode, targetUnitTest, onTestSelected,
+  yamlTarget, onTestSelected,
 }: ViewPaneProps) {
   const theme = useTheme();
   const monacoTheme = theme === 'light' ? 'vs-light' : 'vs-dark';
@@ -179,16 +83,15 @@ export function ViewPane({
   const onTestSelectedRef = useRef(onTestSelected);
   useEffect(() => { onTestSelectedRef.current = onTestSelected; }, [onTestSelected]);
 
-  const targetTestNodeRef = useRef(targetTestNode);
-  useEffect(() => { targetTestNodeRef.current = targetTestNode; }, [targetTestNode]);
-  const targetUnitTestRef = useRef(targetUnitTest);
-  useEffect(() => { targetUnitTestRef.current = targetUnitTest; }, [targetUnitTest]);
+  const yamlTargetRef = useRef(yamlTarget);
+  useEffect(() => { yamlTargetRef.current = yamlTarget; }, [yamlTarget]);
 
-  /** The line a deep-link points at: a data test's, or a unit test's entry. */
-  const targetLine = (content: string): number | null => {
-    const test = targetTestNodeRef.current;
-    if (test) return findTestLineInYaml(content, test.test_metadata_name, test.column_name, test.attached_node);
-    return targetUnitTestRef.current ? findUnitTestLine(content, targetUnitTestRef.current) : null;
+  /** Scrolls to the deep-linked part of the file and highlights it for a moment. */
+  const revealTarget = (editor: MonacoEditor.editor.IStandaloneCodeEditor) => {
+    const target = yamlTargetRef.current;
+    const content = editor.getModel()?.getValue();
+    const range = target && content ? findYamlTargetRange(content, target) : null;
+    if (range) flashRange(editor, range);
   };
 
   const modelUidRef = useRef(modelUid);
@@ -226,16 +129,10 @@ export function ViewPane({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, canCompile, modelUid]);
 
-  // Scroll editor to targetTestNode's line when it changes (e.g. DAG deep-link)
+  // A new deep link into the already-open file (e.g. another test in the same YAML)
   useEffect(() => {
-    if (!targetTestNode && !targetUnitTest) return;
-    const lineNumber = targetLine(edited ?? openFile.content);
-    if (lineNumber && editorRef.current) {
-      editorRef.current.revealLineInCenter(lineNumber);
-      editorRef.current.setPosition({ lineNumber, column: 1 });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetTestNode, targetUnitTest]);
+    if (yamlTarget && editorRef.current) revealTarget(editorRef.current);
+  }, [yamlTarget]);
 
   const fetchCompiledSql = async () => {
     if (!canCompile || !modelUid) return;
@@ -322,7 +219,7 @@ export function ViewPane({
             {saveStatus === 'error' && (
               <span className="text-xs text-red-400">{saveError}</span>
             )}
-            {saveStatus === 'saved' && (
+            {saveStatus === 'saved' && !isDirty && (
               <span className="text-xs text-emerald-400">Saved ✓</span>
             )}
             {canFormat && (
@@ -380,16 +277,8 @@ export function ViewPane({
               // Store editor ref for imperative scroll
               editorRef.current = editor;
 
-              // Scroll to the deep-linked data test or unit test, if any
-              {
-                const lineNumber = targetLine(editor.getModel()?.getValue() ?? '');
-                if (lineNumber) {
-                  setTimeout(() => {
-                    editor.revealLineInCenter(lineNumber);
-                    editor.setPosition({ lineNumber, column: 1 });
-                  }, 50);
-                }
-              }
+              // Scroll to (and flash) the deep-linked test, metric, source, column…
+              if (yamlTargetRef.current) setTimeout(() => revealTarget(editor), 50);
 
               // "Extract CTE to model…" (refactor) for SQL model files
               const extractAction = isSqlFile(openFile.path)

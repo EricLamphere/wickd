@@ -788,8 +788,10 @@ export default function ModelsPage() {
           graph={graph ?? null}
           page="dag"
           onNavigateToFiles={() => selectedModel && navigate(`/projects/${id}/files?model=${encodeURIComponent(selectedModel.unique_id)}`)}
-          onNavigateToFile={(path) => {
-            const node = graph?.nodes.find((n) => n.original_file_path === path);
+          onNavigateToFile={(path, uniqueId) => {
+            // several nodes share a YAML file (tests, metrics): prefer the one clicked
+            const node = graph?.nodes.find((n) => n.unique_id === uniqueId)
+              ?? graph?.nodes.find((n) => n.original_file_path === path);
             // files that aren't a DAG node's (e.g. a unit test's YAML) open by path
             navigate(node
               ? `/projects/${id}/files?model=${encodeURIComponent(node.unique_id)}`

@@ -11,6 +11,7 @@ Click **Files** in the project nav. The left panel shows the project directory t
 The file tree shows every file in your dbt project (except `.git`, `dbt_packages`, `logs`, virtualenvs and `__pycache__`). Click a file to open it in the editor; click a folder to expand or collapse it.
 
 - The open file is highlighted, and its folders open automatically when you arrive from a deep link or with back/forward
+- Arriving at a YAML file from a test, unit test, metric, semantic model, saved query, source, exposure or **Open YAML** button scrolls the editor to that entry and highlights it for a couple of seconds
 - Text files open in the editor (including extensionless ones such as `.gitignore`); binary files such as `dev.duckdb` show a "binary file" notice instead
 - The tree refreshes on its own when files change on disk (dbt, git, another editor), and when the window regains focus. The header also has **New File**, **New Folder**, **Refresh** and **Collapse all** buttons
 

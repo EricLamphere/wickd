@@ -337,6 +337,16 @@ html[data-theme="light"] .node-selected .node-name {
   border-left: 2px solid rgb(var(--brand-500));
 }
 
+/* Files: the deep-linked YAML block (test, metric, source, column…), flashed on open */
+.yaml-target-flash {
+  background: rgb(var(--brand-500) / 0.18);
+  animation: yaml-target-fade 2.5s ease-in forwards;
+}
+@keyframes yaml-target-fade {
+  0%, 60% { background: rgb(var(--brand-500) / 0.18); }
+  100% { background: rgb(var(--brand-500) / 0); }
+}
+
 /* Metric debug: the selected plan step's part of MetricFlow's SQL, and the comment line naming it */
 .plan-sql-step {
   background: rgb(var(--brand-500) / 0.10);

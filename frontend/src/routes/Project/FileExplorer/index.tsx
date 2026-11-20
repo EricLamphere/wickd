@@ -8,10 +8,12 @@ import { PageTitle } from '../components/PageHeader';
 import { SidePane, type FailedRowsCache } from '../components/SidePane';
 import { FileTree } from './FileTree';
 import { ViewPane } from './panes/ViewPane';
+import { yamlTargetFor, type YamlTarget } from './panes/yamlTarget';
 import { isAtOrUnder, remapPath } from './treeOps';
 import { fileOpErrorMessage } from './useFileOps';
 import { useReportSelectedNode } from '../lib/selectedNodeContext';
 import { confirmDialog } from '../../../lib/dialogs';
+import { isSaveShortcut } from '../../../lib/editorKeys';
 
 /** File path a ?model= deep-link points at (unit tests aren't graph nodes — use their YAML file). */
 function resolveDeepLinkPath(graph: GraphDto, uid: string | null): string | null {
@@ -31,9 +33,11 @@ export default function FileExplorerPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   // ?path= is the open file (so opening files lands in back/forward history);
-  // ?model= is the inbound deep-link (DAG/Docs/⌘K), resolved to a path on arrival
+  // ?model= is the inbound deep-link (DAG/Docs/⌘K), resolved to a path on arrival;
+  // in a YAML file it (with an optional ?column=) is also the block scrolled to and flashed
   const pathParam = searchParams.get('path');
   const modelParam = searchParams.get('model');
+  const columnParam = searchParams.get('column');
 
   const [openFile, setOpenFile] = useState<FileContentDto | null>(null);
   const [edited, setEdited] = useState<string | undefined>(undefined);
@@ -51,9 +55,8 @@ export default function FileExplorerPage() {
   const [modelUid, setModelUid] = useState<string | null>(null);
   /** for YAML schema files: the test node currently active in the editor / SidePane */
   const [selectedTestNode, setSelectedTestNode] = useState<ModelNode | null>(null);
-  /** test node to scroll the editor to on open (from deep-link) */
-  const [targetTestNode, setTargetTestNode] = useState<ModelNode | null>(null);
-  const [targetUnitTest, setTargetUnitTest] = useState<string | null>(null);
+  /** the deep-linked part of a YAML file to scroll to and highlight on open */
+  const [yamlTarget, setYamlTarget] = useState<YamlTarget | null>(null);
   const PREVIEW_CACHE_KEY = `preview-cache-${id}`;
   const FAILED_ROWS_KEY = `failed-rows-cache-${id}`;
 
@@ -141,17 +144,17 @@ export default function FileExplorerPage() {
     }
   }, []));
 
-  const loadFile = useCallback(async (path: string, testNode: ModelNode | null, unitTest: string | null = null) => {
+  const loadFile = useCallback(async (path: string, testNode: ModelNode | null, target: YamlTarget | null = null) => {
     const seq = ++loadSeqRef.current;
     setLoadingPath(path);
     setEdited(undefined);
     setSaveStatus('idle');
-    setTargetTestNode(testNode);
-    setTargetUnitTest(unitTest);
+    setYamlTarget(null);
     try {
       const file = await api.files.getContent(id, path);
       if (seq !== loadSeqRef.current) return;
       setOpenFile(file);
+      setYamlTarget(target);
       setOpenError(null);
       // Resolve model for this file
       if (graph) {
@@ -201,6 +204,12 @@ export default function FileExplorerPage() {
     setSearchParams({ path });
   }, [pathParam, setSearchParams]);
 
+  /** Opens a node's file from the SidePane, keeping ?model= so a YAML file lands on that node. */
+  const openNodeFile = useCallback((path: string, uniqueId?: string) => {
+    if (!uniqueId) { openFileNode(path); return; }
+    setSearchParams({ path, model: uniqueId });
+  }, [openFileNode, setSearchParams]);
+
   /** Clears the open file (after delete/rename) without leaving a stale ?path= or session restore behind. */
   const closeFile = useCallback(() => {
     setOpenFile(null);
@@ -243,18 +252,17 @@ export default function FileExplorerPage() {
       return;
     }
 
-    const key = `${pathParam}\n${modelParam ?? ''}`;
+    const key = `${pathParam}\n${modelParam ?? ''}\n${columnParam ?? ''}`;
     if (loadedKeyRef.current === key) return;
     loadedKeyRef.current = key;
-    // For test deep-links, scroll the editor to that test
+    // A test deep link also selects that test in the SidePane
     const testNode = graph.nodes.find((n) => n.unique_id === modelParam && n.resource_type === 'test') ?? null;
-    const unitTest = graph.unit_tests?.find((u) => u.unique_id === modelParam)?.name ?? null;
-    loadFile(pathParam, testNode, unitTest);
-  }, [graph, pathParam, modelParam, SESSION_KEY, setSearchParams, loadFile]);
+    loadFile(pathParam, testNode, yamlTargetFor(graph, pathParam, modelParam, columnParam));
+  }, [graph, pathParam, modelParam, columnParam, SESSION_KEY, setSearchParams, loadFile]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if (isSaveShortcut(e)) {
         e.preventDefault();
         if (openFile && edited !== undefined) handleSave();
       }
@@ -313,7 +321,7 @@ export default function FileExplorerPage() {
     const next = remapPath(openFile.path, moves);
     if (!next) return;
     setOpenFile({ ...openFile, path: next });
-    loadedKeyRef.current = `${next}\n`;
+    loadedKeyRef.current = `${next}\n\n`;
     try { sessionStorage.setItem(SESSION_KEY, next); } catch { /* storage unavailable */ }
     setSearchParams({ path: next }, { replace: true });
   }, [openFile, SESSION_KEY, setSearchParams]);
@@ -368,8 +376,7 @@ export default function FileExplorerPage() {
             modelUid={modelUid}
             graph={graph ?? null}
             onNavigateToFile={openFileNode}
-            targetTestNode={targetTestNode}
-            targetUnitTest={targetUnitTest}
+            yamlTarget={yamlTarget}
             onTestSelected={(testNode) => setSelectedTestNode(testNode)}
           />
         ) : (
@@ -394,7 +401,7 @@ export default function FileExplorerPage() {
           if (nav) navigate(`/projects/${id}/docs?node=${encodeURIComponent(nav.unique_id)}`);
         }}
         onDelete={handleDeleteModel}
-        onNavigateToFile={openFileNode}
+        onNavigateToFile={openNodeFile}
         previewCache={previewCache}
         onPreviewCached={(uid, data) => setPreviewCache((prev) => {
           const next = new Map(prev).set(uid, data);

@@ -18,7 +18,7 @@ interface SidePaneProps {
   onNavigateToDag?: () => void;
   onViewDocs?: () => void;
   onDelete?: () => void;
-  onNavigateToFile?: (path: string) => void;
+  onNavigateToFile?: (path: string, uniqueId?: string) => void;
   failedTestUid?: string | null;
   onFailedTestConsumed?: () => void;
   previewCache?: PreviewCache;

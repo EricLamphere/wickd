@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { drawsNodes, finishedStatus, initStepOperation, isWarningLine } from './operationRun';
+import { drawsNodes, finishedStatus, foldWarning, initStepOperation, isWarningLine, NO_WARNING } from './operationRun';
 
 describe('operationRun', () => {
   it('draws nodes only for commands that run them', () => {
@@ -13,6 +13,16 @@ describe('operationRun', () => {
     expect(isWarningLine('Done. PASS=1 WARN=2 ERROR=0 SKIP=0 TOTAL=3')).toBe(true);
     expect(isWarningLine('Done. PASS=1 WARN=0 ERROR=0 SKIP=0 TOTAL=1')).toBe(false);
     expect(isWarningLine('12:00:01  Found 3 models, warn_if config ok')).toBe(false);
+  });
+
+  it('settles warnings by the end-of-run summary when dbt prints one', () => {
+    const fold = (lines: string[]) => lines.reduce(foldWarning, NO_WARNING).warned;
+    const stray = '12:00:01  [WARNING]: Configuration paths exist which do not apply';
+    expect(fold([stray])).toBe(true);
+    expect(fold([stray, 'Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 TOTAL=2'])).toBe(false);
+    expect(fold(['Done. PASS=1 WARN=2 ERROR=0 SKIP=0 TOTAL=3'])).toBe(true);
+    expect(fold(['Done. PASS=2 WARN=0 ERROR=0 SKIP=0 TOTAL=2', stray])).toBe(false); // summary is final
+    expect(fold(['12:00:01  Found 3 models'])).toBe(false);
   });
 
   it('ends red on failure, yellow on warnings, else green', () => {

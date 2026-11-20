@@ -144,7 +144,7 @@ export default function ModelDriftRow({ projectId, snapshotId, result, defaultOp
             {(hasManifestOnly || hasWarehouseOnly) && result.yaml_path && (
               <button
                 type="button"
-                onClick={() => navigate(`/projects/${projectId}/files?path=${encodeURIComponent(result.yaml_path!)}`)}
+                onClick={() => navigate(`/projects/${projectId}/files?path=${encodeURIComponent(result.yaml_path!)}&model=${encodeURIComponent(result.unique_id)}`)}
                 title={`Open ${result.yaml_path} to edit this model's columns`}
                 className={ACTION_CLS}
               >

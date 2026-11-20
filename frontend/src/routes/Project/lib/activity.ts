@@ -3,7 +3,7 @@
 // generation), plus seeding from GET /activity after a reload. Pure; tested in activity.test.ts.
 
 import type { ActivitySnapshotDto, RecentRunDto } from '../../../lib/activityApi';
-import { drawsNodes, finishedStatus, isWarningLine, type OperationStatus } from './operationRun';
+import { drawsNodes, finishedStatus, foldWarning, NO_WARNING, type OperationStatus, type WarningFold } from './operationRun';
 
 export type ActivityKind = 'run' | 'init' | 'compile' | 'docs';
 export type ActivityStatus = OperationStatus;
@@ -23,7 +23,7 @@ export interface Activity {
   finishedAt: number | null;
   progress: { done: number; total: number } | null;
   log: readonly string[];
-  warned: boolean;
+  warning: WarningFold;
   /** started before this page opened (from GET /activity): no log before that */
   seeded: boolean;
   /** dismissed from the bubble (finished activities only) */
@@ -112,7 +112,7 @@ function newActivity(
     finishedAt: null,
     progress: null,
     log: [],
-    warned: false,
+    warning: NO_WARNING,
     seeded: false,
     acknowledged: false,
     open: OPEN_BY_KIND[kind],
@@ -207,7 +207,7 @@ function onRunLog(state: ActivityState, data: unknown): ActivityState {
   const line = stripAnsi(raw);
   return update(state, state.runKey, (a) => ({
     ...appendLog(a, [line]),
-    warned: a.warned || isWarningLine(line),
+    warning: foldWarning(a.warning, line),
     progress: nodeProgress(a.progress, line),
   }));
 }
@@ -220,7 +220,7 @@ function onRunFinished(state: ActivityState, data: unknown, now: number): Activi
     const created = newActivity(state, 'run', runTitle(command, str(data, 'select')), null);
     return onRunFinished({ ...created.state, runKey: created.activity.key }, data, now);
   }
-  const status = finishedStatus(num(data, 'return_code'), current.warned);
+  const status = finishedStatus(num(data, 'return_code'), current.warning.warned);
   const note = field(data, 'abandoned') === true ? ['Stopped before dbt finished'] : [];
   return { ...update(state, current.key, (a) => finish(appendLog(a, note), status, now)), runKey: null };
 }
@@ -355,7 +355,7 @@ function seedHistory(state: ActivityState, recent: readonly RecentRunDto[]): Act
       finishedAt: parseTime(r.finished_at),
       progress: null,
       log: r.log.map(stripAnsi).slice(-MAX_LOG_LINES),
-      warned: r.status === 'warn',
+      warning: { warned: r.status === 'warn', summarized: true },
       seeded: false,
       acknowledged: true,
       open: OPEN_BY_KIND.run,

@@ -19,6 +19,29 @@ export function isWarningLine(line: string): boolean {
   return WARNING.test(line);
 }
 
+// dbt's end-of-run summary: "Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 TOTAL=2"
+const SUMMARY = /\bPASS=\d+\s+WARN=(\d+)\b/;
+
+export interface WarningFold {
+  warned: boolean;
+  /** dbt printed its end-of-run summary, which settles `warned` */
+  summarized: boolean;
+}
+
+export const NO_WARNING: WarningFold = { warned: false, summarized: false };
+
+/**
+ * Folds one log line into whether the command warned. The end-of-run summary is final: its WARN
+ * count (the nodes that warned) overrules config/deprecation `[WARNING]` lines, which don't
+ * mean a node warned. Commands without a summary (compile, deps, …) warn on any warning line.
+ */
+export function foldWarning(prev: WarningFold, line: string): WarningFold {
+  if (prev.summarized) return prev;
+  const summary = SUMMARY.exec(line);
+  if (summary) return { warned: Number(summary[1]) > 0, summarized: true };
+  return prev.warned || !isWarningLine(line) ? prev : { warned: true, summarized: false };
+}
+
 /**
  * The operation an init pipeline step runs, for the dbt ones that don't announce themselves
  * (docs generate does, with docs_generating); null for pip install and scripts, which aren't dbt.

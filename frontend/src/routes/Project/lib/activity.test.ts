@@ -54,6 +54,22 @@ describe('reduceActivity — dbt commands', () => {
     expect(warned.activities[0].status).toBe('warn');
   });
 
+  it("lets dbt's end-of-run summary overrule stray warning lines", () => {
+    const clean = play([
+      ev('run_started', { command: 'test', label: 'test' }),
+      ev('run_log', { line: '12:32:56  [WARNING]: Configuration paths exist which do not apply to any resources' }),
+      ev('run_log', { line: '12:33:03  Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 TOTAL=2' }),
+      ev('run_finished', { return_code: 0 }),
+    ]);
+    expect(clean.activities[0].status).toBe('success');
+    const noSummary = play([
+      ev('run_started', { command: 'compile', label: 'compile' }),
+      ev('run_log', { line: '12:32:56  [WARNING]: Deprecated functionality' }),
+      ev('run_finished', { return_code: 0 }),
+    ]);
+    expect(noSummary.activities[0].status).toBe('warn');
+  });
+
   it('can be cancelled only while running', () => {
     const state = play([ev('run_started', { command: 'run', label: 'run' })]);
     expect(state.activities[0].cancellable).toBe(true);

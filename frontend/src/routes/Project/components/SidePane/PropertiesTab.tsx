@@ -27,7 +27,7 @@ interface PropertiesTabProps {
   onNavigateToDag?: () => void;
   onViewDocs?: () => void;
   onDelete?: () => void;
-  onNavigateToFile?: (path: string) => void;
+  onNavigateToFile?: (path: string, uniqueId?: string) => void;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -434,7 +434,7 @@ export function PropertiesTab({
                         title={n.original_file_path ? 'Cmd+click to open in Files' : n.name}
                         onClick={(e) => {
                           if ((e.metaKey || e.ctrlKey) && n.original_file_path && onNavigateToFile) {
-                            onNavigateToFile(n.original_file_path);
+                            onNavigateToFile(n.original_file_path, n.unique_id);
                           }
                         }}
                         className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-mono border transition-colors ${
@@ -470,7 +470,7 @@ export function PropertiesTab({
                           title={n.original_file_path ? 'Cmd+click to open in Files' : n.name}
                           onClick={(e) => {
                             if ((e.metaKey || e.ctrlKey) && n.original_file_path && onNavigateToFile) {
-                              onNavigateToFile(n.original_file_path);
+                              onNavigateToFile(n.original_file_path, n.unique_id);
                             }
                           }}
                           className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-mono border transition-colors ${

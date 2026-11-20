@@ -9,6 +9,7 @@ import { api, type FileNode, type GraphDto } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
 import { DataTable } from '../../../components/DataTable';
 import { useTheme } from '../../../lib/useTheme';
+import { bindEditorKey, isSaveShortcut } from '../../../lib/editorKeys';
 import NavRail from '../components/NavRail';
 import { PageTitle } from '../components/PageHeader';
 import { TreeItem } from './TreeItem';
@@ -18,6 +19,8 @@ import { updateNode } from './types';
 import { alertError, confirmDialog, promptDialog } from '../../../lib/dialogs';
 import { CONTENT_KEY, EXPANDED_KEY, OPEN_KEY, RESULTS_KEY, TAB_KEY } from './sessionKeys';
 
+/** How long "Saved ✓" shows after a save. */
+const SAVED_FLASH_MS = 2000;
 
 const MIN_RESULTS_WIDTH = 200;
 const DEFAULT_RESULTS_WIDTH = 360;
@@ -115,6 +118,10 @@ export default function WorkspacePage() {
   // content is here, or a file opened on arrival (Metrics → Open in Workspace) shows up empty.
   const [loadedPath, setLoadedPath] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  /** "Saved ✓" after a save, for SAVED_FLASH_MS (same as the Files page) */
+  const [justSaved, setJustSaved] = useState(false);
+  const savedTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(savedTimerRef.current), []);
   const [saving, setSaving] = useState(false);
   const editorRef = useRef<Parameters<NonNullable<Parameters<typeof Editor>[0]['onMount']>>[0] | null>(null);
   const handleRunRef = useRef<() => void>(() => {});
@@ -389,6 +396,9 @@ export default function WorkspacePage() {
       await api.files.putContent(id, openPath, editorContent);
       setIsDirty(false);
       sessionStorage.setItem(CONTENT_KEY(id, openPath), editorContent);
+      setJustSaved(true);
+      window.clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = window.setTimeout(() => setJustSaved(false), SAVED_FLASH_MS);
     } catch (e) {
       alertError(e);
     } finally {
@@ -467,17 +477,24 @@ export default function WorkspacePage() {
   useEffect(() => { handleRunRef.current = handleRun; }, [handleRun]);
   useEffect(() => { handleSaveRef.current = handleSave; }); // handleSave is new every render
 
+  // Cmd+S with focus outside the editor (file tree, results) saves too, instead of the browser's Save Page
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!isSaveShortcut(e)) return;
+      e.preventDefault();
+      handleSaveRef.current();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // Cleanup completion provider on unmount
   useEffect(() => () => { completionDisposableRef.current?.dispose(); }, []);
 
   const handleEditorMount = useCallback((editor: NonNullable<typeof editorRef.current>, monaco: Monaco) => {
     editorRef.current = editor;
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      handleSaveRef.current();
-    });
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-      handleRunRef.current();
-    });
+    bindEditorKey(editor, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, 'Save file', () => handleSaveRef.current());
+    bindEditorKey(editor, monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, 'Run query', () => handleRunRef.current());
 
     editor.onDidChangeCursorSelection((e) => {
       setHasSelection(!e.selection.isEmpty());
@@ -929,6 +946,7 @@ export default function WorkspacePage() {
                   {isDirty && <span className="text-gray-600 ml-1">•</span>}
                 </span>
               )}
+              {justSaved && !isDirty && <span className="text-xs text-emerald-400">Saved ✓</span>}
               <button
                 onClick={handleFormat}
                 disabled={!openPath}

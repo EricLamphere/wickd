@@ -209,6 +209,10 @@ Use `alertDialog` / `alertError` / `confirmDialog` / `promptDialog` from `lib/di
 if (!await confirmDialog(`Delete '${key}'?`, { confirmLabel: 'Delete', danger: true })) return;
 ```
 
+## Monaco Shortcuts — Never editor.addCommand
+
+Bind editor shortcuts with `bindEditorKey(editor, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, 'Save', run)` from `lib/editorKeys.ts`. Monaco's `addCommand()` registers on the shared keybinding service with no editor scope and is never removed: after that editor unmounts, its (stale) handler still fires in every other editor and swallows the key — this is what broke Cmd+S in Files after visiting Workspace. Check page-level Cmd+S with `isSaveShortcut(e)`.
+
 ## 204 No Content Responses
 
 The `request<T>()` helper in `api.ts` guards against parsing empty bodies:

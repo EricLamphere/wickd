@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { api, type InitStepDto, type ScriptTestResultDto } from '../../../../lib/api';
 import { useTheme } from '../../../../lib/useTheme';
+import { bindEditorKey } from '../../../../lib/editorKeys';
 import { CapturedVarsSection } from './CapturedVarsSection';
 import { ScriptTestOutput } from './ScriptTestOutput';
 
@@ -30,7 +31,7 @@ export function ScriptEditorModal({ projectId, initScriptPath, existing, onClose
 
   // ⌘S / Ctrl+S inside the editor saves, same as the submit button.
   const handleEditorMount: OnMount = (editor, monaco) => {
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => formRef.current?.requestSubmit());
+    bindEditorKey(editor, monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, 'Save script', () => formRef.current?.requestSubmit());
     if (isEdit) editor.focus();
   };
   const initialVars = existing?.captured_vars ?? [];

@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.ai.runtime import llama_server
@@ -80,6 +79,7 @@ from app.projects.service import begin_startup_scan, rescan_projects
 from app.scheduling import loop as scheduler_loop
 from app.semantic import monitors as metric_monitors  # noqa: F401 — registers its scheduler tick
 from app.semantic.runtime import metricflow_runtime
+from app.spa import mount_spa
 from app.watcher.service import watcher_manager
 
 _api_log_path = configure_api_log(settings.data_dir)
@@ -224,22 +224,8 @@ def _mount_spa() -> None:
     docs_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static/docs", StaticFiles(directory=docs_dir), name="static_docs")
 
-    dist = settings.frontend_dist
-    if not dist.exists():
-        log.warning("frontend_dist_missing", path=str(dist))
-        return
-    assets = dist / "assets"
-    if assets.exists():
-        app.mount("/assets", StaticFiles(directory=assets), name="assets")
-
-    index_file = dist / "index.html"
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def spa_fallback(full_path: str):
-        candidate = dist / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(index_file)
+    if not mount_spa(app, settings.frontend_dist):
+        log.warning("frontend_dist_missing", path=str(settings.frontend_dist))
 
 
 _mount_spa()

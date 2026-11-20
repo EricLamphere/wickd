@@ -34,6 +34,7 @@ from app.dbt.run_results import load_run_results, load_run_results_file
 from app.dbt.runner import RunRequest, runner
 from app.dbt.select import SelectMode, build_selector
 from app.dbt.state import RunState, StateError, resolve_run_state
+from app.dbt.test_rename import resolve_test_selector
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.semantic import monitors
@@ -403,6 +404,9 @@ async def _run_dbt_and_persist(
     env = await load_project_env(project.id)
     active_target = await _load_active_target(project.id)
     profile_name = await _load_active_profile_name(project.id)
+    if select:
+        # one node by name (side pane, Rerun): follow a generic test its YAML edit renamed
+        select = await resolve_test_selector(project.id, Path(project.path), select, env, active_target)
     extra: tuple[str, ...] = ("--target", active_target) if active_target else ()
     if full_refresh:
         extra += ("--full-refresh",)

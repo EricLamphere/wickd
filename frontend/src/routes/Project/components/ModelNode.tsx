@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { ModelNode } from '../../../lib/api';
 import { useColumnLineage } from '../lib/columnLineageContext';
@@ -56,11 +56,24 @@ function ModelNodeComponent({ data, selected }: Props) {
   const uid = model.unique_id;
   const relatedColumns = relatedColumnsMap.get(uid);
 
+  // A node mounts from React Flow's initial nodes, before Models.tsx adds `dimmed`. Fading in
+  // from there starts while React Flow still hides the node to measure it, and some GPUs never
+  // repaint that layer: after returning to the DAG every node looked lit until hovered. So the
+  // first render with `dimmed` set applies its opacity at once; later changes fade.
+  const decorated = useRef(false);
+  const fadeOpacity = decorated.current;
+  useEffect(() => {
+    if (dimmed !== undefined) decorated.current = true;
+  }, [dimmed]);
+
   return (
     <>
       <Handle type="target" position={Position.Left} style={{ background: 'rgb(var(--brand-500))', border: 'none' }} />
       <div
-        style={{ opacity: dimmed ? 0.2 : 1 }}
+        style={{
+          opacity: dimmed ? 0.2 : 1,
+          transitionProperty: fadeOpacity ? undefined : 'color, background-color, box-shadow, filter',
+        }}
         className={`
           w-[200px] rounded-lg ring-2 px-3 py-2 flex flex-col
           cursor-pointer select-none transition-all duration-150

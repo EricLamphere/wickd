@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { api, type GlobalProfileDto } from '../lib/api';
-import { applyTheme } from '../lib/useTheme';
+import { applyTheme, getThemePreference } from '../lib/useTheme';
+import { parseThemePreference, type ThemePreference } from '../lib/themePreference';
 import { GlobalEnvVarsSection } from './GlobalEnvVarsSection';
 import { GlobalSettingsTab } from './GlobalSettingsTab';
 import { SubscriptionSection } from './SubscriptionSection';
@@ -198,10 +199,10 @@ function ThemeTab() {
     queryFn: () => api.settings.get(),
   });
 
-  const currentTheme = appSettings?.theme ?? localStorage.getItem('wickd-theme') ?? 'dark';
+  const currentTheme = parseThemePreference(appSettings?.theme) ?? getThemePreference();
 
-  const handleThemeSelect = async (theme: string) => {
-    applyTheme(theme as 'dark' | 'light');
+  const handleThemeSelect = async (theme: ThemePreference) => {
+    applyTheme(theme);
     try {
       await api.settings.update({ theme });
       qc.invalidateQueries({ queryKey: ['app-settings'] });
@@ -211,7 +212,8 @@ function ThemeTab() {
     }
   };
 
-  const themes: { id: string; label: string; description: string }[] = [
+  const themes: { id: ThemePreference; label: string; description: string }[] = [
+    { id: 'system', label: 'System', description: 'Matches your operating system, switching between light and dark with it' },
     { id: 'dark', label: 'Dark', description: 'Dark background, low eye strain in dim environments' },
     { id: 'light', label: 'Light', description: 'Light background, high contrast in bright environments' },
   ];

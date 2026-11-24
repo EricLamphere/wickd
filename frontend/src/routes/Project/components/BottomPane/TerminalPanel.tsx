@@ -4,6 +4,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import 'xterm/css/xterm.css';
 import { api } from '../../../../lib/api';
 import { useTerminalEvents } from '../../../../lib/sse';
+import { useTheme } from '../../../../lib/useTheme';
 
 export interface TerminalInstance {
   id: string;
@@ -76,6 +77,12 @@ export function SingleTerminal({ instanceId: _instanceId, projectPath }: SingleT
   const lastSizeRef = useRef<{ cols: number; rows: number } | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [dead, setDead] = useState(false);
+  const theme = useTheme();
+
+  // Follow theme switches (incl. the OS flipping light/dark under 'system') in open terminals
+  useEffect(() => {
+    if (termRef.current) termRef.current.options.theme = getTermTheme();
+  }, [theme]);
 
   useEffect(() => {
     const container = containerRef.current;

@@ -1,4 +1,5 @@
 import type { GlobalEnvVarDto, SetupFieldError } from '../../lib/api';
+import type { ThemePreference } from '../../lib/themePreference';
 
 export interface SetupForm {
   projectsPath: string;
@@ -13,7 +14,7 @@ export interface SetupForm {
   dbtCoreVersion: string | null;
   /** Once the user edits the requirements path, stop deriving it from the projects folder. */
   requirementsTouched: boolean;
-  theme: 'dark' | 'light';
+  theme: ThemePreference;
   /** Global env vars; null until the current ones have loaded (null on save → left unchanged). */
   envVars: GlobalEnvVarDto[] | null;
 }

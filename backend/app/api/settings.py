@@ -1,6 +1,7 @@
 import asyncio
 import re
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,7 +42,7 @@ class SettingsUpdateDto(BaseModel):
     dbt_projects_path: str | None = None
     log_level: str | None = None
     global_requirements_path: str | None = None
-    theme: str | None = None
+    theme: Literal["system", "dark", "light"] | None = None
     python_path: str | None = None
     ai_model: str | None = None
     ai_endpoint_url: str | None = None

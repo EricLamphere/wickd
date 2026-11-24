@@ -51,7 +51,7 @@ task start
 - **Search across projects** — find a model, source, seed, snapshot, exposure or column in any of your projects from the home page search box or ⌘K, and jump straight to it in the DAG
 - **Node DAG & Node SQL** — bottom-pane tabs showing the full upstream and downstream lineage of whatever node you have selected, on any page (filterable by type, materialization, and status), and its uncompiled SQL
 - **Live sync with disk** — wickd watches your project, so a dbt run or compile from another terminal updates the DAG and run statuses, and commits or branch switches made outside the app show up in the Git panel, all without a reload
-- **Light & dark themes** — the whole app, switchable from Global Settings
+- **Light & dark themes** — the whole app, switchable from Global Settings, or set to System to follow your OS
 - **Automatic updates** — the desktop app tells you when a new version is out, shows what's new, and updates and restarts in one click (or Later, or Skip this version); it warns first if a dbt command is running — see [Update wickd](docs/how-to/update-wickd.md)
 - **Back / forward navigation** — header arrows (or ⌘[ / ⌘] or ⌘← / ⌘→ and mouse side buttons) step through your last 25 pages, in-page tabs, opened files, and selected DAG/docs nodes
 - **Scheduled runs** — run any dbt command on a schedule (every N hours or a cron expression) while wickd is open; each run lands in run history, and failed or skipped runs are flagged — see [Run, build, and test models](docs/how-to/run-models.md#scheduling-runs)

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, setupFieldError, type SettingsDto, type SetupFieldError } from '../../lib/api';
-import { applyTheme } from '../../lib/useTheme';
+import { applyTheme, getThemePreference } from '../../lib/useTheme';
+import { parseThemePreference } from '../../lib/themePreference';
 import { EnvVarsStep } from './EnvVarsStep';
 import { InstallStep } from './InstallStep';
 import { GLOBAL_ENV_QUERY_KEY } from '../GlobalEnvVarsSection';
@@ -20,7 +21,6 @@ const STEP_COMPONENTS: Record<Exclude<StepId, 'install'>, (props: StepProps) => 
 };
 
 function initialForm(settings: SettingsDto): SetupForm {
-  const currentTheme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
   const projectsPath = settings.dbt_projects_path ?? '';
   const savedRequirements = settings.global_requirements_path;
   return {
@@ -33,7 +33,7 @@ function initialForm(settings: SettingsDto): SetupForm {
     // A re-run keeps the saved version; first run defaults to the newest release
     dbtCoreVersion: settings.setup_completed ? settings.dbt_core_version ?? '' : null,
     requirementsTouched: savedRequirements != null,
-    theme: settings.theme === 'light' || settings.theme === 'dark' ? settings.theme : currentTheme,
+    theme: parseThemePreference(settings.theme) ?? getThemePreference(),
     envVars: null,
   };
 }

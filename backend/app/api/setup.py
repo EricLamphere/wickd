@@ -56,7 +56,7 @@ class SetupDto(BaseModel):
     # requirements file, appended to an existing one that doesn't mention
     # dbt-core, or saved as the dbt_core_version setting when there's no file.
     dbt_core_version: str = ""
-    theme: Literal["dark", "light"] = "dark"
+    theme: Literal["system", "dark", "light"] = "dark"
     # Global env vars, replacing the current set. None → leave them as they are.
     global_env_vars: list[GlobalEnvVarDto] | None = None
 

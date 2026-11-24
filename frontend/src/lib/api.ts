@@ -937,7 +937,7 @@ export interface SetupDto {
   create_requirements_file?: boolean;
   /** dbt-core to install, e.g. "1.10.13"; "" = latest. */
   dbt_core_version?: string;
-  theme: 'dark' | 'light';
+  theme: 'system' | 'dark' | 'light';
   /** Replaces the global env vars; omit to leave them unchanged. */
   global_env_vars?: GlobalEnvVarDto[];
 }

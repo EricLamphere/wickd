@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { api } from '../../lib/api';
 import { applyTheme } from '../../lib/useTheme';
+import { themeLabel } from '../../lib/themePreference';
 import { Choice, InlineCode, PathInput, StepHeading } from './fields';
 import { DbtCoreVersionPicker, useRequirementsFile } from './DbtCoreVersionPicker';
 import { dbtCorePlan } from './dbtCorePlan';
@@ -168,7 +169,8 @@ export function PreferencesStep({ form, update }: StepProps) {
     <>
       <StepHeading title="Preferences" />
       <span className="block mb-2 text-xs font-medium text-gray-300">Theme</span>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
+        <Choice selected={form.theme === 'system'} onSelect={() => choose('system')} title="System" />
         <Choice selected={form.theme === 'dark'} onSelect={() => choose('dark')} title="Dark" />
         <Choice selected={form.theme === 'light'} onSelect={() => choose('light')} title="Light" />
       </div>
@@ -191,7 +193,7 @@ export function ReviewStep({ form }: StepProps) {
     ['Python', form.pythonPath || 'Auto-detect'],
     ['Installs', plan.installs],
     ['Environment', describeEnvVars(form)],
-    ['Theme', form.theme === 'dark' ? 'Dark' : 'Light'],
+    ['Theme', themeLabel(form.theme)],
   ];
   return (
     <>

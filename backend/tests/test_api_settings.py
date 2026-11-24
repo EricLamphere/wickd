@@ -227,3 +227,14 @@ async def test_put_symlinked_alias_of_current_skips_rebuild(
 
     assert resp.status_code == 200
     assert isolated_venv == [py]
+
+
+async def test_put_theme_accepts_system(client: AsyncClient) -> None:
+    resp = await client.put("/api/settings", json={"theme": "system"})
+    assert resp.status_code == 200
+    assert (await client.get("/api/settings")).json()["theme"] == "system"
+
+
+async def test_put_theme_rejects_unknown(client: AsyncClient) -> None:
+    resp = await client.put("/api/settings", json={"theme": "neon"})
+    assert resp.status_code == 422

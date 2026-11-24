@@ -158,6 +158,12 @@ async def test_missing_requirements_file_rejected(
     assert python_changes == []
 
 
+async def test_system_theme_saved(client: AsyncClient, tmp_path: Path, python_changes: list[str]) -> None:
+    resp = await client.post("/api/setup/complete", json=_body(tmp_path, theme="system"))
+    assert resp.status_code == 200
+    assert (await client.get("/api/settings")).json()["theme"] == "system"
+
+
 async def test_invalid_theme_rejected(client: AsyncClient, tmp_path: Path, python_changes: list[str]) -> None:
     resp = await client.post("/api/setup/complete", json=_body(tmp_path, theme="neon"))
     assert resp.status_code == 422

@@ -4,11 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import './styles.css';
 import { installMonacoKeyGuard } from './lib/monacoKeyGuard';
+import { initTheme } from './lib/useTheme';
 
 installMonacoKeyGuard();
 
-const savedTheme = localStorage.getItem('wickd-theme') ?? 'dark';
-document.documentElement.dataset.theme = savedTheme;
+initTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

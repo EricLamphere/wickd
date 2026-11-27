@@ -59,6 +59,10 @@ Use ↑ ↓ to move, Enter or Tab to choose, Esc to close. The saved note and Pr
 linked name (`note:eu-rollback` reads as the note's title, `model:fct_orders` as `fct_orders`).
 Mentions inside code are left alone. Older `[[slug]]` note links still work.
 
+Following a link to another note opens it in the same window, with **back** and **forward** arrows
+in its header (or ⌘[ / ⌘]) to return along the notes you followed. On the Notes tab, the browser's
+back and forward move along them too.
+
 ## Where notes show up
 
 - **Time series** (dashboard widgets, metric pages, the query view, monitor charts): a shaded band

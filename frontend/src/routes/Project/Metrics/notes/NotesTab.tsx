@@ -13,6 +13,8 @@ import { NOTE_SORT_BY, NOTE_SORT_DIR, allTags, filterNotes, groupByMonth, rangeT
 import { TIMELINE_SPANS, type TimelineSpan } from './lib/timeline';
 import { NotesTimeline } from './NotesTimeline';
 import { NoteTypeIcon } from './NoteTypeIcon';
+import { currentNote, goBack, goForward, startHistory, type NoteHistory } from './lib/noteHistory';
+import { noteNav } from './noteNavigation';
 import { useNotes } from './useNotes';
 
 export const NOTE_PARAM = 'note';
@@ -70,6 +72,20 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
     if (slug) next.set(NOTE_PARAM, slug); else next.delete(NOTE_PARAM);
     return next;
   });
+  // the notes followed from link to link in the open note (back / forward arrows), kept in step
+  // with the URL: a row click starts over; the browser's back / forward moves along it
+  const [history, setHistory] = useState<NoteHistory | null>(null);
+  useEffect(() => {
+    setHistory((h) => {
+      if (!openSlug) return null;
+      if (!h) return startHistory(openSlug);
+      if (currentNote(h) === openSlug) return h;
+      if (h.stack[h.index - 1] === openSlug) return goBack(h);
+      if (h.stack[h.index + 1] === openSlug) return goForward(h);
+      return startHistory(openSlug);
+    });
+  }, [openSlug]);
+  const nav = history ? noteNav(history, (next) => { setHistory(next); setOpen(currentNote(next)); }) : undefined;
   // a note deleted while open: drop the param
   useEffect(() => { if (data && openSlug && !open) setOpen(null); }, [data, openSlug, open]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (patch: Partial<NotesFilter>) => setFilter((f) => ({ ...f, ...patch }));
@@ -157,7 +173,7 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
           </section>
         ))}
       </div>
-      {open && <NoteView projectId={projectId} note={open} onClose={() => setOpen(null)} onEdit={() => { setOpen(null); openMetricNote(open.slug, true); }} />}
+      {open && <NoteView projectId={projectId} note={open} nav={nav} onClose={() => setOpen(null)} onEdit={() => { setOpen(null); openMetricNote(open.slug, true); }} />}
     </div>
   );
 }

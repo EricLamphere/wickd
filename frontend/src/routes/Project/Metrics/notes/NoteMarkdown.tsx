@@ -14,7 +14,7 @@ import { notesApi } from '../../../../lib/notesApi';
 import { openExternal } from '../../../../lib/openExternal';
 import { widgetLinkHref } from '../lib/widgetLinks';
 import { linkifyMentions, parseMentionHref } from './lib/noteMentions';
-import { openMetricNote } from './noteEvents';
+import { useOpenLinkedNote } from './noteNavigation';
 import { noteCommitsKey } from './useNoteCompletions';
 import { useNotes } from './useNotes';
 
@@ -38,6 +38,7 @@ function useMentionTargets(projectId: number) {
 export const NoteMarkdown = memo(function NoteMarkdown({ projectId, body }: { projectId: number; body: string }) {
   const navigate = useNavigate();
   const targets = useMentionTargets(projectId);
+  const openNote = useOpenLinkedNote();
   const text = useMemo(() => linkifyMentions(body, (slug) => targets.note.get(slug) ?? null), [body, targets]);
   const components = useMemo<Components>(() => {
     const showCommit = (sha: string) => {
@@ -53,7 +54,7 @@ export const NoteMarkdown = memo(function NoteMarkdown({ projectId, body }: { pr
           if (mention.kind === 'note') {
             const known = targets.note.has(mention.value);
             return <a href="#" className={known ? MENTION : MISSING} title={known ? 'Open this note' : `There's no note ${mention.value}`}
-              onClick={(e) => { stop(e); if (known) openMetricNote(mention.value); }}>{children}</a>;
+              onClick={(e) => { stop(e); if (known) openNote(mention.value); }}>{children}</a>;
           }
           if (mention.kind === 'model') {
             const uid = targets.model.get(mention.value.toLowerCase()) ?? targets.model.get(mention.value.split('.').pop()!.toLowerCase());
@@ -73,7 +74,7 @@ export const NoteMarkdown = memo(function NoteMarkdown({ projectId, body }: { pr
         return <img src={notesApi.assetUrl(projectId, ref)} alt={alt ?? ''} title={title} loading="lazy" className="max-w-full rounded border border-gray-800" />;
       },
     };
-  }, [projectId, targets, navigate]);
+  }, [projectId, targets, navigate, openNote]);
   if (!body.trim()) return <p className="text-xs italic text-gray-500">No details written.</p>;
   return (
     <div className="prose-readme text-xs">

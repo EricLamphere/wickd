@@ -1,11 +1,13 @@
 // One note, read: its range, metric and dimension value, the Markdown with its screenshots, the
 // monitor periods marked as expected that link to it, and Edit / Delete / Open file. Deleting
 // offers to delete the images only this note uses. Plan 33: tags, incident status (Resolve /
-// Reopen), repeats yearly, the widget it was written about, and the notes linking to it.
+// Reopen), repeats yearly, the widget it was written about, and the notes linking to it. Following a
+// link to another note keeps a back / forward history (arrows in the header, ⌘[ / ⌘]) when the host
+// passes `nav`.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CalendarRange, CheckCircle2, CircleDot, FileText, Pencil, Repeat, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, CalendarRange, CheckCircle2, CircleDot, FileText, Pencil, Repeat, Trash2, X } from 'lucide-react';
 import { alertError, confirmDialog, confirmWithOptionDialog } from '../../../../lib/dialogs';
 import { notesApi, type MetricNoteDto, type NoteStatus } from '../../../../lib/notesApi';
 import { monitorUrl } from '../monitors/monitorView';
@@ -17,7 +19,7 @@ import { NoteMarkdown } from './NoteMarkdown';
 import { NoteWidgetPreview } from './NoteWidgetPreview';
 import { NoteTypeIcon, noteTypeLabel } from './NoteTypeIcon';
 import { notesKey, useNotes } from './useNotes';
-import { openMetricNote } from './noteEvents';
+import { NoteNavigationContext, useOpenLinkedNote, type NoteNav } from './noteNavigation';
 
 const CHIP = 'inline-flex items-center gap-1 px-1.5 py-px text-[10px] rounded border border-gray-700 text-gray-300';
 
@@ -78,13 +80,14 @@ function LinkedPeriods({ projectId, slug }: { projectId: number; slug: string })
 
 function LinkedFrom({ projectId, slug }: { projectId: number; slug: string }) {
   const { data } = useNotes(projectId);
+  const open = useOpenLinkedNote();
   const linking = backlinks(data?.notes ?? [], slug);
   if (!linking.length) return null;
   return (
     <section className="flex flex-col gap-1 pt-3 border-t border-gray-800">
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Linked from</h3>
       {linking.map((n) => (
-        <button key={n.slug} onClick={() => openMetricNote(n.slug)} className="flex items-center gap-1.5 text-left text-[11px] text-gray-300 hover:text-brand-300">
+        <button key={n.slug} onClick={() => open(n.slug)} className="flex items-center gap-1.5 text-left text-[11px] text-gray-300 hover:text-brand-300">
           <NoteTypeIcon note={n} className="w-3 h-3" />{n.title}<span className="text-gray-600">{rangeText(n.start, n.end)}</span>
         </button>
       ))}
@@ -114,15 +117,20 @@ function useSetStatus(projectId: number, note: MetricNoteDto) {
   return { set, busy };
 }
 
-export function NoteView({ projectId, note, onEdit, onClose }: {
-  projectId: number; note: MetricNoteDto; onEdit: () => void; onClose: () => void;
+export function NoteView({ projectId, note, onEdit, onClose, nav }: {
+  projectId: number; note: MetricNoteDto; onEdit: () => void; onClose: () => void; nav?: NoteNav;
 }) {
   const navigate = useNavigate();
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (nav && (e.metaKey || e.ctrlKey) && e.key === '[' && nav.canBack) { e.preventDefault(); nav.onBack(); }
+      else if (nav && (e.metaKey || e.ctrlKey) && e.key === ']' && nav.canForward) { e.preventDefault(); nav.onForward(); }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, nav]);
+  const arrow = 'p-0.5 rounded text-gray-400 hover:bg-gray-800 hover:text-gray-100 disabled:opacity-30 disabled:hover:bg-transparent';
   const openFile = () => { onClose(); navigate(`/projects/${projectId}/files?path=${encodeURIComponent(note.path)}`); };
   const remove = async () => { if (await deleteNote(projectId, note)) onClose(); };
   const status = useSetStatus(projectId, note);
@@ -132,6 +140,12 @@ export function NoteView({ projectId, note, onEdit, onClose }: {
       <div role="dialog" aria-label={note.title} onClick={(e) => e.stopPropagation()}
         className="flex flex-col w-full max-w-2xl max-h-[85vh] mx-4 bg-surface-panel border border-gray-700 rounded-lg shadow-2xl">
         <div className="flex items-start gap-2 px-4 py-2.5 border-b border-gray-800">
+          {nav && (nav.canBack || nav.canForward) && (
+            <div className="flex items-center -ml-1 shrink-0">
+              <button onClick={nav.onBack} disabled={!nav.canBack} title="Back (⌘[)" aria-label="Back" className={arrow}><ArrowLeft className="w-4 h-4" /></button>
+              <button onClick={nav.onForward} disabled={!nav.canForward} title="Forward (⌘])" aria-label="Forward" className={arrow}><ArrowRight className="w-4 h-4" /></button>
+            </div>
+          )}
           <NoteTypeIcon note={note} className="w-4 h-4 mt-0.5" />
           <div className="flex-1 min-w-0 flex flex-col gap-1.5">
             <h2 className="text-sm font-semibold text-gray-100">{note.title}</h2>
@@ -139,6 +153,7 @@ export function NoteView({ projectId, note, onEdit, onClose }: {
           </div>
           <button onClick={onClose} aria-label="Close" className="text-gray-500 hover:text-gray-300"><X size={16} /></button>
         </div>
+        <NoteNavigationContext.Provider value={nav?.onOpen ?? null}>
         <div className="flex-1 overflow-auto flex flex-col gap-3 p-4">
           {note.error && <p className="px-2 py-1.5 text-[11px] text-red-300 rounded border border-red-900/60 bg-red-950/30">{note.path}: {note.error}</p>}
           {note.warnings.map((w) => (
@@ -149,6 +164,7 @@ export function NoteView({ projectId, note, onEdit, onClose }: {
           <LinkedFrom projectId={projectId} slug={note.slug} />
           <LinkedPeriods projectId={projectId} slug={note.slug} />
         </div>
+        </NoteNavigationContext.Provider>
         <div className="flex items-center gap-1 px-3 py-2 border-t border-gray-800">
           {!note.error && <button onClick={onEdit} className={button}><Pencil className="w-3 h-3" />Edit</button>}
           <button onClick={openFile} className={button}><FileText className="w-3 h-3" />Open file</button>

@@ -14,10 +14,13 @@ import {
   ADD_METRIC_NOTE_EVENT, OPEN_METRIC_NOTE_EVENT, type AddNoteDetail, type OpenNoteDetail,
 } from './noteEvents';
 import { notesKey, useNotes } from './useNotes';
+import { currentNote, pushNote, startHistory, type NoteHistory } from './lib/noteHistory';
+import { noteNav } from './noteNavigation';
 
 type State =
   | { kind: 'new'; detail: AddNoteDetail }
-  | { kind: 'view'; slug: string }
+  // the notes followed from link to link in this dialog (back / forward)
+  | { kind: 'view'; history: NoteHistory }
   | { kind: 'edit'; note: MetricNoteDto };
 
 export function NoteHost({ projectId }: { projectId: number }) {
@@ -31,7 +34,8 @@ export function NoteHost({ projectId }: { projectId: number }) {
     const onAdd = (e: Event) => setState({ kind: 'new', detail: (e as CustomEvent<AddNoteDetail>).detail });
     const onOpen = async (e: Event) => {
       const { slug, edit } = (e as CustomEvent<OpenNoteDetail>).detail;
-      if (!edit) { setState({ kind: 'view', slug }); return; }
+      // opened while a note shows (a pin, a link outside the note): it's the next step in its history
+      if (!edit) { setState((prev) => ({ kind: 'view', history: prev?.kind === 'view' ? pushNote(prev.history, slug) : startHistory(slug) })); return; }
       try {
         setState({ kind: 'edit', note: await notesApi.get(projectId, slug) });
       } catch (err) {
@@ -62,16 +66,18 @@ export function NoteHost({ projectId }: { projectId: number }) {
         await alertError(err);
       }
     }
-    setState({ kind: 'view', slug: note.slug });
+    setState({ kind: 'view', history: startHistory(note.slug) });
   };
 
   if (state.kind === 'view') {
-    const note = list?.notes.find((n) => n.slug === state.slug);
+    const slug = currentNote(state.history);
+    const note = list?.notes.find((n) => n.slug === slug);
     if (!note) {
       // not listed (yet): the list refetches after a save; a missing file says so
-      return list ? <MissingNote slug={state.slug} onClose={close} /> : null;
+      return list ? <MissingNote slug={slug} onClose={close} /> : null;
     }
-    return <NoteView projectId={projectId} note={note} onClose={close} onEdit={() => setState({ kind: 'edit', note })} />;
+    const nav = noteNav(state.history, (history) => setState({ kind: 'view', history }));
+    return <NoteView projectId={projectId} note={note} onClose={close} onEdit={() => setState({ kind: 'edit', note })} nav={nav} />;
   }
   if (state.kind === 'edit') {
     return (

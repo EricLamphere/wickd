@@ -45,3 +45,12 @@ describe('logLineTone — other lines', () => {
     expect(logLineTone('PASS=5 WARN=0 ERROR=0')).toBe('success');
   });
 });
+
+describe('logLineTone — ANSI-colored lines from captured logs', () => {
+  it('reads keywords inside color codes', () => {
+    expect(logLineTone('\x1b[0m18:30:48  1 of 1 PASS t ..... [\x1b[32mPASS\x1b[0m in 0.02s]')).toBe('success');
+    expect(logLineTone('\x1b[0m18:30:48  1 of 1 FAIL 3 t ..... [\x1b[31mFAIL 3\x1b[0m in 0.02s]')).toBe('error');
+    expect(logLineTone('\x1b[0m18:30:48  \x1b[32mCompleted successfully\x1b[0m')).toBe('success');
+    expect(logLineTone('\x1b[0m18:30:48  1 of 1 WARN 1 t ..... [\x1b[33mWARN 1\x1b[0m in 0.02s]')).toBe('warn');
+  });
+});

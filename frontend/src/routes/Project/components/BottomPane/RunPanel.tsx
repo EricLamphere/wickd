@@ -17,6 +17,7 @@ import { computeLayout } from '../../lib/layout';
 import { drawsNodes, finishedStatus, initStepOperation, isWarningLine, type OperationStatus } from '../../lib/operationRun';
 import { OperationNode } from './OperationNode';
 import { RetryLastRunButton } from '../slim/RetryLastRunButton';
+import { stripAnsi } from '../../../../lib/ansi';
 
 interface ProjectRunButtonsProps {
   projectId: number;
@@ -77,10 +78,6 @@ interface RunPanelProps {
 const nodeTypes = { model: ModelNodeComponent };
 
 // Strip ANSI escape codes that dbt sometimes emits
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-}
 
 // Extract the last dot-separated segment (the bare model name)
 function lastName(dotted: string): string {

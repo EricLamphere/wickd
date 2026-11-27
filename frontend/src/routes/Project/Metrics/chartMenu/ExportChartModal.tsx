@@ -1,5 +1,5 @@
-// Download a metric chart: a PNG of it as on screen, or its rows as CSV. Written by POST
-// /exports/chart into the chosen folder (the desktop webview has no download manager), like
+// Download a metric chart: a PNG of it as on screen, or its rows as CSV; also a run's log (POST
+// /exports/log, from the Runs page Log tab). Written by POST /exports/chart into the chosen folder (the desktop webview has no download manager), like
 // dashboard exports; the folder is remembered. `render` produces the file when Save is clicked.
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -7,7 +7,7 @@ import { CheckCircle2, FolderOpen, X } from 'lucide-react';
 import { api, ApiError, exportFieldError } from '../../../../lib/api';
 import { FolderPickerModal } from '../../components/DagExport/FolderPickerModal';
 
-export type ChartFileFormat = 'png' | 'csv';
+export type ChartFileFormat = 'png' | 'csv' | 'log';
 
 export interface RenderedChartFile {
   content: string;
@@ -25,6 +25,8 @@ interface Props {
 
 const INPUT = 'w-full bg-surface-elevated border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 font-mono placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500';
 const DIR_KEY = 'wickd:chart-export-dir';
+
+const TITLES: Record<ChartFileFormat, string> = { png: 'Download PNG', csv: 'Download CSV', log: 'Download log' };
 
 type Phase = { kind: 'idle' } | { kind: 'working' } | { kind: 'conflict'; message: string } | { kind: 'done'; path: string };
 
@@ -56,7 +58,8 @@ export function ExportChartModal({ projectId, format, defaultName, render, onClo
     setPhase({ kind: 'working' });
     try {
       const file = await render();
-      const result = await api.exports.chart(projectId, { directory, filename, format, ...file, overwrite });
+      const write = format === 'log' ? api.exports.log : api.exports.chart;
+      const result = await write(projectId, { directory, filename, format, ...file, overwrite });
       try { localStorage.setItem(DIR_KEY, directory); } catch { /* storage unavailable */ }
       setPhase({ kind: 'done', path: result.path });
     } catch (err) {
@@ -68,7 +71,7 @@ export function ExportChartModal({ projectId, format, defaultName, render, onClo
   };
 
   const working = phase.kind === 'working';
-  const title = format === 'png' ? 'Download PNG' : 'Download CSV';
+  const title = TITLES[format];
   return (
     <>
       <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onClose}>

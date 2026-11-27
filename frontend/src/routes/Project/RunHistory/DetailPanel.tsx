@@ -3,21 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { CalendarClock, Clock } from 'lucide-react';
 import { api, type RunInvocationDetailDto, type RunInvocationDto } from '../../../lib/api';
 import { useStickyTab } from '../../../lib/useUrlTab';
-import { logLineTone, type LogTone } from '../../../lib/logLineTone';
 import { CommandBadge } from '../components/CommandBadge';
 import { useOpenInFiles } from '../lib/openInFiles';
 import { FailedTestRow } from './FailedTestRow';
+import { RunLogTab } from './RunLogTab';
 import { RunTimeline } from './RunTimeline';
 import { TrendRow } from './TrendRow';
 import { RerunButton, RetryButton, StatusBadge, formatDuration, formatTime, type FailedRowsCache } from './shared';
-
-const RUN_LOG_TONE_CLASS: Record<LogTone | 'none', string> = {
-  error: 'text-red-400',
-  warn: 'text-amber-400',
-  success: 'text-emerald-400',
-  accent: '',
-  none: '',
-};
 
 type DetailTab = 'nodes' | 'timeline' | 'log' | 'failed_rows';
 
@@ -70,12 +62,6 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, onSchedul
   const visibleTabs: DetailTab[] = failedTests.length > 0 ? ['nodes', 'timeline', 'log', 'failed_rows'] : ['nodes', 'timeline', 'log'];
   // sticky across runs and visits; Failed Rows falls back to Nodes on a run without failures
   const [tab, setTab] = useStickyTab(`run-detail-tab:${projectId}`, visibleTabs, 'nodes');
-
-  const { data: logData, isLoading: logLoading } = useQuery<{ lines: string[] }>({
-    queryKey: ['run-invocation-log', projectId, invocation.id],
-    queryFn: () => api.runHistory.log(projectId, invocation.id),
-    enabled: tab === 'log',
-  });
 
   return (
     <div className="flex flex-col h-full border-l border-gray-800 bg-surface-panel min-w-0">
@@ -216,27 +202,7 @@ export function DetailPanel({ projectId, invocation, onRerun, onRetry, onSchedul
       )}
 
       {/* Log tab */}
-      {tab === 'log' && (
-        <div className="flex-1 overflow-auto bg-surface-app font-mono text-xs text-gray-300 p-4">
-          {invocation.cli_command && (
-            <div className="mb-3 pb-3 border-b border-gray-800">
-              <span className="text-gray-500">$ </span>
-              <span className="text-brand-300">{invocation.cli_command}</span>
-            </div>
-          )}
-          {logLoading ? (
-            <span className="text-gray-500">Loading…</span>
-          ) : !logData || logData.lines.length === 0 ? (
-            <span className="text-gray-500">No log captured for this invocation.</span>
-          ) : (
-            logData.lines.map((line, i) => (
-              <div key={i} className={`whitespace-pre leading-5 ${RUN_LOG_TONE_CLASS[logLineTone(line) ?? 'none']}`}>
-                {line}
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      {tab === 'log' && <RunLogTab projectId={projectId} invocation={invocation} />}
     </div>
   );
 }

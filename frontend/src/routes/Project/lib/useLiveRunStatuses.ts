@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { GraphDto } from '../../../lib/api';
 import { useProjectEvents } from '../../../lib/sse';
+import { stripAnsi } from '../../../lib/ansi';
 
 export type LiveStatus = 'running' | 'success' | 'error' | 'warn';
 
@@ -12,10 +13,6 @@ export type LiveStatus = 'running' | 'success' | 'error' | 'warn';
  */
 const MIN_RUNNING_MS = 600;
 
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-}
 
 function lastName(dotted: string): string {
   const parts = dotted.split('.');

@@ -4,6 +4,11 @@ import { api, type ModelNode, type GraphDto } from '../../../../lib/api';
 import { PropertiesTab } from './PropertiesTab';
 import ProfilePanel from './ProfilePanel';
 import { DataTable } from '../../../../components/DataTable';
+import { FailedRowsPanel, type FailedRowsCache } from './FailedRowsPanel';
+import { MultiFailedRows } from './MultiFailedRows';
+import { failedTestsInSelection } from './failedTests';
+
+export type { FailedRowsCache } from './FailedRowsPanel';
 
 export type PreviewCache = Map<string, { columns: string[]; rows: unknown[][] }>;
 
@@ -137,93 +142,6 @@ function DataPreviewPanel({ projectId, model, previewCache, onPreviewCached }: D
   );
 }
 
-// ---------------------------------------------------------------------------
-// FailedRowsPanel — runs dbt show on a failing test node
-// ---------------------------------------------------------------------------
-
-export type FailedRowsCache = Map<string, { columns: string[]; rows: unknown[][] }>;
-
-// Same StrictMode guard as _previewInflight above.
-const _failedRowsInflight = new Set<string>();
-
-interface FailedRowsPanelProps {
-  projectId: number;
-  model: { unique_id: string };
-  failedRowsCache?: FailedRowsCache;
-  onFailedRowsCached?: (uid: string, data: { columns: string[]; rows: unknown[][] }) => void;
-}
-
-export function FailedRowsPanel({ projectId, model, failedRowsCache, onFailedRowsCached }: FailedRowsPanelProps) {
-  const key = `${projectId}:${model.unique_id}`;
-  const cached = failedRowsCache?.get(model.unique_id) ?? null;
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const peerInFlight = !cached && !loading && _failedRowsInflight.has(key);
-
-  const fetchRows = async () => {
-    if (_failedRowsInflight.has(key)) return;
-    _failedRowsInflight.add(key);
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.models.show(projectId, model.unique_id, 100);
-      onFailedRowsCached?.(model.unique_id, result);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      _failedRowsInflight.delete(key);
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!cached && !_failedRowsInflight.has(key)) {
-      fetchRows();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800 shrink-0">
-        <span className="text-xs text-gray-500">{cached ? `${cached.rows.length} row${cached.rows.length !== 1 ? 's' : ''}` : ' '}</span>
-        <button
-          onClick={fetchRows}
-          disabled={loading || peerInFlight}
-          className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-surface-elevated hover:bg-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-40 transition-colors"
-          title="Re-run dbt show"
-        >
-          <RotateCw className={`w-3 h-3 ${loading || peerInFlight ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto">
-        {(loading || peerInFlight) && (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">
-            Running dbt show…
-          </div>
-        )}
-        {error && !loading && !peerInFlight && (
-          <div className="flex items-center justify-center h-full text-red-400 text-sm px-4 text-center">
-            {error}
-          </div>
-        )}
-        {!loading && !peerInFlight && !error && cached && cached.rows.length === 0 && (
-          <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-            No failing rows
-          </div>
-        )}
-        {!loading && !peerInFlight && !error && cached && cached.rows.length > 0 && (
-          <DataTable
-            columns={cached.columns.map((c) => ({ key: c }))}
-            rows={cached.rows}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
 type SidePaneTab = 'properties' | 'preview' | 'profile' | 'failed_rows';
 
 export function SidePane({
@@ -312,6 +230,18 @@ export function SidePane({
     });
   };
 
+  // Several nodes selected with failed tests among them: Properties (the selection summary) and
+  // Failed Rows with a dropdown of those tests. Otherwise the single node's tabs.
+  const multiFailed = failedTestsInSelection(selectedModels);
+  const multi = selectedModels.length > 1;
+  const showTabBar = multi
+    ? multiFailed.length > 0
+    : !!model && (model.resource_type === 'model'
+      || (model.resource_type === 'test' && (model.status === 'error' || model.status === 'warn' || activeTab === 'failed_rows')));
+  const shownTab: SidePaneTab = multi
+    ? (activeTab === 'failed_rows' && multiFailed.length > 0 ? 'failed_rows' : 'properties')
+    : (activeTab === 'failed_rows' && model?.resource_type !== 'test' ? 'properties' : activeTab);
+
   return (
     <div className="shrink-0 bg-surface-panel border-l border-gray-700 flex flex-row">
       {/* Drag handle + toggle button strip */}
@@ -357,8 +287,8 @@ export function SidePane({
       >
         <div style={{ width }} className="flex flex-col h-full">
           {/* Tab bar */}
-          {model && (model.resource_type === 'model' || (model.resource_type === 'test' && (model.status === 'error' || model.status === 'warn' || activeTab === 'failed_rows'))) && (() => {
-            const tabs: SidePaneTab[] = model.resource_type === 'model'
+          {showTabBar && (() => {
+            const tabs: SidePaneTab[] = multiFailed.length === 0 && model?.resource_type === 'model'
               ? ['properties', 'preview', 'profile']
               : ['properties', 'failed_rows'];
             const TAB_LABELS: Record<SidePaneTab, string> = {
@@ -374,7 +304,7 @@ export function SidePane({
                     key={tab}
                     onClick={() => selectTab(tab)}
                     className={`px-3 py-2 text-xs font-medium transition-colors border-b-2 -mb-px ${
-                      activeTab === tab
+                      shownTab === tab
                         ? 'border-brand-500 text-brand-300'
                         : 'border-transparent text-gray-500 hover:text-gray-300'
                     }`}
@@ -388,7 +318,14 @@ export function SidePane({
 
           {/* Tab content */}
           <div className="flex-1 overflow-auto">
-            {activeTab === 'preview' && model && model.resource_type === 'model' ? (
+            {shownTab === 'failed_rows' && multiFailed.length > 0 ? (
+              <MultiFailedRows
+                projectId={projectId}
+                tests={multiFailed}
+                failedRowsCache={failedRowsCache}
+                onFailedRowsCached={onFailedRowsCached}
+              />
+            ) : shownTab === 'preview' && model && model.resource_type === 'model' ? (
               <DataPreviewPanel
                 key={model.unique_id}
                 projectId={projectId}
@@ -396,13 +333,13 @@ export function SidePane({
                 previewCache={previewCache}
                 onPreviewCached={onPreviewCached}
               />
-            ) : activeTab === 'profile' && model && model.resource_type === 'model' ? (
+            ) : shownTab === 'profile' && model && model.resource_type === 'model' ? (
               <ProfilePanel
                 key={model.unique_id}
                 projectId={projectId}
                 model={model}
               />
-            ) : activeTab === 'failed_rows' && model && model.resource_type === 'test' ? (
+            ) : shownTab === 'failed_rows' && model && model.resource_type === 'test' ? (
               <FailedRowsPanel
                 key={model.unique_id}
                 projectId={projectId}

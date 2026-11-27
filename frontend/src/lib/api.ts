@@ -518,7 +518,7 @@ export interface NodeTrendPoint {
 export interface DagExportRequest {
   directory: string;
   filename: string;
-  format: 'html' | 'svg' | 'png' | 'csv';
+  format: 'html' | 'svg' | 'png' | 'csv' | 'log';
   content: string;
   encoding: 'utf8' | 'base64';
   overwrite?: boolean;
@@ -1053,6 +1053,9 @@ export const api = {
     /** a metric chart as PNG, or its rows as CSV */
     chart: (projectId: number, body: DagExportRequest) =>
       post<ExportResult>(`/projects/${projectId}/exports/chart`, body),
+    /** a Runs page invocation log as plain text */
+    log: (projectId: number, body: DagExportRequest) =>
+      post<ExportResult>(`/projects/${projectId}/exports/log`, body),
     reveal: (path: string) => post<void>('/exports/reveal', { path }),
   },
   filesystem: {

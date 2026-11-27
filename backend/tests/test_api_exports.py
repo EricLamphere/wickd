@@ -125,3 +125,12 @@ async def test_chart_export_writes_csv_and_png(client, project, tmp_path: Path):
     )
     assert png.status_code == 201
     assert (tmp_path / "revenue.png").read_bytes() == b"png"
+
+
+async def test_log_export_writes_text(client, project, tmp_path: Path):
+    res = await client.post(
+        f"/api/projects/{project.id}/exports/log",
+        json=_body(tmp_path, filename="run-12", format="log", content="Running with dbt=1.10\nDone.\n"),
+    )
+    assert res.status_code == 201
+    assert (tmp_path / "run-12.log").read_text() == "Running with dbt=1.10\nDone.\n"

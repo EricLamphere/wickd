@@ -65,7 +65,9 @@ A Gantt chart of the run: one lane per dbt thread, a bar per node. With wickd Pr
 
 ### Log tab
 
-Shows the raw stdout captured from dbt for that invocation. Lines containing `OK` or `PASS` are highlighted green; `ERROR` / `FAILED` lines are red; `WARN` lines are amber. This is the same output that appears in the Project Logs tab during a live run.
+Shows the raw stdout captured from dbt for that invocation. Lines containing `OK` or `PASS` are highlighted green; `ERROR` / `FAILED` lines are red; `WARN` lines are amber (dbt's terminal color codes are removed). This is the same output that appears in the Project Logs tab during a live run.
+
+**Copy** puts the whole log (the command line first) on the clipboard. **Download** saves it as a `.log` file to a folder you pick (default `~/Downloads`), then offers **Show in Finder**.
 
 ## Performance tab
 

@@ -3,6 +3,8 @@
 // Commands that run nodes (run/build/test/seed) draw those nodes instead. Pure; tested in
 // operationRun.test.ts.
 
+import { stripAnsi } from '../../../lib/ansi';
+
 export type OperationStatus = 'running' | 'success' | 'error' | 'warn';
 
 /** Commands whose log lines name the nodes they run, drawn as a DAG. */
@@ -19,6 +21,11 @@ export function isWarningLine(line: string): boolean {
   return WARNING.test(line);
 }
 
+// dbt's own notices printed as warnings on any command: deprecations ("[WARNING][…Deprecation]:",
+// "Deprecated functionality", "Summary of encountered deprecations") and unused config paths.
+// They don't mean the command warned.
+const DBT_NOTICE = /deprecat|Configuration paths exist/i;
+
 // dbt's end-of-run summary: "Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 TOTAL=2"
 const SUMMARY = /\bPASS=\d+\s+WARN=(\d+)\b/;
 
@@ -32,14 +39,17 @@ export const NO_WARNING: WarningFold = { warned: false, summarized: false };
 
 /**
  * Folds one log line into whether the command warned. The end-of-run summary is final: its WARN
- * count (the nodes that warned) overrules config/deprecation `[WARNING]` lines, which don't
- * mean a node warned. Commands without a summary (compile, deps, …) warn on any warning line.
+ * count (the nodes that warned) overrules every `[WARNING]` line. Commands without a summary
+ * (compile, deps, run-operation, …) warn on a warning line, except dbt's deprecation and
+ * unused-config notices, which don't mean the command warned.
  */
-export function foldWarning(prev: WarningFold, line: string): WarningFold {
+export function foldWarning(prev: WarningFold, raw: string): WarningFold {
   if (prev.summarized) return prev;
+  const line = stripAnsi(raw);
   const summary = SUMMARY.exec(line);
   if (summary) return { warned: Number(summary[1]) > 0, summarized: true };
-  return prev.warned || !isWarningLine(line) ? prev : { warned: true, summarized: false };
+  if (prev.warned || !isWarningLine(line) || DBT_NOTICE.test(line)) return prev;
+  return { warned: true, summarized: false };
 }
 
 /**

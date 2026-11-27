@@ -64,10 +64,21 @@ describe('reduceActivity — dbt commands', () => {
     expect(clean.activities[0].status).toBe('success');
     const noSummary = play([
       ev('run_started', { command: 'compile', label: 'compile' }),
-      ev('run_log', { line: '12:32:56  [WARNING]: Deprecated functionality' }),
+      ev('run_log', { line: '12:32:56  [WARNING]: stage refresh skipped for raw.events' }),
       ev('run_finished', { return_code: 0 }),
     ]);
     expect(noSummary.activities[0].status).toBe('warn');
+  });
+
+  it("stays green on a run-operation whose only warnings are dbt's deprecation notices", () => {
+    const op = play([
+      ev('run_started', { command: 'run-operation', label: 'run-operation' }),
+      ev('run_log', { line: '\x1b[0m12:32:56  [\x1b[33mWARNING\x1b[0m][PropertyMovedToConfigDeprecation]: Deprecated functionality' }),
+      ev('run_log', { line: '12:32:57  1 of 2 START external source raw.events' }),
+      ev('run_log', { line: '12:32:58  1 of 2 (1) alter external table raw.events refresh' }),
+      ev('run_finished', { return_code: 0 }),
+    ]);
+    expect(op.activities[0].status).toBe('success');
   });
 
   it('can be cancelled only while running', () => {

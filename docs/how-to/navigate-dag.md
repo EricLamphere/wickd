@@ -27,6 +27,8 @@ Click any node to open the **SidePane** on the right. The SidePane shows:
 - Run controls (3×3 grid of run/build/test × upstream/only/downstream)
 - Action buttons: Edit in Files, Open in DAG, View Docs, Generate docs YAML, Rename model… (Pro, see [Refactor models and columns](refactor.md)), Delete
 
+A failed or warning test also gets a **Failed Rows** tab, which runs `dbt show` on the test to list the rows that broke it. Cmd/ctrl-click several nodes and, when more than one of them is a failed test, the multi-selection panel gets a **Failed Rows** tab too: pick a test by name from its dropdown to switch between their rows.
+
 **Generate docs YAML** reads the node's actual columns from the warehouse (so it must be built) and opens the review window with the change: nothing is written until you accept it. It adds `- name:` entries for the node and any undocumented columns to its schema YAML — the file it's already documented in, else a YAML in its folder that has a `models:` (or `seeds:`/`snapshots:`) list, else a new `schema.yml`. Only lines are added; existing content, comments and indentation are untouched. The manifest recompiles afterwards so the SidePane picks up the new columns.
 
 ## Navigating the graph

@@ -4,6 +4,7 @@
 
 import type { ActivitySnapshotDto, RecentRunDto } from '../../../lib/activityApi';
 import { drawsNodes, finishedStatus, foldWarning, NO_WARNING, type OperationStatus, type WarningFold } from './operationRun';
+import { stripAnsi } from '../../../lib/ansi';
 
 export type ActivityKind = 'run' | 'init' | 'compile' | 'docs';
 export type ActivityStatus = OperationStatus;
@@ -79,10 +80,6 @@ function num(data: unknown, key: string): number | null {
   return typeof v === 'number' ? v : null;
 }
 
-function stripAnsi(s: string): string {
-  // eslint-disable-next-line no-control-regex
-  return s.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-}
 
 function parseTime(iso: string | null | undefined): number | null {
   if (!iso) return null;

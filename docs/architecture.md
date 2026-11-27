@@ -62,7 +62,7 @@ wickd/
 │   │   │   ├── performance.py       # /api/projects/{id}/node-durations (Base) + run analysis / project performance (Pro; analysis in wickd_pro via app/performance/pro.py)
 │   │   │   ├── semantic.py          # /api/projects/{id}/semantic/* (status, catalog, explain, query, Health check) + /metricflow/{plan,apply,verify}-dbt-change — semantic layer (Base; MetricFlow sidecar in app/semantic/)
 │   │   │   ├── charts.py            # /api/projects/{id}/charts* — dbt Charts boards, builds, validate, live server; dashboards/{slug}/export/dct
-│   │   │   ├── exports.py           # /api/projects/{id}/exports/dag, /exports/dashboard, /exports/chart + /api/exports/default-dir, /reveal — writes DAG exports to a user-chosen folder (path validation in app/exports/paths.py)
+│   │   │   ├── exports.py           # /api/projects/{id}/exports/dag, /exports/dashboard, /exports/chart, /exports/log + /api/exports/default-dir, /reveal — writes DAG exports to a user-chosen folder (path validation in app/exports/paths.py)
 │   │   │   └── health.py            # /api/health
 │   │   ├── db/
 │   │   │   ├── engine.py            # Async SQLAlchemy engine, SessionLocal, get_session
@@ -562,6 +562,7 @@ GET    /api/projects/{id}/lineage/tag-flow?tag=          Pro: every column / exp
 POST   /api/projects/{id}/propagate/tags                 Pro: build a "propagate" proposal adding inherited tags to columns' YAML (body `{tag?}`; default every PROPAGATE_TAGS tag); 202
 POST   /api/projects/{id}/exports/dashboard              same body and responses as exports/dag, for a dashboard export (html | png)
 POST   /api/projects/{id}/exports/chart                  same body and responses as exports/dag, for one metric chart (png | csv)
+POST   /api/projects/{id}/exports/log                    same body and responses as exports/dag, for a Runs page invocation log (format log)
 POST   /api/projects/{id}/exports/dag                    write a DAG export the frontend rendered (body `{directory, filename, format: html|svg|png, content, encoding: utf8|base64, overwrite}`) into the chosen folder; 201 `{path, bytes}`, 400 `{field, message}` for a bad folder/name, 409 if the file exists and `overwrite` is false
 GET    /api/exports/default-dir                          default export folder: ~/Downloads, else the home directory
 POST   /api/exports/reveal                               show an exported file in Finder / the platform file manager (204; 404 if missing)

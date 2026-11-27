@@ -1,3 +1,5 @@
+import { stripAnsi } from './ansi';
+
 export type LogTone = 'error' | 'warn' | 'success' | 'accent';
 
 // dbt's end-of-run summary: "Done. PASS=2 WARN=0 ERROR=0 SKIP=0 NO-OP=0 TOTAL=2"
@@ -14,7 +16,8 @@ function summaryTone(line: string): LogTone | null {
 }
 
 /** How to color one line of dbt output: summaries by their counts, other lines by keyword. */
-export function logLineTone(line: string): LogTone | null {
+export function logLineTone(raw: string): LogTone | null {
+  const line = stripAnsi(raw);
   const summary = summaryTone(line);
   if (summary) return summary;
   const completed = COMPLETED_WITH.exec(line);

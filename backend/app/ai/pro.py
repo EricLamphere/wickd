@@ -27,6 +27,9 @@ other's types.
     workspace_ask_messages(projects, not_compiled, history, question) -> list[message]
         (home page Wicky; projects = [{name, nodes: [search index node as a dict]}];
         supports_workspace_ask() is False on older wickd_pro)
+    draft_note_messages(flag, series, notes, metric) -> {"messages", "schema", "max_tokens"}
+    parse_note_draft(raw) -> {"title", "body"}
+        (metric notes, plan 33; ask_messages(..., notes=) too; supports_notes() is False on older wickd_pro)
 
 `run_info` is app/ai/run_context.py's node_run_info() output; `perf_info` is
 app/ai/perf_context.py's node_performance_info() output.
@@ -64,8 +67,28 @@ def ask_messages(
     history: list[dict],
     question: str,
     run_info: dict | None = None,
+    notes: list[dict] | None = None,
 ) -> list[dict]:
+    """`notes` (metric notes, plan 33) are passed only to a wickd_pro that takes them."""
+    if notes and supports_notes():
+        return _pro().ask_messages(manifest, unique_id, history, question, run_info, notes=notes)
     return _pro().ask_messages(manifest, unique_id, history, question, run_info)
+
+
+def supports_notes() -> bool:
+    """Whether the installed wickd_pro knows metric notes (Ask cites them, Draft with Wicky)."""
+    try:
+        return hasattr(_pro(), "draft_note_messages")
+    except AiUnavailable:
+        return False
+
+
+def draft_note_messages(flag: dict, series: list[dict], notes: list[dict], metric: dict | None) -> dict:
+    return _pro().draft_note_messages(flag, series, notes, metric)
+
+
+def parse_note_draft(raw: str) -> dict:
+    return _pro().parse_note_draft(raw)
 
 
 def explain_failure_messages(

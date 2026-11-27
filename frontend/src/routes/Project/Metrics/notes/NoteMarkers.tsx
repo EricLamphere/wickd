@@ -1,15 +1,16 @@
 // Where notes show up (plan 30): a pin with a count on a widget or monitor card whose period a
 // note covers, shaded bands with a pin on time series (a single period is a line), and the small
-// list a pin opens (click a note to read it).
+// list a pin opens (click a note to read it). Open incidents (plan 33) are red instead of amber.
+// Hidden while the dashboard's Notes toggle is off or an export leaves them out (NotesVisibility).
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { ReferenceArea, ReferenceLine } from 'recharts';
 import { StickyNote } from 'lucide-react';
 import type { MetricNoteDto } from '../../../../lib/notesApi';
-import { rangeText, type NoteBand } from './lib/metricNotes';
+import { noteColor, rangeText, type NoteBand } from './lib/metricNotes';
 import { openMetricNote } from './noteEvents';
-
-const NOTE_FILL = 'rgb(251 191 36)';
+import { useNotesVisible } from './notesVisibility';
+import { NoteTypeIcon } from './NoteTypeIcon';
 
 function titles(notes: readonly MetricNoteDto[]): string {
   return notes.map((n) => `${n.title} (${rangeText(n.start, n.end)})`).join('\n');
@@ -19,7 +20,10 @@ function titles(notes: readonly MetricNoteDto[]): string {
 function NoteSummary({ note }: { note: MetricNoteDto }) {
   return (
     <>
-      <span className="flex items-center gap-1.5 text-xs text-gray-200"><StickyNote className="w-3 h-3 shrink-0 text-amber-300" /><span className="truncate">{note.title}</span></span>
+      <span className="flex items-center gap-1.5 text-xs text-gray-200">
+        <NoteTypeIcon note={note} className="w-3 h-3" /><span className="truncate">{note.title}</span>
+        {note.type === 'incident' && note.status !== 'resolved' && <span className="shrink-0 text-[9px] uppercase tracking-wide text-red-400">open</span>}
+      </span>
       <span className="pl-[18px] text-[10px] text-gray-500 truncate">
         {[rangeText(note.start, note.end), note.dimension ? `${note.dimension} = ${note.value}` : null].filter(Boolean).join(' · ')}
       </span>
@@ -87,14 +91,17 @@ export function useNotesPopover(): { show: (notes: MetricNoteDto[], x: number, y
 /** A corner pin with the number of notes covering what's shown. */
 export function NotePin({ notes, className = '' }: { notes: MetricNoteDto[]; className?: string }) {
   const { show, popover } = useNotesPopover();
-  if (!notes.length) return null;
+  const visible = useNotesVisible();
+  if (!notes.length || !visible.show) return null;
+  const incident = notes.some((n) => n.status === 'open');
+  const tone = incident ? 'border-red-900/60 bg-red-950/40 text-red-300' : 'border-amber-900/60 bg-amber-950/40 text-amber-300';
   const onClick = (e: ReactMouseEvent) => { e.stopPropagation(); show(notes, e.clientX, e.clientY); };
   return (
     <>
       {/* a span, so it can sit inside a clickable card (a <button>) */}
       <span role="button" tabIndex={0} onClick={onClick} onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); show(notes, 0, 0); } }}
-        title={titles(notes)} aria-label={`${notes.length} note${notes.length === 1 ? '' : 's'}`} data-export-hide=""
-        className={`shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[10px] rounded border border-amber-900/60 bg-amber-950/40 text-amber-300 cursor-pointer hover:brightness-125 ${className}`}>
+        title={titles(notes)} aria-label={`${notes.length} note${notes.length === 1 ? '' : 's'}`} {...(visible.inExport ? {} : { 'data-export-hide': '' })}
+        className={`shrink-0 inline-flex items-center gap-0.5 px-1 py-px text-[10px] rounded border ${tone} cursor-pointer hover:brightness-125 ${className}`}>
         <StickyNote className="w-3 h-3" />{notes.length > 1 && notes.length}
       </span>
       {popover}
@@ -115,7 +122,7 @@ function PinLabel({ viewBox, notes, onOpen }: { viewBox?: PinViewBox; notes: Met
       onMouseLeave={() => setHover(null)}
       onClick={(e) => { e.stopPropagation(); setHover(null); onOpen(notes, e.clientX, e.clientY); }}>
       {hover && <NotesHoverCard notes={notes} x={hover.x} y={hover.y} />}
-      <circle cx={cx} cy={cy} r={6} fill={NOTE_FILL} stroke="rgb(var(--surface-panel, 24 24 27))" strokeWidth={1.5} />
+      <circle cx={cx} cy={cy} r={6} fill={noteColor(notes)} stroke="rgb(var(--surface-panel, 24 24 27))" strokeWidth={1.5} />
       {notes.length > 1 && <text x={cx} y={cy + 3} textAnchor="middle" fontSize={8} fontWeight={700} fill="#1c1917">{notes.length}</text>}
     </g>
   );
@@ -125,13 +132,15 @@ function PinLabel({ viewBox, notes, onOpen }: { viewBox?: PinViewBox; notes: Met
  * Recharts children for note bands (call inside the chart, not as a component, so the chart sees
  * them as its own reference areas and lines). `xs` must be on the chart's x axis.
  */
-export function noteBandElements(bands: NoteBand[], onOpen: (notes: MetricNoteDto[], x: number, y: number) => void): ReactNode[] {
+export function noteBandElements(bands: NoteBand[], onOpen: (notes: MetricNoteDto[], x: number, y: number) => void, show = true): ReactNode[] {
+  if (!show) return [];
   return bands.map((b) => {
+    const fill = noteColor(b.notes);
     // Recharts' viewBox is cartesian here (x/y/width); polar charts never get note bands
     const label = { content: (props: { viewBox?: unknown }) => <PinLabel viewBox={props.viewBox as PinViewBox | undefined} notes={b.notes} onOpen={onOpen} /> };
     const key = `note-${b.x1}-${b.x2}`;
     return b.x1 === b.x2
-      ? <ReferenceLine key={key} x={b.x1} stroke={NOTE_FILL} strokeOpacity={0.7} strokeDasharray="3 3" ifOverflow="hidden" label={label} />
-      : <ReferenceArea key={key} x1={b.x1} x2={b.x2} fill={NOTE_FILL} fillOpacity={0.1} stroke={NOTE_FILL} strokeOpacity={0.35} ifOverflow="hidden" label={label} />;
+      ? <ReferenceLine key={key} x={b.x1} stroke={fill} strokeOpacity={0.7} strokeDasharray="3 3" ifOverflow="hidden" label={label} />
+      : <ReferenceArea key={key} x1={b.x1} x2={b.x2} fill={fill} fillOpacity={0.1} stroke={fill} strokeOpacity={0.35} ifOverflow="hidden" label={label} />;
   });
 }

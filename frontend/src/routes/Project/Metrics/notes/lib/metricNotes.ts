@@ -2,7 +2,7 @@
 // New note dialog starts with from each entry point. Pure; tested in metricNotes.test.ts.
 // noteMatches() mirrors backend app/semantic/notes.py matches() (shared fixture table:
 // backend/tests/fixtures/notes/match_cases.json).
-import type { MetricNoteDto } from '../../../../../lib/notesApi';
+import type { MetricNoteDto, NoteSource, NoteStatus, NoteType } from '../../../../../lib/notesApi';
 import type { PointKind } from '../../../../../lib/monitorsApi';
 
 /** The note fields matching reads (a listed note, or a fixture row). */
@@ -12,6 +12,8 @@ export interface NoteScope {
   metrics: string[];
   dimension: string | null;
   value: string | null;
+  /** 'yearly' = the same dates every year (plan 33) */
+  recurs?: string | null;
 }
 
 export interface NoteContext {
@@ -33,9 +35,35 @@ export function sameDimension(a: string, b: string): boolean {
   return x === y || x.endsWith(`__${y}`) || y.endsWith(`__${x}`);
 }
 
+/** `iso`'s month and day in `year` (Feb 29 → Feb 28 outside leap years). */
+function inYear(iso: string, year: number): string {
+  const md = iso.slice(5);
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  return `${String(year).padStart(4, '0')}-${md === '02-29' && !leap ? '02-28' : md}`;
+}
+
+/**
+ * The date ranges a note covers inside [start, end] (inclusive ISO dates), not cut to it: its own
+ * range, or for a `recurs: yearly` note that range shifted by whole years, in every year.
+ * Mirrors backend notes.py occurrences().
+ */
+export function occurrences(note: NoteScope, start: string, end: string): [string, string][] {
+  if (!note.start || !note.end) return [];
+  if (note.recurs !== 'yearly') return note.start <= end && note.end >= start ? [[note.start, note.end]] : [];
+  const span = Number(note.end.slice(0, 4)) - Number(note.start.slice(0, 4));
+  const out: [string, string][] = [];
+  for (let year = Number(start.slice(0, 4)) - span - 1; year <= Number(end.slice(0, 4)); year += 1) {
+    if (year < 1 || year > 9998) continue;
+    const s = inYear(note.start, year);
+    const e = inYear(note.end, year + span);
+    if (s <= end && e >= start) out.push([s, e]);
+  }
+  return out;
+}
+
 export function noteMatches(note: NoteScope, ctx: NoteContext): boolean {
   if (!note.start || !note.end) return false; // a file that doesn't parse applies nowhere
-  if (note.start > ctx.end || note.end < ctx.start) return false;
+  if (!occurrences(note, ctx.start, ctx.end).length) return false;
   if (ctx.metric && note.metrics.length && !note.metrics.includes(ctx.metric)) return false;
   if (!note.dimension) return true;
   const dim = note.dimension;
@@ -117,16 +145,19 @@ export function notesOnSeries<T extends NoteScope>(notes: readonly T[], xs: read
   const lo = Math.min(...xs);
   const hi = Math.max(...xs);
   const bands = new Map<string, NoteBand<T>>();
+  // the last period's last day, so a note inside the final week/month still lands on it
+  const last = periodEnd(isoDay(hi), grain);
   for (const n of notes) {
-    if (!n.start || !n.end) continue;
-    const a = periodStartMs(n.start, grain);
-    const b = periodStartMs(n.end, grain);
-    if (b < lo || a > hi) continue;
-    const x1 = Math.max(a, lo);
-    const x2 = Math.min(b, hi);
-    const key = `${x1}:${x2}`;
-    const band = bands.get(key);
-    if (band) band.notes.push(n); else bands.set(key, { x1, x2, notes: [n] });
+    for (const [s, e] of occurrences(n, isoDay(lo), last)) {
+      const a = periodStartMs(s, grain);
+      const b = periodStartMs(e, grain);
+      if (b < lo || a > hi) continue;
+      const x1 = Math.max(a, lo);
+      const x2 = Math.min(b, hi);
+      const key = `${x1}:${x2}`;
+      const band = bands.get(key);
+      if (band) { if (!band.notes.includes(n)) band.notes.push(n); } else bands.set(key, { x1, x2, notes: [n] });
+    }
   }
   return [...bands.values()].sort((p, q) => p.x1 - q.x1 || p.x2 - q.x2);
 }
@@ -152,32 +183,47 @@ export interface NotePrefill {
   dimension: string | null;
   value: string | null;
   body: string;
+  tags: string[];
+  type: NoteType;
+  status: NoteStatus | null;
+  resolved: string | null;
+  recurs: 'yearly' | null;
+  /** the widget the note is about (saved with it), and the dashboard widget it came from */
+  widget: Record<string, unknown> | null;
+  source: NoteSource | null;
 }
+
+/** A note's extra fields with nothing set. */
+export const NO_EXTRAS = { tags: [] as string[], type: 'note' as NoteType, status: null, resolved: null, recurs: null, widget: null, source: null } as const;
 
 /** Where Add note… was chosen, with what it knows. */
 export type NoteEntry =
   | { kind: 'metric'; metric: string | null; range?: { start: string; end: string } | null }
-  | { kind: 'widget'; metrics: string[]; range: { start: string; end: string } | null; dims?: Record<string, string> }
-  | { kind: 'value'; metrics: string[]; range: { start: string; end: string } | null; dimension?: string | null; value?: string | null }
+  | { kind: 'widget'; metrics: string[]; range: { start: string; end: string } | null; dims?: Record<string, string>; widget?: Record<string, unknown> | null; source?: NoteSource | null }
+  | { kind: 'value'; metrics: string[]; range: { start: string; end: string } | null; dimension?: string | null; value?: string | null; widget?: Record<string, unknown> | null; source?: NoteSource | null }
   | { kind: 'period'; metric: string; period: string; grain: string; dimension?: string | null; value?: string | null };
 
 const EMPTY_BODY = '';
 
 /** The dialog's starting values for an entry point; with no dates known, today. */
 export function prefillFrom(entry: NoteEntry, today: string = todayIso()): NotePrefill {
-  const base = { title: '', body: EMPTY_BODY, dimension: null as string | null, value: null as string | null };
+  const base = { ...NO_EXTRAS, tags: [], title: '', body: EMPTY_BODY, dimension: null as string | null, value: null as string | null };
   switch (entry.kind) {
     case 'metric':
       return { ...base, metrics: entry.metric ? [entry.metric] : [], start: entry.range?.start ?? today, end: entry.range?.end ?? today };
     case 'widget': {
       const [dimension, value] = Object.entries(entry.dims ?? {})[0] ?? [null, null];
-      return { ...base, metrics: entry.metrics.slice(0, 1), start: entry.range?.start ?? today, end: entry.range?.end ?? today, dimension, value };
+      return {
+        ...base, metrics: entry.metrics.slice(0, 1), start: entry.range?.start ?? today, end: entry.range?.end ?? today, dimension, value,
+        widget: entry.widget ?? null, source: entry.source ?? null,
+      };
     }
     case 'value':
       return {
         ...base, metrics: entry.metrics.slice(0, 1), start: entry.range?.start ?? today, end: entry.range?.end ?? today,
         dimension: entry.dimension && entry.value != null ? entry.dimension : null,
         value: entry.dimension && entry.value != null ? entry.value : null,
+        widget: entry.widget ?? null, source: entry.source ?? null,
       };
     case 'period':
       return {
@@ -233,6 +279,8 @@ export function expectedPrefill(flag: ExpectedFlag): NotePrefill {
     ? 'No data arrived for this period.'
     : `${fmt(flag.value)}${flag.expected != null ? ` vs ${fmt(flag.expected)} expected` : ''}.`;
   return {
+    ...NO_EXTRAS,
+    tags: [],
     title: expectedTitle(flag),
     start: flag.period,
     end: periodEnd(flag.period, flag.grain),
@@ -262,17 +310,23 @@ export interface NotesFilter {
   dimension: string | null;
   start: string | null;
   end: string | null;
+  /** plan 33 */
+  tag?: string | null;
+  /** a note type, or 'open' = open incidents only */
+  type?: NoteType | 'open' | null;
 }
 
 export function filterNotes<T extends MetricNoteDto>(notes: readonly T[], f: NotesFilter): T[] {
   const q = f.text.trim().toLowerCase();
   return notes.filter((n) => {
-    if (q && !`${n.title}\n${n.body}\n${n.metrics.join(' ')}\n${n.value ?? ''}`.toLowerCase().includes(q)) return false;
+    if (q && !`${n.title}\n${n.body}\n${n.metrics.join(' ')}\n${n.value ?? ''}\n${(n.tags ?? []).join(' ')}`.toLowerCase().includes(q)) return false;
+    if (f.tag && !(n.tags ?? []).some((t) => t.toLowerCase() === f.tag!.toLowerCase())) return false;
+    if (f.type === 'open' && !(n.type === 'incident' && n.status === 'open')) return false;
+    if (f.type && f.type !== 'open' && (n.type ?? 'note') !== f.type) return false;
     if (f.metric && n.metrics.length && !n.metrics.includes(f.metric)) return false;
     if (f.dimension && !(n.dimension && sameDimension(n.dimension, f.dimension))) return false;
     if ((f.start || f.end) && !n.start) return false;
-    if (f.start && (n.end ?? '') < f.start) return false;
-    if (f.end && (n.start ?? '') > f.end) return false;
+    if ((f.start || f.end) && !occurrences(n, f.start ?? '0001-01-01', f.end ?? '9999-12-31').length) return false;
     return true;
   });
 }
@@ -311,4 +365,41 @@ export function groupByMonth<T extends MetricNoteDto>(
     else groups.push({ key, label: date ? monthLabel(date.slice(0, 10)) : n.error ? "Couldn't be read" : 'No date', notes: [n] });
   }
   return groups;
+}
+
+// ── incidents and tags (plan 33) ─────────────────────────────────────────────
+
+export const NOTE_COLOR = 'rgb(251 191 36)';
+export const INCIDENT_COLOR = 'rgb(248 113 113)';
+
+/** Any open incident among them: shown red rather than amber. */
+export function hasOpenIncident(notes: readonly { status?: NoteStatus | null }[]): boolean {
+  return notes.some((n) => n.status === 'open');
+}
+
+export function noteColor(notes: readonly { status?: NoteStatus | null }[]): string {
+  return hasOpenIncident(notes) ? INCIDENT_COLOR : NOTE_COLOR;
+}
+
+/** Every tag used, most used first (then A–Z), for suggestions and the filter. */
+export function allTags(notes: readonly { tags?: string[] }[]): string[] {
+  const counts = new Map<string, { tag: string; n: number }>();
+  for (const note of notes) {
+    for (const t of note.tags ?? []) {
+      const key = t.toLowerCase();
+      const hit = counts.get(key);
+      if (hit) hit.n += 1; else counts.set(key, { tag: t, n: 1 });
+    }
+  }
+  return [...counts.values()].sort((a, b) => b.n - a.n || a.tag.localeCompare(b.tag)).map((c) => c.tag);
+}
+
+/** "outage, #Checkout ,outage" → ["outage", "Checkout"] */
+export function parseTags(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(',')) {
+    const t = raw.trim().replace(/^#+/, '').trim().slice(0, 40);
+    if (t && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t);
+  }
+  return out.slice(0, 20);
 }

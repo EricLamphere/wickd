@@ -32,6 +32,12 @@ describe('dashboard HTML export', () => {
     expect(JSON.parse(json)).toEqual(input.data);
   });
 
+  it('lists notes only when given, escaped', () => {
+    expect(html).not.toContain('class="notes"');
+    const withNotes = renderDashboardHtml({ ...input, notes: ['2026-11-03 · <Outage> · revenue · open incident'] });
+    expect(withNotes).toContain('<section class="notes"><h2>Notes</h2><ul><li>2026-11-03 · &lt;Outage&gt; · revenue · open incident</li></ul></section>');
+  });
+
   it('ships the hover runtime', () => {
     expect(html).toContain('data-export-series');
     expect(html).toContain("className = 'wickd-tip'");

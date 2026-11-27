@@ -3,7 +3,7 @@ import cases from '../../../../../../../backend/tests/fixtures/notes/match_cases
 import type { MetricNoteDto } from '../../../../../lib/notesApi';
 import {
   dayMs, expectedPrefill, type NoteSortBy, type NoteSortDir, expectedTitle, filterNotes, groupByMonth, noteMatches, notesFor, notesOnSeries, periodEnd,
-  pinnedDims, prefillFrom, type NoteScope,
+  pinnedDims, prefillFrom, type NoteScope, occurrences, noteColor, allTags, parseTags, INCIDENT_COLOR, NOTE_COLOR,
 } from './metricNotes';
 
 type Ctx = { start: string; end: string; metric?: string; dims?: Record<string, string>; metric_dimensions?: string[] };
@@ -23,7 +23,8 @@ describe('noteMatches (shared with the backend)', () => {
 
 const note = (over: Partial<MetricNoteDto>): MetricNoteDto => ({
   slug: 'n', path: 'wickd/notes/n.md', title: 'N', start: '2026-11-03', end: '2026-11-03', metrics: [], dimension: null,
-  value: null, created: null, body: '', error: null, warnings: [], modified_at: null, ...over,
+  value: null, created: null, body: '', error: null, warnings: [], modified_at: null,
+  tags: [], type: 'note', status: null, resolved: null, recurs: null, widget: null, source: null, models: [], commits: [], links: [], ...over,
 });
 
 describe('notesFor', () => {
@@ -153,5 +154,42 @@ describe('listing', () => {
     expect(slugs('added')).toEqual(['x', 'y', 'z']);
     expect(slugs('added', 'asc')).toEqual(['y', 'x', 'z']);
     expect(groupByMonth(notes, 'added').map((g) => g.label)).toEqual(['September 2026', 'August 2026', 'No date']);
+  });
+});
+
+describe('recurring notes and incidents (plan 33)', () => {
+  const xmas = note({ start: '2025-12-24', end: '2025-12-26', recurs: 'yearly' });
+  it('lists every year\'s occurrence in a range', () => {
+    expect(occurrences(xmas, '2024-01-01', '2026-12-25')).toEqual([
+      ['2024-12-24', '2024-12-26'], ['2025-12-24', '2025-12-26'], ['2026-12-24', '2026-12-26']]);
+    expect(occurrences(note({}), '2026-11-04', '2026-11-05')).toEqual([]);
+  });
+  it('puts a band on every year a chart shows', () => {
+    const xs = ['2024-12-01', '2025-06-01', '2025-12-01', '2026-01-01'].map(dayMs);
+    expect(notesOnSeries([xmas], xs, 'month').map((b) => [b.x1, b.x2])).toEqual([[dayMs('2025-12-01'), dayMs('2025-12-01')], [dayMs('2024-12-01'), dayMs('2024-12-01')]].sort((a, b) => a[0] - b[0]));
+  });
+  it('colors open incidents red', () => {
+    expect(noteColor([note({ status: 'resolved' }), note({})])).toBe(NOTE_COLOR);
+    expect(noteColor([note({}), note({ status: 'open' })])).toBe(INCIDENT_COLOR);
+  });
+  it('filters by tag, status and recurring dates', () => {
+    const list = [note({ slug: 'a', tags: ['Outage'], type: 'incident', status: 'open' }), note({ slug: 'b', type: 'incident', status: 'resolved' }), note({ slug: 'r', type: 'release' }), xmas];
+    const f = { text: '', metric: null, dimension: null, start: null, end: null };
+    expect(filterNotes(list, { ...f, tag: 'outage' }).map((n) => n.slug)).toEqual(['a']);
+    expect(filterNotes(list, { ...f, type: 'open' }).map((n) => n.slug)).toEqual(['a']);
+    expect(filterNotes(list, { ...f, type: 'incident' }).map((n) => n.slug)).toEqual(['a', 'b']);
+    expect(filterNotes(list, { ...f, type: 'release' }).map((n) => n.slug)).toEqual(['r']);
+    expect(filterNotes(list, { ...f, type: 'note' })).toEqual([xmas]);
+    expect(filterNotes(list, { ...f, start: '2027-12-25', end: '2027-12-25' })).toEqual([xmas]);
+  });
+  it('collects and parses tags', () => {
+    expect(allTags([note({ tags: ['b', 'a'] }), note({ tags: ['A'] })])).toEqual(['a', 'b']);
+    expect(parseTags('outage, #Checkout ,OUTAGE,, ')).toEqual(['outage', 'Checkout']);
+  });
+  it('keeps the widget a note starts from', () => {
+    const p = prefillFrom({ kind: 'widget', metrics: ['revenue'], range: null, widget: { type: 'summary' }, source: { dashboard: 'k', widget: 'w1' } }, '2026-11-03');
+    expect(p.widget).toEqual({ type: 'summary' });
+    expect(p.source).toEqual({ dashboard: 'k', widget: 'w1' });
+    expect(prefillFrom({ kind: 'metric', metric: null }, '2026-11-03').widget).toBeNull();
   });
 });

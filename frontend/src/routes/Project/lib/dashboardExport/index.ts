@@ -14,6 +14,8 @@ export interface DashboardExportRequest {
   doc: DashboardDoc;
   results: WidgetResultDto[];
   meta: DashboardExportMeta;
+  /** metric notes to list under the dashboard (plan 33); omitted = none */
+  notes?: string[];
 }
 
 export interface RenderedDashboard {
@@ -34,11 +36,11 @@ export async function renderDashboardExport(req: DashboardExportRequest): Promis
     };
     const content = renderDashboardHtml({
       meta: req.meta, gridHtml: gridMarkup(req.grid), width: req.grid.getBoundingClientRect().width,
-      css: collectCss(), theme, data,
+      css: collectCss(), theme, data, notes: req.notes,
     });
     return { content, encoding: 'utf8' };
   }
-  const scene = captureScene(req.grid, req.meta);
+  const scene = captureScene(req.grid, req.meta, req.notes ?? []);
   const { base64, scale } = await svgToPngBase64(renderSceneSvg(scene), scene.width, scene.height);
   return { content: base64, encoding: 'base64', scale };
 }

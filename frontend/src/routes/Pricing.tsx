@@ -48,7 +48,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Semantic layer (MetricFlow) — metrics in the DAG, Docs & Impact, validations', base: true, pro: true },
   { label: 'Metric explorer — metric pages, one-line query composer, chart & save metrics', base: true, pro: true },
   { label: 'Metric dashboards — drag-and-drop builder, period comparisons, zoom & drill, HTML/PNG export', base: true, pro: true },
-  { label: 'Metric notes — why a metric moved, with screenshots, shown on dashboards, metric pages & monitors', base: true, pro: true },
+  { label: 'Metric notes — why a metric moved, with screenshots, tags, links, templates, incidents & a timeline, shown on dashboards, metric pages & monitors', base: true, pro: true },
   { label: 'dbt Charts boards — build, view live & validate charts/ boards; export dashboards as boards', base: true, pro: true },
   { label: 'Metric debugging — plan steps, warehouse checks (fan-out, nulls, coverage) & reconcile with SQL', base: true, pro: true },
   { label: 'Slim builds — build changed vs prod, defer, clone & retry', base: true, pro: true },
@@ -67,7 +67,7 @@ const FEATURES: PlanFeature[] = [
   { label: 'Metric compare — your changes, branch, another target or metric vs before, with what moved', base: false, pro: true },
   { label: 'Metric explanations — “Explain this number”, most likely cause first', base: false, pro: true },
   { label: 'Semantic layer drafts — Wicky writes your semantic models & metrics; metric-aware Query data & ask in words', base: false, pro: true },
-  { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs & tests', base: false, pro: true },
+  { label: 'Wicky, the local AI assistant — ask, query data, explain failures, write docs, tests & metric notes', base: false, pro: true },
   { label: 'Priority support', base: false, pro: true },
 ];
 

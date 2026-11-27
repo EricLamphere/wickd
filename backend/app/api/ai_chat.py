@@ -30,6 +30,7 @@ from app.ai.run_context import failing_rows, node_run_info
 from app.ai.runtime import RuntimeUnavailable, llama_server
 from app.api.ai_dtos import AiMessageDto, iso, message_dto
 from app.api.init import load_project_env
+from app.api.note_drafts import notes_for_ai
 from app.db.engine import get_session
 from app.db.models import AiConversation, AiMessage, AiProposal, Project
 from app.logging_setup import get_logger
@@ -183,19 +184,26 @@ async def ask(
     )
 
 
+async def _notes_kw(session: AsyncSession, project_id: int) -> dict:
+    """`notes=` for Ask (plan 33) only when there are notes and wickd_pro takes them."""
+    found = await notes_for_ai(session, project_id)
+    return {"notes": found} if found else {}
+
+
 async def _build_messages(
     session: AsyncSession, project: Project, manifest: dict, dto: AskDto, history: list[dict]
 ) -> list[dict]:
     if dto.unique_id is None:
         if dto.mode != "ask":
             raise HTTPException(status_code=422, detail="select a model or test to explain")
-        return pro.ask_messages(manifest, None, history, dto.content)
+        return pro.ask_messages(manifest, None, history, dto.content, **await _notes_kw(session, project.id))
     if dto.mode == "explain_slow":
         perf = await node_performance_info(session, project.id, Path(project.path), manifest, dto.unique_id)
         return pro.explain_slow_messages(manifest, dto.unique_id, perf, history, dto.content)
     run_info = await node_run_info(session, project.id, manifest, dto.unique_id)
     if dto.mode == "ask":
-        return pro.ask_messages(manifest, dto.unique_id, history, dto.content, run_info)
+        return pro.ask_messages(manifest, dto.unique_id, history, dto.content, run_info,
+                                **await _notes_kw(session, project.id))
     env = await load_project_env(project.id)
     rows = await failing_rows(project.id, Path(project.path), env, run_info)
     return pro.explain_failure_messages(

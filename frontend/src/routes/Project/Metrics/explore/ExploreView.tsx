@@ -22,6 +22,7 @@ import { WidgetBody } from '../dashboards/widgets/WidgetBody';
 import { WidgetMenuButton } from '../dashboards/widgets/WidgetMenu';
 import { addMetricNote } from '../notes/noteEvents';
 import { widgetNoteContext } from '../notes/lib/widgetNotes';
+import { noteWidgetOf } from '../notes/lib/noteWidget';
 import { EXPLORE_HEIGHT, explorePeriod, mainQuery, withExplorePeriod } from '../lib/exploreWidget';
 import { Composer } from './Composer';
 import { writeWorkspaceSql } from '../lib/openInWorkspace';
@@ -133,7 +134,10 @@ export function ExploreView({ projectId, catalog, labels, widget, onChange, onOp
               <WidgetMenuButton items={[
                 { label: 'Add to dashboard', icon: <LayoutDashboard className="w-3.5 h-3.5" />, onClick: () => setAdding(true), disabled: !metrics.length },
                 { label: 'Add note…', icon: <StickyNote className="w-3.5 h-3.5" />, disabled: !metrics.length,
-                  onClick: () => addMetricNote({ kind: 'widget', metrics, range: result?.current ?? null, dims: widgetNoteContext(widget, result)?.dims }) },
+                  onClick: () => addMetricNote({
+                    kind: 'widget', metrics, range: result?.current ?? null, dims: widgetNoteContext(widget, result)?.dims,
+                    widget: noteWidgetOf(widget, mainQuery(result)?.body),
+                  }) },
               saveQuery.item(result),
                 ...exports.items({
                   result, element: () => chartRef.current, title, name: [metrics.join('_') || 'metric', widget.type],

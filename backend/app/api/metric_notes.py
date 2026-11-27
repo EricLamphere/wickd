@@ -17,7 +17,7 @@ import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -48,6 +48,13 @@ class NoteInDto(BaseModel):
     metrics: list[str] = Field(default_factory=list, max_length=notes.MAX_METRICS)
     dimension: str | None = None
     value: str | None = None
+    tags: list[str] = Field(default_factory=list, max_length=notes.MAX_TAGS)
+    type: Literal["note", "release", "incident"] = "note"
+    status: Literal["open", "resolved"] | None = None
+    resolved: str | None = None
+    recurs: Literal["yearly"] | None = None
+    widget: dict[str, Any] | None = None
+    source: dict[str, Any] | None = None
     body: Annotated[str, StringConstraints(max_length=notes.MAX_BODY_CHARS)] = ""
 
 
@@ -129,9 +136,24 @@ def _dto(entry: NoteEntry, names: tuple[set[str], set[str]] | None) -> dict:
         "metrics": list(meta.metrics) if meta else [],
         "dimension": meta.dimension if meta else None, "value": meta.value if meta else None,
         "created": meta.created if meta else None,
+        "tags": list(meta.tags) if meta else [],
+        "type": (meta.type or "note") if meta else "note",
+        "status": meta.status if meta else None,
+        "resolved": meta.resolved if meta else None,
+        "recurs": meta.recurs if meta else None,
+        "widget": meta.widget if meta else None,
+        "source": meta.source if meta else None,
+        **_mentions(n),
         "body": n.body if n else "",
         "error": entry.error, "warnings": _warnings(n, names), "modified_at": _modified(entry),
     }
+
+
+def _mentions(note: Note | None) -> dict[str, list[str]]:
+    if note is None:
+        return {"models": [], "commits": [], "links": []}
+    m = notes.mentions(note.body, note.meta)
+    return {"models": m.models, "commits": m.commits, "links": m.links}
 
 
 def _note(dto: NoteInDto, existing: Note | None = None) -> Note:
@@ -140,7 +162,14 @@ def _note(dto: NoteInDto, existing: Note | None = None) -> Note:
     created = existing.meta.created if existing and existing.meta.created else (
         datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"))
     data = {**extra, "title": dto.title, "start": dto.start, "end": dto.end, "metrics": dto.metrics,
-            "dimension": dto.dimension or None, "value": dto.value if dto.dimension else None, "created": created}
+            "dimension": dto.dimension or None, "value": dto.value if dto.dimension else None, "created": created,
+            "tags": dto.tags, "type": dto.type,
+            "status": dto.status if dto.type == "incident" else None,
+            "resolved": dto.resolved if dto.type == "incident" and dto.status == "resolved" else None,
+            "recurs": dto.recurs, "widget": dto.widget, "source": dto.source,
+            # frontmatter-only lists (hand edits) aren't in the editor: keep them
+            "models": list(existing.meta.models) if existing else [],
+            "commits": list(existing.meta.commits) if existing else []}
     return Note(meta=notes.validate_meta(data), body=dto.body)
 
 

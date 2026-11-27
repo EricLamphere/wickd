@@ -31,6 +31,8 @@ import { formatOf, WidgetBody, type BodyProps } from './WidgetBody';
 import { addMetricNote } from '../../notes/noteEvents';
 import { NotePin } from '../../notes/NoteMarkers';
 import { widgetNoteContext } from '../../notes/lib/widgetNotes';
+import { noteWidgetOf } from '../../notes/lib/noteWidget';
+import { mainQuery } from '../../lib/exploreWidget';
 import { useMatchingNotes } from '../../notes/useNotes';
 
 const HEADER_PX = 28;
@@ -263,12 +265,19 @@ export function WidgetFrame(props: Props) {
     onOpenInExplorer: props.onOpenFiltered,
     onAddNote: (p: Pick) => addMetricNote({
       kind: 'value', metrics: widget.metrics ?? [], range: p.range ?? result?.current ?? null,
-      dimension: p.values[0]?.dimension ?? null, value: p.values[0]?.value ?? null,
+      dimension: p.values[0]?.dimension ?? null, value: p.values[0]?.value ?? null, ...savedWidget(),
     }),
   };
   const noteCtx = widgetNoteContext(widget, result);
   const notesHere = useMatchingNotes(noteCtx && widget.type !== 'timeseries' ? noteCtx : null);
-  const addNote = () => addMetricNote({ kind: 'widget', metrics: widget.metrics ?? [], range: result?.current ?? null, dims: noteCtx?.dims });
+  // the widget as it showed (dates pinned), saved with a note written from it (plan 33)
+  function savedWidget() {
+    return {
+      widget: noteWidgetOf(widget, mainQuery(result)?.body, widget.period?.compare ?? props.doc.period?.compare),
+      source: { dashboard: props.slug, widget: widget.id },
+    };
+  }
+  const addNote = () => addMetricNote({ kind: 'widget', metrics: widget.metrics ?? [], range: result?.current ?? null, dims: noteCtx?.dims, ...savedWidget() });
   const size = preview ?? widget;
   const height = size.height;
   const notes = result?.notes ?? [];

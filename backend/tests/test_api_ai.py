@@ -611,3 +611,89 @@ def test_explain_slow_shim_falls_back_to_ask_on_older_pro(monkeypatch):
     monkeypatch.setattr(pro, "_pro", lambda: OldPro())
     assert pro.explain_slow_messages({}, UID, {}, [], "why") == [{"role": "user", "content": "why"}]
     assert calls == [UID]
+
+
+# ── metric notes (plan 33) ───────────────────────────────────────────────────
+
+
+async def test_ask_passes_notes_when_pro_takes_them(client, db_session, entitled, tmp_path, monkeypatch):
+    pid, root = await _project(db_session, tmp_path)
+    folder = root / "wickd" / "notes"
+    folder.mkdir(parents=True)
+    (folder / "outage.md").write_text("---\ntitle: Outage\nstart: 2026-11-03\nend: 2026-11-03\nstatus: open\n---\nDown.\n")
+    captured: dict = {}
+
+    def _messages(manifest, unique_id, history, question, run_info=None, notes=None):
+        captured["notes"] = notes
+        return [{"role": "user", "content": question}]
+
+    async def _stream(provider, messages, max_tokens=None):
+        yield "ok"
+
+    monkeypatch.setattr(pro, "supports_notes", lambda: True)
+    monkeypatch.setattr(pro, "ask_messages", _messages)
+    monkeypatch.setattr(ai_chat, "resolve_provider", AsyncMock(return_value=Provider("http://x/v1", "m")))
+    monkeypatch.setattr(ai_chat, "stream_chat", _stream)
+    cid = (await client.post(f"/api/projects/{pid}/ai/conversations")).json()["id"]
+    await client.post(f"/api/projects/{pid}/ai/conversations/{cid}/messages", json={"content": "what happened?"})
+    assert [(n["slug"], n["status"], n["body"]) for n in captured["notes"]] == [("outage", "open", "Down.\n")]
+
+
+def test_ask_shim_drops_notes_for_older_pro(monkeypatch):
+    class OldPro:
+        def ask_messages(self, manifest, unique_id, history, question, run_info):
+            return [{"role": "user", "content": question}]
+
+    monkeypatch.setattr(pro, "_pro", lambda: OldPro())
+    assert pro.supports_notes() is False
+    assert pro.ask_messages({}, None, [], "q", None, notes=[{"title": "x"}]) == [{"role": "user", "content": "q"}]
+
+
+async def test_draft_note_route(client, db_session, entitled, tmp_path, monkeypatch):
+    from datetime import date, timedelta
+
+    from app.api import note_drafts
+    from app.db.models import MetricMonitor, MetricMonitorPoint
+    from app.semantic import monitors
+
+    pid, root = await _project(db_session, tmp_path)
+    m = MetricMonitor(project_id=pid, metric="revenue", grain="day", sensitivity="normal", lookback=30, target="dev")
+    db_session.add(m)
+    await db_session.flush()
+    day = (date.today() - timedelta(days=3)).isoformat()
+    db_session.add(MetricMonitorPoint(monitor_id=m.id, target="dev", slice="", period=day, value=5.0))
+    await db_session.commit()
+    folder = root / "wickd" / "notes"
+    folder.mkdir(parents=True)
+    (folder / "near.md").write_text(f"---\ntitle: Near\nstart: {day}\nend: {day}\nmetric: revenue\n---\n")
+    (folder / "other.md").write_text(f"---\ntitle: Other\nstart: {day}\nend: {day}\nmetric: orders\n---\n")
+
+    monkeypatch.setattr(pro, "supports_notes", lambda: True)
+    monkeypatch.setattr(monitors, "detect_for", lambda *a, **k: {"points": [
+        {"period": day, "value": 5.0, "expected": 50.0, "low": 40.0, "high": 60.0, "kind": "anomaly"}]})
+    seen: dict = {}
+
+    def _prompt(flag, series, notes, metric):
+        seen.update(flag=flag, notes=[n["slug"] for n in notes])
+        return {"messages": [], "schema": {}, "max_tokens": 10}
+
+    monkeypatch.setattr(pro, "draft_note_messages", _prompt)
+    monkeypatch.setattr(pro, "parse_note_draft", lambda raw: {"title": "Revenue drop", "body": raw})
+    monkeypatch.setattr(note_drafts, "_complete", AsyncMock(return_value="It dropped.\n"))
+
+    r = await client.post(f"/api/projects/{pid}/metric-notes/draft", json={"monitor_id": m.id, "period": day})
+    assert r.status_code == 200 and r.json() == {"title": "Revenue drop", "body": "It dropped.\n"}
+    assert seen["flag"]["expected"] == 50.0 and seen["flag"]["kind"] == "anomaly"
+    assert seen["notes"] == ["near"]
+    missing = await client.post(f"/api/projects/{pid}/metric-notes/draft", json={"monitor_id": m.id, "period": "2020-01-01"})
+    assert missing.status_code == 404
+    other = await client.post(f"/api/projects/{pid + 1}/metric-notes/draft", json={"monitor_id": m.id, "period": day})
+    assert other.status_code == 404
+
+
+async def test_draft_note_route_gated(client, db_session, tmp_path, monkeypatch):
+    _entitle(monkeypatch, entitled=False)
+    monkeypatch.setattr(pro, "is_available", lambda: True)
+    pid, _ = await _project(db_session, tmp_path)
+    r = await client.post(f"/api/projects/{pid}/metric-notes/draft", json={"monitor_id": 1, "period": "2026-11-03"})
+    assert r.status_code == 403

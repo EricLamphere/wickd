@@ -9,21 +9,29 @@ A note is a Markdown file with YAML frontmatter, `<NOTES_PATH>/<slug>.md`:
     metric: revenue          # optional (or `metrics: [a, b]`)
     dimension: order__region # optional, together with `value`
     value: EU
+    tags: [outage, checkout] # optional
+    type: incident           # optional: note (default) | release | incident
+    status: open             # incidents only: open | resolved; `resolved: <date>` when resolved
+    recurs: yearly           # optional: the same dates every year (holidays)
+    widget: {type: timeseries, metrics: [revenue]}  # optional: the widget it was written about
     created: 2026-11-05T14:02:00Z
     ---
-    Checkout returned 500s for EU cards…
+    Checkout returned 500s for EU cards, see model:stg_payments, commit:3f2a9c1 and note:eu-rollback.
 
 A note with no metric applies to every metric; one with a dimension value applies where
 that dimension isn't pinned to another value. Unknown frontmatter keys are kept on save.
-`matches()` is mirrored by the frontend's `lib/metricNotes.ts` `noteMatches()`.
+`matches()` / `occurrences()` are mirrored by the frontend's `lib/metricNotes.ts` `noteMatches()`.
+Mentions in the body (`note:<slug>`, `model:<name>`, `commit:<sha>`; older `[[<slug>]]` links still count)
+are read by `mentions()` (plan 33).
 
 The files themselves (folders, images, writes) are `note_store.py`.
 """
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import (
@@ -41,9 +49,14 @@ _SLUG = re.compile(SLUG_PATTERN)
 _FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 MAX_BODY_CHARS = 200_000
 MAX_METRICS = 20
+MAX_TAGS = 20
+MAX_MENTIONS = 50
+MAX_WIDGET_CHARS = 20_000
 
 IsoDate = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")]
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+Tag = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+Sha = Annotated[str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9a-fA-F]{4,40}$")]
 
 
 class NoteError(Exception):
@@ -74,6 +87,18 @@ class NoteMeta(BaseModel):
     metrics: list[Name] = Field(default_factory=list, max_length=MAX_METRICS)
     dimension: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] | None = None
     value: Annotated[str, StringConstraints(max_length=500)] | None = None
+    tags: list[Tag] = Field(default_factory=list, max_length=MAX_TAGS)
+    # what kind of note (plan 33): None = a plain note; a `status` without a type means incident
+    type: Literal["release", "incident"] | None = None
+    status: Literal["open", "resolved"] | None = None
+    resolved: IsoDate | None = None
+    recurs: Literal["yearly"] | None = None
+    # nodes / commits named in the frontmatter (hand edits); the body's mentions are added by mentions()
+    models: list[Name] = Field(default_factory=list, max_length=MAX_MENTIONS)
+    commits: list[Sha] = Field(default_factory=list, max_length=MAX_MENTIONS)
+    # the widget the note was written about (the query view's widget encoding) and where it lived
+    widget: dict[str, Any] | None = None
+    source: dict[str, Any] | None = None
     created: str | None = None
 
     @model_validator(mode="before")
@@ -92,14 +117,23 @@ class NoteMeta(BaseModel):
         out["metrics"] = metrics
         if out.get("value") is not None and not isinstance(out["value"], str):
             out["value"] = str(out["value"])  # `value: 2024` is a number in YAML
-        for key in ("dimension", "value"):
+        for key in ("dimension", "value", "type", "status", "resolved", "recurs", "widget", "source"):
             if out.get(key) == "":
                 out[key] = None
+        if out.get("type") == "note":
+            out["type"] = None
+        if out.get("status") is not None and out.get("type") is None:
+            out["type"] = "incident"
+        for key in ("tags", "models", "commits"):
+            out[key] = _str_list(out.get(key))
+        out["tags"] = _unique([t.lstrip("#").strip() for t in out["tags"]])
         return out
 
-    @field_validator("start", "end")
+    @field_validator("start", "end", "resolved")
     @classmethod
-    def _real_date(cls, v: str) -> str:
+    def _real_date(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
         try:
             date.fromisoformat(v)
         except ValueError as exc:
@@ -112,7 +146,35 @@ class NoteMeta(BaseModel):
             raise ValueError("end must be on or after start")
         if (self.dimension is None) != (self.value is None):
             raise ValueError("a dimension and its value go together: set both or neither")
+        if self.status is not None and self.type != "incident":
+            raise ValueError("only an incident has a status (open or resolved)")
+        if self.resolved is not None and self.status != "resolved":
+            raise ValueError("a resolved date goes with `status: resolved`")
+        for key in ("widget", "source"):
+            if len(json.dumps(getattr(self, key) or {}, default=str)) > MAX_WIDGET_CHARS:
+                raise ValueError(f"{key} is too large")
         return self
+
+
+def _str_list(value: Any) -> list[str]:
+    """`tags: a, b` / `tags: a` / `tags: [a, b]` → ["a", "b"] (numbers as strings)."""
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return [str(v) for v in value if v not in (None, "")]
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    return [str(value)]
+
+
+def _unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    out = []
+    for item in items:
+        if item and item.lower() not in seen:
+            seen.add(item.lower())
+            out.append(item)
+    return out
 
 
 @dataclass(frozen=True)
@@ -188,8 +250,26 @@ def to_frontmatter(meta: NoteMeta) -> dict[str, Any]:
     if meta.dimension is not None:
         data["dimension"] = meta.dimension
         data["value"] = meta.value
+    if meta.tags:
+        data["tags"] = list(meta.tags)
+    if meta.type:
+        data["type"] = meta.type
+    if meta.status:
+        data["status"] = meta.status
+    if meta.resolved:
+        data["resolved"] = date.fromisoformat(meta.resolved)
+    if meta.recurs:
+        data["recurs"] = meta.recurs
+    if meta.models:
+        data["models"] = list(meta.models)
+    if meta.commits:
+        data["commits"] = list(meta.commits)
     if meta.created:
         data["created"] = meta.created
+    if meta.widget:
+        data["widget"] = meta.widget
+    if meta.source:
+        data["source"] = meta.source
     return {**data, **(meta.model_extra or {})}
 
 
@@ -225,7 +305,7 @@ def matches(
       value, nor (with no metric of its own) to a metric that lacks the dimension, when
       `metric_dimensions` says which dimensions the metric has.
     """
-    if meta.start > end or meta.end < start:
+    if not occurrences(meta, start, end):
         return False
     if metric is not None and meta.metrics and metric not in meta.metrics:
         return False
@@ -239,6 +319,72 @@ def matches(
         if same_dimension(meta.dimension, dim) and str(value).strip().lower() != str(meta.value).strip().lower():
             return False
     return True
+
+
+def _in_year(day: date, year: int) -> date:
+    """The same month and day in `year` (Feb 29 → Feb 28 outside leap years)."""
+    try:
+        return day.replace(year=year)
+    except ValueError:
+        return day.replace(year=year, day=28)
+
+
+def occurrences(meta: NoteMeta, start: str, end: str) -> list[tuple[str, str]]:
+    """The date ranges the note covers inside [start, end] (inclusive ISO dates), not cut to it.
+
+    A plain note covers its own range; a `recurs: yearly` note covers its range shifted by whole
+    years, in every year (before and after the one written), so a holiday note made this year also
+    explains last year's dip.
+    """
+    if meta.recurs != "yearly":
+        return [(meta.start, meta.end)] if meta.start <= end and meta.end >= start else []
+    s0, e0 = date.fromisoformat(meta.start), date.fromisoformat(meta.end)
+    lo, hi = date.fromisoformat(start), date.fromisoformat(end)
+    span = e0.year - s0.year
+    out: list[tuple[str, str]] = []
+    for year in range(lo.year - span - 1, hi.year + 1):
+        if year < 1 or year > 9998:
+            continue
+        s, e = _in_year(s0, year), _in_year(e0, year + span)
+        if s <= hi and e >= lo:
+            out.append((s.isoformat(), e.isoformat()))
+    return out
+
+
+# ── mentions in the body ─────────────────────────────────────────────────────
+
+_FENCED = re.compile(r"^(```|~~~).*?^\1[ \t]*$", re.DOTALL | re.MULTILINE)
+_INLINE_CODE = re.compile(r"`[^`\n]*`")
+# a mention starts a word: after the start of a line, a space or an opening bracket / comma
+_MENTION_START = r"(?:^|(?<=[\s(\[,;]))"
+_MODEL_MENTION = re.compile(_MENTION_START + r"model:([A-Za-z0-9_][A-Za-z0-9_.]*)", re.MULTILINE)
+_NOTE_MENTION = re.compile(_MENTION_START + r"note:([a-z0-9][a-z0-9_-]{0,79})", re.MULTILINE)
+_COMMIT_MENTION = re.compile(_MENTION_START + r"commit:([0-9a-fA-F]{7,40})\b", re.MULTILINE)
+_NOTE_LINK = re.compile(r"\[\[([a-z0-9][a-z0-9_-]{0,79})(?:\|[^\]\n]*)?\]\]")
+
+
+@dataclass(frozen=True)
+class Mentions:
+    models: list[str]
+    commits: list[str]
+    links: list[str]
+
+
+def mentions(body: str, meta: NoteMeta | None = None) -> Mentions:
+    """`note:<slug>`, `model:<name>` and `commit:<sha>` in the body (outside code; `[[<slug>]]`, the
+    older note link, too), plus the frontmatter's `models` / `commits`; each once, in order."""
+    text = _INLINE_CODE.sub("", _FENCED.sub("", body))
+    models = [m.rstrip(".") for m in _MODEL_MENTION.findall(text)]
+    commits = [c.lower() for c in _COMMIT_MENTION.findall(text)]
+    links = [m.rstrip("-") for m in _NOTE_MENTION.findall(text)] + _NOTE_LINK.findall(text)
+    if meta is not None:
+        models = list(meta.models) + models
+        commits = [c.lower() for c in meta.commits] + commits
+    return Mentions(
+        models=_unique(models)[:MAX_MENTIONS],
+        commits=_unique(commits)[:MAX_MENTIONS],
+        links=_unique(links)[:MAX_MENTIONS],
+    )
 
 
 # ── images a body references ─────────────────────────────────────────────────

@@ -24,6 +24,8 @@ export interface DashboardHtmlInput {
   /** html[data-theme] at export time */
   theme: 'light' | 'dark';
   data: unknown;
+  /** metric notes shown on the dashboard, one line each (plan 33); omitted = no Notes section */
+  notes?: string[];
 }
 
 /** Drop rules that would reach outside the file: @font-face, @import and anything with url(). */
@@ -42,6 +44,9 @@ body { margin: 0; background: rgb(var(--bg-app)); color: rgb(var(--text-primary)
 .wickd-export dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; font-size: 11px; }
 .wickd-export dt { color: rgb(var(--text-muted)); }
 .wickd-export dd { margin: 0; font-family: ui-monospace, monospace; color: rgb(var(--text-secondary)); }
+.wickd-export .notes { margin-top: 16px; font-size: 11px; color: rgb(var(--text-secondary)); }
+.wickd-export .notes h2 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: rgb(var(--text-primary)); }
+.wickd-export .notes ul { margin: 0; padding-left: 16px; }
 .wickd-export footer { margin-top: 16px; font-size: 10px; color: rgb(var(--text-muted)); }
 .wickd-tip { position: fixed; z-index: 10; pointer-events: none; padding: 6px 8px; font-size: 11px; border-radius: 4px;
   background: rgb(var(--bg-elevated)); border: 1px solid rgb(var(--border-default)); box-shadow: 0 6px 16px rgb(0 0 0 / 0.3); }
@@ -53,6 +58,11 @@ body { margin: 0; background: rgb(var(--bg-app)); color: rgb(var(--text-primary)
 .wickd-table th, .wickd-table td { padding: 2px 6px; text-align: left; border-bottom: 1px solid rgb(var(--border-default)); white-space: nowrap; }
 .wickd-table th { color: rgb(var(--text-secondary)); font-weight: 500; }
 `;
+
+function notesSection(notes: string[] | undefined): string {
+  if (!notes?.length) return '';
+  return `<section class="notes"><h2>Notes</h2><ul>${notes.map((n) => `<li>${escapeXml(n)}</li>`).join('')}</ul></section>\n`;
+}
 
 export function renderDashboardHtml(input: DashboardHtmlInput): string {
   const { meta } = input;
@@ -71,7 +81,7 @@ export function renderDashboardHtml(input: DashboardHtmlInput): string {
 <main class="wickd-export" style="width:${Math.round(input.width) + 48}px">
 <header><h1>${escapeXml(meta.title)}</h1><p class="subtitle">${escapeXml(meta.subtitle)}</p>${rows ? `<dl>${rows}</dl>` : ''}</header>
 ${input.gridHtml}
-<footer>Exported from wickd. The data is embedded in this file; it doesn't update.</footer>
+${notesSection(input.notes)}<footer>Exported from wickd. The data is embedded in this file; it doesn't update.</footer>
 </main>
 <script type="application/json" id="wickd-dashboard-data">${jsonForScript(input.data)}</script>
 <script>${TOOLTIP_RUNTIME}</script>

@@ -1,7 +1,7 @@
 // The builder's title row: back, title (click to rename), file path, exposure, save status,
-// undo / redo, Present, and the dashboard actions (exposure, export, delete, refresh).
+// undo / redo, the Notes toggle, Present, and the dashboard actions (exposure, export, delete, refresh).
 import {
-  ArrowLeft, Check, CloudOff, Download, Link2, Loader2, Maximize2, Minimize2, Redo2, RefreshCw, Trash2, Undo2,
+  ArrowLeft, Check, CloudOff, Download, Link2, Loader2, Maximize2, Minimize2, Redo2, RefreshCw, StickyNote, Trash2, Undo2,
 } from 'lucide-react';
 import { driftText, ExposureChip, type ExposureStatus } from './ExposureChip';
 import type { SaveState } from './useDashboardEditor';
@@ -39,6 +39,9 @@ interface Props {
   onDelete: () => void;
   onRefresh: () => void;
   onReload: () => void;
+  /** metric notes on the widgets (plan 33): shown or hidden, editing and presenting */
+  notesShown: boolean;
+  onToggleNotes: () => void;
 }
 
 function SaveStatus({ save, onReload }: { save: SaveState; onReload: () => void }) {
@@ -79,6 +82,10 @@ export function BuilderHeader(p: Props) {
         </div>
       )}
       <div className="flex items-center gap-2" data-export-hide="">
+        <button onClick={p.onToggleNotes} aria-pressed={p.notesShown} title={p.notesShown ? 'Hide metric notes on the widgets' : 'Show metric notes on the widgets'}
+          className={`${BTN} ${p.notesShown ? '' : 'opacity-60'}`}>
+          <StickyNote className="w-3.5 h-3.5" />{p.notesShown ? 'Notes' : 'Notes off'}
+        </button>
         <button onClick={p.onPresent} className={BTN} title={p.present ? 'Back to editing (Esc)' : 'Hide the rails'}>
           {p.present ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}{p.present ? 'Edit' : 'Present'}
         </button>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { DashboardWidget, WidgetResultDto } from '../../../../../lib/dashboardsApi';
-import { widgetNoteContext } from './widgetNotes';
+import type { MetricNoteDto } from '../../../../../lib/notesApi';
+import { dashboardNotes, exportNoteLine, widgetNoteContext } from './widgetNotes';
 
 const widget: DashboardWidget = { id: 'w', type: 'summary', width: 50, height: 200, metrics: ['revenue'], filters: [] };
 const result = {
@@ -17,5 +18,31 @@ describe('widgetNoteContext', () => {
     expect(widgetNoteContext({ ...widget, type: 'text' }, result)).toBeNull();
     expect(widgetNoteContext({ ...widget, metrics: [] }, result)).toBeNull();
     expect(widgetNoteContext(widget, null)).toBeNull();
+  });
+});
+
+const note = (over: Partial<MetricNoteDto>): MetricNoteDto => ({
+  slug: 'n', path: 'p', title: 'N', start: '2026-11-03', end: '2026-11-03', metrics: [], dimension: null, value: null,
+  created: null, body: '', error: null, warnings: [], modified_at: null, tags: [], type: 'note', status: null, resolved: null, recurs: null,
+  widget: null, source: null, models: [], commits: [], links: [], ...over,
+});
+
+describe('dashboardNotes', () => {
+  it('lists each note shown on any widget once, by date', () => {
+    const notes = [
+      note({ slug: 'b', title: 'B', start: '2026-11-10', end: '2026-11-10' }),
+      note({ slug: 'a', title: 'A', metrics: ['revenue'], dimension: 'region', value: 'EU' }),
+      note({ slug: 'us', dimension: 'region', value: 'US' }),
+      note({ slug: 'orders', metrics: ['orders'] }),
+      note({ slug: 'later', start: '2027-01-01', end: '2027-01-01' }),
+    ];
+    const two = [widget, { ...widget, id: 'w2' }];
+    const results = [result, { ...result, widget_id: 'w2' }];
+    expect(dashboardNotes(two, results, notes).map((n) => n.slug)).toEqual(['a', 'b']);
+  });
+  it('writes one line per note', () => {
+    expect(exportNoteLine(note({ title: 'Outage', end: '2026-11-04', metrics: ['revenue'], type: 'incident', status: 'open' })))
+      .toBe('2026-11-03 – 2026-11-04 · Outage · revenue · open incident');
+    expect(exportNoteLine(note({ title: 'Xmas', recurs: 'yearly' }))).toBe('2026-11-03 (every year) · Xmas · every metric');
   });
 });

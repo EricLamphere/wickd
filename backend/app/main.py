@@ -44,6 +44,7 @@ from app.api import metric_notes as metric_notes_api
 from app.api import metric_queries as metric_queries_api
 from app.api import models as models_api
 from app.api import monitor_expectations as monitor_expectations_api
+from app.api import note_drafts as note_drafts_api
 from app.api import packages as packages_api
 from app.api import performance as performance_api
 from app.api import projects as projects_api
@@ -156,6 +157,7 @@ app.include_router(metric_queries_api.router)
 app.include_router(monitor_expectations_api.router)  # before monitors: /expectations isn't a monitor id
 app.include_router(metric_monitors_api.router)
 app.include_router(dashboards_api.router)
+app.include_router(note_drafts_api.router)
 app.include_router(metric_notes_api.router)
 app.include_router(charts_api.router)
 app.include_router(refactor_api.router)

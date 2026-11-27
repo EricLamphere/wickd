@@ -3,6 +3,16 @@
 // Mirrors backend/app/api/metric_notes.py.
 import { del, get, post, postForm, put } from './api';
 
+export type NoteStatus = 'open' | 'resolved';
+/** what kind of note (plan 33): only an incident has a status */
+export type NoteType = 'note' | 'release' | 'incident';
+
+/** Where a note's saved widget lived (a dashboard's widget), when it came from one. */
+export interface NoteSource {
+  dashboard?: string;
+  widget?: string;
+}
+
 export interface MetricNoteDto {
   slug: string;
   /** relative to the project root */
@@ -16,6 +26,20 @@ export interface MetricNoteDto {
   dimension: string | null;
   value: string | null;
   created: string | null;
+  tags: string[];
+  type: NoteType;
+  /** an incident's state: open (shown red) or resolved; null for other types */
+  status: NoteStatus | null;
+  resolved: string | null;
+  /** 'yearly' = the same dates every year */
+  recurs: 'yearly' | null;
+  /** the widget the note was written about (the query view's encoding) */
+  widget: Record<string, unknown> | null;
+  source: NoteSource | null;
+  /** derived from the body (`model:x`, `commit:sha`, `[[slug]]`) plus frontmatter lists */
+  models: string[];
+  commits: string[];
+  links: string[];
   body: string;
   /** why the file couldn't be read (the note is listed, but applies nowhere) */
   error: string | null;
@@ -37,7 +61,22 @@ export interface MetricNoteBody {
   metrics: string[];
   dimension: string | null;
   value: string | null;
+  tags: string[];
+  type: NoteType;
+  status: NoteStatus | null;
+  resolved: string | null;
+  recurs: 'yearly' | null;
+  widget: Record<string, unknown> | null;
+  source: NoteSource | null;
   body: string;
+}
+
+/** Draft with Wicky (Pro): a note about a monitor's flagged period. */
+export interface NoteDraftRequest {
+  monitor_id: number;
+  period: string;
+  slice: string;
+  target?: string | null;
 }
 
 const base = (projectId: number) => `/projects/${projectId}/metric-notes`;
@@ -59,5 +98,6 @@ export const notesApi = {
     form.append('file', file, (file as File).name || 'paste.png');
     return postForm<{ path: string }>(`${base(projectId)}/images`, form);
   },
+  draft: (projectId: number, req: NoteDraftRequest) => post<{ title: string; body: string }>(`${base(projectId)}/draft`, req),
   assetUrl: (projectId: number, path: string) => `/api${base(projectId)}/asset?path=${encodeURIComponent(path)}`,
 };

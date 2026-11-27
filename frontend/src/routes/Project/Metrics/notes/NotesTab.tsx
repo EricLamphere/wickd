@@ -1,20 +1,26 @@
 // Metrics page → Notes (?tab=notes): every metric note, grouped by month and sorted by start, end or
 // date added (newest first by default; remembered per project), filterable by text, metric, dimension and dates. `?note=<slug>` opens one (part of history).
-import { useEffect, useMemo, useState } from 'react';
+// Plan 33: tag and incident filters, and a Timeline view (List / Timeline, remembered per project).
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, ArrowDownWideNarrow, ArrowUpNarrowWide, Plus, StickyNote } from 'lucide-react';
+import { AlertTriangle, ArrowDownWideNarrow, ArrowUpNarrowWide, GanttChart, List, Plus, Repeat, StickyNote } from 'lucide-react';
 import type { MetricNoteDto } from '../../../../lib/notesApi';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import { NoteView } from './NoteView';
 import { addMetricNote, openMetricNote } from './noteEvents';
 import { useStickyTab } from '../../../../lib/useUrlTab';
-import { NOTE_SORT_BY, NOTE_SORT_DIR, filterNotes, groupByMonth, rangeText, type NoteSortBy, type NotesFilter } from './lib/metricNotes';
+import { NOTE_SORT_BY, NOTE_SORT_DIR, allTags, filterNotes, groupByMonth, rangeText, type NoteSortBy, type NotesFilter } from './lib/metricNotes';
+import { TIMELINE_SPANS, type TimelineSpan } from './lib/timeline';
+import { NotesTimeline } from './NotesTimeline';
+import { NoteTypeIcon } from './NoteTypeIcon';
 import { useNotes } from './useNotes';
 
 export const NOTE_PARAM = 'note';
 const INPUT = 'px-2 py-1 rounded border border-gray-700 bg-surface-app text-xs text-gray-200 outline-none focus:border-brand-600';
 const SORT_LABELS: Record<NoteSortBy, string> = { added: 'Date added', start: 'Start date', end: 'End date' };
-const EMPTY: NotesFilter = { text: '', metric: null, dimension: null, start: null, end: null };
+const EMPTY: NotesFilter = { text: '', metric: null, dimension: null, start: null, end: null, tag: null, type: null };
+const VIEWS = ['list', 'timeline'] as const;
+const SPANS = TIMELINE_SPANS.map(String);
 
 function excerpt(body: string): string {
   return body.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/[#*_`>~[\]()]/g, '').replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -24,9 +30,13 @@ function NoteRow({ note, onOpen }: { note: MetricNoteDto; onOpen: () => void }) 
   return (
     <button onClick={onOpen} className="flex flex-col gap-0.5 w-full px-3 py-2 text-left rounded hover:bg-gray-800/60">
       <span className="flex items-center gap-2 min-w-0">
-        {note.error ? <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-400" /> : <StickyNote className="w-3.5 h-3.5 shrink-0 text-amber-300" />}
+        {note.error ? <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-red-400" />
+          : <NoteTypeIcon note={note} />}
         <span className="text-xs font-medium text-gray-200 truncate">{note.title}</span>
         <span className="shrink-0 text-[10px] text-gray-500">{rangeText(note.start, note.end)}</span>
+        {note.recurs === 'yearly' && <Repeat className="w-3 h-3 shrink-0 text-gray-500" aria-label="Every year" />}
+        {note.type === 'incident' && note.status !== 'resolved' && <span className="shrink-0 px-1 text-[9px] uppercase tracking-wide rounded bg-red-950/50 text-red-300">open</span>}
+        {(note.tags ?? []).slice(0, 3).map((t) => <span key={t} className="shrink-0 text-[10px] text-gray-500">#{t}</span>)}
         <span className="flex-1" />
         <span className="shrink-0 text-[10px] text-gray-500 truncate max-w-[40%]">
           {[note.metrics.length ? note.metrics.join(', ') : 'every metric', note.dimension ? `${note.dimension} = ${note.value}` : null]
@@ -45,7 +55,13 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
   const notes = useMemo(() => data?.notes ?? [], [data]);
   const [sortBy, setSortBy] = useStickyTab(`metric-notes-sort:${projectId}`, NOTE_SORT_BY, 'start');
   const [sortDir, setSortDir] = useStickyTab(`metric-notes-sort-dir:${projectId}`, NOTE_SORT_DIR, 'desc');
-  const groups = useMemo(() => groupByMonth(filterNotes(notes, filter), sortBy, sortDir), [notes, filter, sortBy, sortDir]);
+  const tags = useMemo(() => allTags(notes), [notes]);
+  const [view, setView] = useStickyTab(`metric-notes-view:${projectId}`, VIEWS, 'list');
+  const [spanText, setSpanText] = useStickyTab(`metric-notes-span:${projectId}`, SPANS, '12');
+  const filteredNotes = useMemo(() => filterNotes(notes, filter), [notes, filter]);
+  const groups = useMemo(() => groupByMonth(filteredNotes, sortBy, sortDir), [filteredNotes, sortBy, sortDir]);
+  const labels = useMemo(() => new Map(catalog.metrics.map((m) => [m.name, m.label || m.name])), [catalog]);
+  const label = useCallback((m: string) => labels.get(m) ?? m, [labels]);
   const dimensions = useMemo(() => [...new Set(catalog.metrics.flatMap((m) => m.dimensions.filter((d) => d.type !== 'time').map((d) => d.name)))].sort(), [catalog]);
   const openSlug = params.get(NOTE_PARAM);
   const open = openSlug ? notes.find((n) => n.slug === openSlug) ?? null : null;
@@ -71,20 +87,45 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
           <option value="">Any dimension</option>
           {dimensions.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
+        {tags.length > 0 && (
+          <select value={filter.tag ?? ''} onChange={(e) => set({ tag: e.target.value || null })} aria-label="Tag" className={INPUT}>
+            <option value="">Any tag</option>
+            {tags.map((t) => <option key={t} value={t}>#{t}</option>)}
+          </select>
+        )}
+        <select value={filter.type ?? ''} onChange={(e) => set({ type: (e.target.value || null) as NotesFilter['type'] })} aria-label="Type" className={INPUT}>
+          <option value="">Any type</option>
+          <option value="note">Notes</option>
+          <option value="release">Releases</option>
+          <option value="incident">Incidents</option>
+          <option value="open">Open incidents</option>
+        </select>
         <input type="date" value={filter.start ?? ''} onChange={(e) => set({ start: e.target.value || null })} aria-label="From" className={INPUT} />
         <span className="text-[11px] text-gray-500">to</span>
         <input type="date" value={filter.end ?? ''} onChange={(e) => set({ end: e.target.value || null })} aria-label="To" className={INPUT} />
         {filtered && <button onClick={() => setFilter(EMPTY)} className="text-[11px] text-gray-400 hover:text-gray-200">Clear</button>}
         <div className="flex-1" />
-        <span className="text-[11px] text-gray-500">Sort by</span>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as NoteSortBy)} aria-label="Sort by" className={INPUT}>
-          {NOTE_SORT_BY.map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
-        </select>
-        <button onClick={() => setSortDir(sortDir === 'desc' ? 'asc' : 'desc')}
-          title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'} aria-label={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
-          className="p-1 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800">
-          {sortDir === 'desc' ? <ArrowDownWideNarrow className="w-3.5 h-3.5" /> : <ArrowUpNarrowWide className="w-3.5 h-3.5" />}
-        </button>
+        <div className="flex rounded border border-gray-700" role="tablist" aria-label="View">
+          {VIEWS.map((v) => (
+            <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)} title={v === 'list' ? 'List' : 'Timeline'}
+              className={`flex items-center gap-1 px-1.5 py-1 text-[11px] ${view === v ? 'bg-gray-800 text-gray-100' : 'text-gray-400 hover:text-gray-200'}`}>
+              {v === 'list' ? <List className="w-3.5 h-3.5" /> : <GanttChart className="w-3.5 h-3.5" />}{v === 'list' ? 'List' : 'Timeline'}
+            </button>
+          ))}
+        </div>
+        {view === 'list' && (
+          <>
+            <span className="text-[11px] text-gray-500">Sort by</span>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as NoteSortBy)} aria-label="Sort by" className={INPUT}>
+              {NOTE_SORT_BY.map((k) => <option key={k} value={k}>{SORT_LABELS[k]}</option>)}
+            </select>
+            <button onClick={() => setSortDir(sortDir === 'desc' ? 'asc' : 'desc')}
+              title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'} aria-label={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
+              className="p-1 rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-800">
+              {sortDir === 'desc' ? <ArrowDownWideNarrow className="w-3.5 h-3.5" /> : <ArrowUpNarrowWide className="w-3.5 h-3.5" />}
+            </button>
+          </>
+        )}
         {data && <span className="text-[10px] text-gray-500" title="Notes are Markdown files in the project, shared through git">{data.folder}/</span>}
         <button onClick={() => addMetricNote({ kind: 'metric', metric: filter.metric })}
           className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-brand-600 text-white hover:bg-brand-500">
@@ -105,7 +146,11 @@ export function NotesTab({ projectId, catalog }: { projectId: number; catalog: S
           </div>
         )}
         {data && notes.length > 0 && !groups.length && <p className="p-3 text-xs text-gray-500">No notes match.</p>}
-        {groups.map((g) => (
+        {view === 'timeline' && filteredNotes.length > 0 && (
+          <NotesTimeline notes={filteredNotes} span={Number(spanText) as TimelineSpan} onSpan={(m) => setSpanText(String(m))}
+            label={label} onOpen={(slug) => setOpen(slug)} />
+        )}
+        {view === 'list' && groups.map((g) => (
           <section key={g.key} className="flex flex-col pb-3">
             <h3 className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{g.label}</h3>
             {g.notes.map((n) => <NoteRow key={n.slug} note={n} onOpen={() => setOpen(n.slug)} />)}

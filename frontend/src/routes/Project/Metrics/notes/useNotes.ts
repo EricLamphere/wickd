@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { notesApi, type MetricNoteDto } from '../../../../lib/notesApi';
 import { useProjectEvents } from '../../../../lib/sse';
 import { notesFor, type NoteContext } from './lib/metricNotes';
+import { useNotesVisible } from './notesVisibility';
 
 export const notesKey = (projectId: number) => ['metric-notes', projectId] as const;
 
@@ -26,11 +27,13 @@ export function useNotes(projectId: number) {
 
 const NONE: MetricNoteDto[] = [];
 
-/** The project's readable notes, for markers (the project id from the route). */
+/** The project's readable notes, for markers (the project id from the route); none while a
+ *  dashboard's Notes toggle (or an export without notes) hides them (plan 33). */
 export function useProjectNotes(): MetricNoteDto[] {
   const { projectId } = useParams<{ projectId: string }>();
   const { data } = useNotes(Number(projectId));
-  return useMemo(() => data?.notes.filter((n) => !n.error) ?? NONE, [data]);
+  const { show } = useNotesVisible();
+  return useMemo(() => (show ? data?.notes.filter((n) => !n.error) ?? NONE : NONE), [data, show]);
 }
 
 /** Notes that apply to `metrics` over the context (memoized on its fields). */

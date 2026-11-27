@@ -282,3 +282,95 @@ async def test_delete_with_images(db: AsyncSession, client: AsyncClient, tmp_pat
     assert orphans == {"images": ["wickd/img/note-1.png"]}
     res = await client.delete(f"/api/projects/{pid}/metric-notes/eu-checkout-outage", params={"remove_images": True})
     assert res.status_code == 204 and not (root / "wickd" / "img" / "note-1.png").exists()
+
+
+# ── plan 33: tags, incidents, recurring notes, mentions, the saved widget ────
+
+
+def test_new_fields_round_trip_in_order() -> None:
+    meta = notes.validate_meta({
+        "title": "Outage", "start": "2026-11-03", "end": "2026-11-04", "tags": "#outage, checkout, Outage",
+        "status": "resolved", "resolved": "2026-11-05", "recurs": "yearly", "commits": ["ABCDEF1"],
+        "widget": {"type": "timeseries", "metrics": ["revenue"]}, "source": {"dashboard": "kpis", "widget": "w1"},
+    })
+    assert meta.tags == ["outage", "checkout"]
+    text = notes.render(Note(meta=meta, body="x"))
+    keys = [line.split(":")[0] for line in text.splitlines()[1:] if line and not line.startswith((" ", "-", "---"))]
+    assert meta.type == "incident"  # a status without a type is an incident
+    assert keys[:10] == ["title", "start", "end", "tags", "type", "status", "resolved", "recurs", "commits", "widget"]
+    again = notes.parse(text).meta
+    assert again.widget == {"type": "timeseries", "metrics": ["revenue"]} and again.resolved == "2026-11-05"
+
+
+@pytest.mark.parametrize("data", [
+    {"status": "closed"},
+    {"recurs": "weekly"},
+    {"resolved": "2026-11-05"},
+    {"status": "open", "resolved": "2026-11-05"},
+    {"commits": ["not-a-sha"]},
+    {"type": "release", "status": "open"},
+    {"type": "outage"},
+    {"widget": {"x": "y" * 30_000}},
+])
+def test_new_fields_refused(data: dict) -> None:
+    with pytest.raises(NoteError):
+        notes.validate_meta({"title": "t", "start": "2026-11-03", "end": "2026-11-03", **data})
+
+
+def test_mentions_skip_code_and_dedupe() -> None:
+    meta = notes.validate_meta({"title": "t", "start": "2026-11-03", "end": "2026-11-03", "models": ["stg_orders"]})
+    body = ("See model:fct_orders. Also model:fct_orders and model:stg_orders, commit:3F2A9C1, note:eu-rollback and [[old-link|x]].\n"
+            "`model:in_code` and email@model:x\n```\nmodel:fenced commit:aaaaaaa\n```\n")
+    m = notes.mentions(body, meta)
+    assert m.models == ["stg_orders", "fct_orders"]
+    assert m.commits == ["3f2a9c1"]
+    assert m.links == ["eu-rollback", "old-link"]
+
+
+def test_occurrences() -> None:
+    plain = notes.validate_meta({"title": "t", "start": "2026-11-03", "end": "2026-11-04"})
+    assert notes.occurrences(plain, "2026-11-04", "2026-12-01") == [("2026-11-03", "2026-11-04")]
+    assert notes.occurrences(plain, "2027-11-03", "2027-11-04") == []
+    yearly = plain.model_copy(update={"recurs": "yearly"})
+    assert notes.occurrences(yearly, "2024-01-01", "2026-12-31") == [
+        ("2024-11-03", "2024-11-04"), ("2025-11-03", "2025-11-04"), ("2026-11-03", "2026-11-04")]
+
+
+async def test_api_new_fields_and_mentions(db: AsyncSession, client: AsyncClient, tmp_path: Path) -> None:
+    pid, root = await _project(db, tmp_path)
+    body = {**BODY, "tags": ["outage"], "type": "incident", "status": "open", "recurs": None,
+            "widget": {"type": "summary", "metrics": ["revenue"]}, "source": {"dashboard": "kpis", "widget": "w1"},
+            "body": "Caused by model:stg_payments, see commit:3f2a9c1 and note:eu-rollback."}
+    created = (await client.post(f"/api/projects/{pid}/metric-notes", json=body)).json()
+    assert created["tags"] == ["outage"] and created["type"] == "incident" and created["status"] == "open"
+    assert (created["models"], created["commits"], created["links"]) == (["stg_payments"], ["3f2a9c1"], ["eu-rollback"])
+    assert created["widget"] == {"type": "summary", "metrics": ["revenue"]}
+    # a hand-written `commits:` list survives a save from the editor (which doesn't show it)
+    path = root / "wickd" / "notes" / f"{created['slug']}.md"
+    path.write_text(path.read_text().replace("status: open\n", "status: open\ncommits:\n- abcdef1\n"))
+    saved = (await client.put(f"/api/projects/{pid}/metric-notes/{created['slug']}",
+                              json={**body, "status": "resolved", "resolved": "2026-11-06"})).json()
+    assert saved["status"] == "resolved" and saved["resolved"] == "2026-11-06"
+    assert saved["commits"] == ["abcdef1", "3f2a9c1"]
+    # a resolved date without `resolved` status is dropped, not an error
+    reopened = (await client.put(f"/api/projects/{pid}/metric-notes/{created['slug']}",
+                                 json={**body, "status": "open", "resolved": "2026-11-06"})).json()
+    assert reopened["status"] == "open" and reopened["resolved"] is None
+
+
+def test_note_types() -> None:
+    base = {"title": "t", "start": "2026-11-03", "end": "2026-11-03"}
+    assert notes.validate_meta(base).type is None
+    assert notes.validate_meta({**base, "type": "note"}).type is None
+    release = notes.validate_meta({**base, "type": "release"})
+    assert "type: release" in notes.render(Note(meta=release, body=""))
+    assert "type:" not in notes.render(Note(meta=notes.validate_meta(base), body=""))
+
+
+async def test_api_type_drops_status_off_incidents(db: AsyncSession, client: AsyncClient, tmp_path: Path) -> None:
+    pid, _ = await _project(db, tmp_path)
+    created = (await client.post(f"/api/projects/{pid}/metric-notes",
+                                 json={**BODY, "type": "release", "status": "open", "resolved": "2026-11-05"})).json()
+    assert (created["type"], created["status"], created["resolved"]) == ("release", None, None)
+    plain = (await client.post(f"/api/projects/{pid}/metric-notes", json={**BODY, "title": "Plain"})).json()
+    assert plain["type"] == "note"

@@ -7,6 +7,7 @@ import { DeferToggle } from '../slim/DeferToggle';
 import { DocumentModelButton, canDocument } from './DocumentModelButton';
 import { ImpactSummary } from './ImpactSummary';
 import { DataDiffCard } from './DataDiffCard';
+import { ModelNotesCard } from './ModelNotesCard';
 import { UnitTestsSection } from './UnitTestsSection';
 import { InheritDescriptionsButton } from '../propagation/InheritDescriptionsButton';
 import { childrenOfType, isSemanticType } from '../../lib/semantic';
@@ -526,6 +527,7 @@ export function PropertiesTab({
 
       {graph && <ImpactSummary projectId={projectId} nodes={[model]} graph={graph} />}
       <DataDiffCard projectId={projectId} model={model} />
+      <ModelNotesCard projectId={projectId} model={model} />
 
       <div className="border-t border-gray-800" />
 

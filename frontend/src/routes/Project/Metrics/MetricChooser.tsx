@@ -1,6 +1,7 @@
 // Pick one metric with the same search and Model / Type filters as the Metrics sidebar. Used
 // wherever a metric is chosen: a widget's "Add a metric…", "Monitor a metric", Compare's
-// "Pick a metric…". ↑/↓ move through the matches, Enter picks, Escape closes.
+// "Pick a metric…", a metric note's metric. ↑/↓ move through the matches, Enter picks, Escape closes.
+// With `clearLabel`, the list starts with a choice for no metric (a note's "Every metric").
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ChevronDown, Plus } from 'lucide-react';
 import type { SemanticCatalogDto } from '../../../lib/semanticApi';
@@ -21,11 +22,17 @@ interface Props {
   labels?: Map<string, string>;
   /** open as a floating popover under the trigger; otherwise in the flow (narrow rails, dialogs that clip) */
   popover?: boolean;
+  /** the popover as wide as the trigger (at least 20rem) instead of a fixed 20rem */
+  popoverFull?: boolean;
   ariaLabel?: string;
+  /** offer "no metric" first under this label (e.g. "Every metric"); picking it calls onClear */
+  clearLabel?: string;
+  onClear?: () => void;
 }
 
 export function MetricChooser({
   catalog, onPick, value = null, variant = 'select', placeholder = 'Pick a metric…', exclude = [], labels, popover = false, ariaLabel,
+  clearLabel, onClear, popoverFull = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -38,6 +45,10 @@ export function MetricChooser({
   );
   const labelOf = (name: string) => labels?.get(name) ?? catalog.metrics.find((m) => m.name === name)?.label ?? name;
   const chosen = value ? catalog.metrics.find((m) => m.name === value) : undefined;
+  // the clear choice is row 0 when offered, so list rows are shifted by one
+  const clearable = !!(clearLabel && onClear);
+  const offset = clearable ? 1 : 0;
+  const rows = matches.length + offset;
 
   useEffect(() => {
     if (!open) return;
@@ -52,12 +63,14 @@ export function MetricChooser({
   const changeFilter = (patch: Parameters<typeof update>[0]) => { update(patch); setHighlight(0); };
   const show = () => { reset(); setHighlight(0); setOpen(true); };
   const pick = (name: string) => { onPick(name); setOpen(false); };
+  const clear = () => { onClear?.(); setOpen(false); };
+  const pickRow = (i: number) => (clearable && i === 0 ? clear() : pick(matches[i - offset].name));
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     const stop = () => { e.preventDefault(); e.stopPropagation(); };
     if (e.key === 'Escape') { stop(); setOpen(false); }
-    else if (e.key === 'ArrowDown') { stop(); setHighlight((h) => Math.min(h + 1, matches.length - 1)); }
+    else if (e.key === 'ArrowDown') { stop(); setHighlight((h) => Math.min(h + 1, rows - 1)); }
     else if (e.key === 'ArrowUp') { stop(); setHighlight((h) => Math.max(h - 1, 0)); }
-    else if (e.key === 'Enter' && matches.length) { stop(); pick(matches[Math.min(highlight, matches.length - 1)].name); }
+    else if (e.key === 'Enter' && rows) { stop(); pickRow(Math.min(highlight, rows - 1)); }
   };
 
   const trigger = variant === 'add' ? (
@@ -68,7 +81,9 @@ export function MetricChooser({
   ) : (
     <button type="button" onClick={() => (open ? setOpen(false) : show())} aria-label={ariaLabel} aria-expanded={open}
       className="flex items-center gap-2 w-full min-w-[10rem] px-2 py-1.5 text-left text-xs rounded border border-gray-700 bg-surface-app hover:border-gray-600">
-      <span className={`flex-1 min-w-0 truncate ${chosen ? 'text-gray-200' : 'text-gray-500'}`}>{chosen ? labelOf(chosen.name) : placeholder}</span>
+      <span className={`flex-1 min-w-0 truncate ${chosen ? 'text-gray-200' : value ? 'text-amber-300' : 'text-gray-500'}`}>
+        {chosen ? labelOf(chosen.name) : value ? `${value} (not in the semantic layer)` : placeholder}
+      </span>
       {chosen && <span className={`shrink-0 px-1 text-[9px] leading-4 rounded border ${TYPE_CLS[chosen.type] ?? TYPE_CLS.simple}`}>{chosen.type}</span>}
       <ChevronDown className="w-3 h-3 shrink-0 text-gray-500" />
     </button>
@@ -76,17 +91,27 @@ export function MetricChooser({
 
   const panel = open && (
     <div className={`flex flex-col gap-1.5 p-1.5 rounded border border-gray-700 bg-surface-panel ${
-      popover ? 'absolute left-0 top-full z-50 mt-1 w-80 max-w-[90vw] shadow-xl' : 'mt-1'}`}>
+      popover ? `absolute left-0 top-full z-50 mt-1 ${popoverFull ? 'w-full min-w-80' : 'w-80'} max-w-[90vw] shadow-xl` : 'mt-1'}`}>
       <MetricFilterBar metrics={catalog.metrics} filter={filter} onChange={changeFilter} autoFocus onKeyDown={onKeyDown} />
       <div ref={listRef} className="max-h-56 overflow-y-auto" role="listbox" aria-label="Metrics">
-        {matches.map((m, i) => (
+        {clearable && (
+          <button type="button" role="option" aria-selected={highlight === 0} data-index={0}
+            onClick={clear} onMouseEnter={() => setHighlight(0)}
+            className={`flex items-center w-full px-2 py-1 text-left text-xs rounded italic ${highlight === 0 ? 'bg-gray-800/70' : ''} ${value ? 'text-gray-400' : 'text-brand-200'}`}>
+            {clearLabel}
+          </button>
+        )}
+        {matches.map((m, j) => {
+          const i = j + offset;
+          return (
           <button key={m.name} type="button" role="option" aria-selected={i === highlight} data-index={i}
             onClick={() => pick(m.name)} onMouseEnter={() => setHighlight(i)} title={m.description || m.name}
             className={`flex items-center gap-2 w-full px-2 py-1 text-left text-xs rounded ${i === highlight ? 'bg-gray-800/70' : ''}`}>
             <span className={`flex-1 min-w-0 truncate ${m.name === value ? 'text-brand-200' : 'text-gray-200'}`}>{labelOf(m.name)}</span>
             <span className={`shrink-0 px-1 text-[9px] leading-4 rounded border ${TYPE_CLS[m.type] ?? TYPE_CLS.simple}`}>{m.type}</span>
           </button>
-        ))}
+          );
+        })}
         {!matches.length && <p className="px-2 py-2 text-xs text-gray-500">No metrics match.</p>}
       </div>
     </div>

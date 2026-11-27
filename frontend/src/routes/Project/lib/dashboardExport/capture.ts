@@ -104,8 +104,9 @@ function textWidth(text: string, font: string): number {
   }
 }
 
-/** The PNG's scene: a header, then every widget with its contents, as on screen (`grid` may be one widget). */
-export function captureScene(grid: HTMLElement, header: { title: string; subtitle: string }): SvgScene {
+/** The PNG's scene: a header, then every widget with its contents, as on screen (`grid` may be one widget),
+ *  then `footer` lines under it (a dashboard's notes, plan 33). */
+export function captureScene(grid: HTMLElement, header: { title: string; subtitle: string }, footer: string[] = []): SvgScene {
   const pad = 24;
   const headerH = 56;
   const origin = grid.getBoundingClientRect();
@@ -129,9 +130,18 @@ export function captureScene(grid: HTMLElement, header: { title: string; subtitl
   });
   // the header may be wider than a single small widget: widen the image rather than cut it off
   const headerWidth = Math.max(...shapes.slice(0, 2).map((t) => (t.kind === 'text' ? textWidth(t.text, `${t.weight} ${t.size}px ${family}`) : 0)));
+  const lineH = 16;
+  const footerTop = pad + headerH + origin.height + 20;
+  const footerH = footer.length ? 20 + (footer.length + 1) * lineH : 0;
+  if (footer.length) {
+    shapes.push({ kind: 'text', x: pad, y: footerTop + 12, text: 'Notes', color: color('--text-primary'), size: 12, weight: '600', family });
+    footer.forEach((line, i) => shapes.push({
+      kind: 'text', x: pad, y: footerTop + 12 + (i + 1) * lineH, text: `• ${line}`, color: color('--text-secondary'), size: 11, weight: '400', family,
+    }));
+  }
   return {
     width: Math.max(origin.width, Math.ceil(headerWidth)) + pad * 2,
-    height: origin.height + pad * 2 + headerH,
+    height: origin.height + pad * 2 + headerH + footerH,
     background: color('--bg-app'),
     fontFamily: family,
     shapes,

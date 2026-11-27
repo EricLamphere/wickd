@@ -2,11 +2,14 @@
 // (⌘B bold, ⌘I italic, ⌘⇧X strikethrough, ⌘E code, ⌘K link, Tab / ⇧Tab indent, Enter continues
 // a list). Edits go through the browser's insertText command, so ⌘Z undoes them. With `onImages`
 // (metric notes), pasting or dropping images uploads them and inserts their Markdown at the cursor.
+// With `complete` (metric notes' `note:`, `model:`, `commit:`), a suggestions menu follows the caret.
 import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { Bold, Code, Heading1, Heading2, Heading3, Italic, Link, List, ListChecks, ListOrdered, Quote, Strikethrough } from 'lucide-react';
 import {
   continueList, indentLines, insertLink, toggleLineFormat, toggleWrap, type LineFormat, type TextEdit,
 } from '../../lib/markdownEdit';
+import { caretCoords } from './caretCoords';
+import { CompletionMenu, type Completion, type CompletionSource } from './CompletionMenu';
 
 type Command = (text: string, start: number, end: number) => TextEdit | null;
 
@@ -60,13 +63,35 @@ interface EditorProps {
   /** pasted or dropped images → the Markdown to insert for them (uploads them first) */
   onImages?: (files: File[]) => Promise<string>;
   placeholder?: string;
+  /** suggestions while typing (e.g. note links, models, commits) */
+  complete?: CompletionSource;
 }
+
+interface MenuState { title: string; items: Completion[]; index: number; left: number; top: number }
 
 const imagesIn = (list: FileList | null | undefined): File[] => Array.from(list ?? []).filter((f) => f.type.startsWith('image/'));
 
-export function MarkdownEditor({ value, onChange, rows = 10, onImages, placeholder }: EditorProps) {
+export function MarkdownEditor({ value, onChange, rows = 10, onImages, placeholder, complete }: EditorProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  /** recompute the suggestions for the caret (after typing, clicking or moving it) */
+  const refreshMenu = () => {
+    const el = ref.current;
+    if (!el || !complete || el.selectionStart !== el.selectionEnd) { setMenu(null); return; }
+    const found = complete.suggest(el.value, el.selectionStart);
+    if (!found) { setMenu(null); return; }
+    const at = caretCoords(el, el.selectionStart);
+    const left = Math.max(0, Math.min(at.left, el.clientWidth - 288));
+    setMenu((prev) => ({ ...found, index: prev ? Math.min(prev.index, Math.max(0, found.items.length - 1)) : 0, left, top: at.top + el.offsetTop }));
+  };
+  const pick = (item: Completion) => {
+    const el = ref.current;
+    if (!el || !complete) return;
+    const next = complete.apply(el.value, el.selectionStart, item);
+    setMenu(null);
+    if (next) apply(el, { text: next.text, start: next.caret, end: next.caret }, onChange);
+  };
   const insertImages = async (files: File[]) => {
     const el = ref.current;
     if (!el || !onImages || !files.length) return;
@@ -106,7 +131,21 @@ export function MarkdownEditor({ value, onChange, rows = 10, onImages, placehold
     return true;
   };
 
+  const onMenuKey = (e: KeyboardEvent<HTMLTextAreaElement>): boolean => {
+    if (!menu) return false;
+    const n = menu.items.length;
+    if (e.key === 'Escape') { setMenu(null); return true; }
+    if (n && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      setMenu({ ...menu, index: (menu.index + step + n) % n });
+      return true;
+    }
+    if (n && (e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && !e.nativeEvent.isComposing) { pick(menu.items[menu.index]); return true; }
+    return false;
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (onMenuKey(e)) { e.preventDefault(); e.stopPropagation(); return; }
     const mod = e.metaKey || e.ctrlKey;
     const key = e.key.toLowerCase();
     let command: Command | undefined;
@@ -120,7 +159,7 @@ export function MarkdownEditor({ value, onChange, rows = 10, onImages, placehold
   };
 
   return (
-    <div className="flex flex-col rounded border border-gray-700 bg-surface-app focus-within:border-brand-600">
+    <div className="relative flex flex-col rounded border border-gray-700 bg-surface-app focus-within:border-brand-600">
       <div className="flex flex-wrap items-center gap-0.5 px-1 py-0.5 border-b border-gray-800" role="toolbar" aria-label="Formatting">
         {TOOLS.map((tool, i) => tool === 'sep'
           ? <span key={`sep-${i}`} className="w-px h-3.5 mx-0.5 bg-gray-800" />
@@ -132,10 +171,14 @@ export function MarkdownEditor({ value, onChange, rows = 10, onImages, placehold
             </button>
           ))}
       </div>
-      <textarea ref={ref} value={value} rows={rows} onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown}
+      <textarea ref={ref} value={value} rows={rows} onKeyDown={onKeyDown}
+        onChange={(e) => { onChange(e.target.value); if (complete) requestAnimationFrame(refreshMenu); }}
+        onClick={complete ? refreshMenu : undefined} onBlur={() => setMenu(null)}
+        onKeyUp={complete ? (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') refreshMenu(); } : undefined}
         onPaste={onPaste} onDrop={onDrop} onDragOver={(e) => { if (onImages && e.dataTransfer?.types.includes('Files')) e.preventDefault(); }}
         aria-label="Text" spellCheck data-keyboard-owner="" placeholder={placeholder}
         className="w-full px-2 py-1 bg-transparent text-xs text-gray-200 font-mono leading-5 outline-none resize-y" />
+      {menu && <CompletionMenu {...menu} onPick={pick} onHover={(index) => setMenu({ ...menu, index })} />}
       {uploading && <p className="px-2 py-1 text-[10px] text-gray-500 border-t border-gray-800">Adding image…</p>}
     </div>
   );

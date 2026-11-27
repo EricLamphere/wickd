@@ -2,10 +2,13 @@
 // and the note linked to a period marked as expected. Marking offers to write a note about it
 // (plan 30): the New note dialog opens prefilled; Save links it to the Marked as expected log,
 // Skip leaves the period marked without one, "Don't ask again" is remembered per project.
-import { Check, RotateCcw, StickyNote } from 'lucide-react';
+// Draft with Wicky (Pro, plan 33) writes the note's first draft from the flag and the notes near it.
+import { useState } from 'react';
+import { Check, Loader2, RotateCcw, Sparkles, StickyNote } from 'lucide-react';
 import type { MonitorDto, MonitorExpectationDto, MonitorPointDto } from '../../../../lib/monitorsApi';
-import type { MetricNoteDto } from '../../../../lib/notesApi';
-import { confirmDialog } from '../../../../lib/dialogs';
+import { notesApi, type MetricNoteDto } from '../../../../lib/notesApi';
+import { alertError, confirmDialog } from '../../../../lib/dialogs';
+import { useAiStatus } from '../../components/Wicky/useAi';
 import { addMetricNote, openMetricNote } from '../notes/noteEvents';
 import { expectedPrefill, notesFor, periodEnd } from '../notes/lib/metricNotes';
 import { formatNumber, KIND_LABEL, kindTone } from './monitorView';
@@ -47,13 +50,31 @@ export function FlaggedPeriods({ projectId, monitor, slice, flagged, notes, expe
   const covering = (p: MonitorPointDto) => notesFor(notes, { start: p.period, end: periodEnd(p.period, monitor.grain), metrics: [monitor.metric], dims });
   const entryFor = (p: MonitorPointDto) => expectations.find((e) => e.monitor_id === monitor.id && e.slice === slice && e.period === p.period);
 
+  const { status: ai } = useAiStatus();
+  const canDraft = !!ai?.entitled && !!ai.pro_installed;
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const prefillOf = (p: MonitorPointDto) => expectedPrefill({
+    metric: monitor.metric, label, period: p.period, grain: monitor.grain, kind: p.kind, value: p.value,
+    expected: p.expected, dimension: monitor.dimension, slice, format: formatNumber,
+  });
   const noteFor = (p: MonitorPointDto, expectationId: number | null, intro: string | null, dontAsk: boolean) => addMetricNote(
-    expectedPrefill({
-      metric: monitor.metric, label, period: p.period, grain: monitor.grain, kind: p.kind, value: p.value,
-      expected: p.expected, dimension: monitor.dimension, slice, format: formatNumber,
-    }),
+    prefillOf(p),
     { expectationId, intro, onDontAsk: dontAsk ? () => stopAsking(projectId) : null },
   );
+  const draft = async (p: MonitorPointDto) => {
+    setDrafting(p.period);
+    try {
+      const d = await notesApi.draft(projectId, { monitor_id: monitor.id, period: p.period, slice });
+      addMetricNote({ ...prefillOf(p), title: d.title, body: d.body }, {
+        expectationId: p.suppressed ? entryFor(p)?.id ?? null : null,
+        intro: 'Wicky drafted this from the flagged period and the notes near it. Check it before saving.',
+      });
+    } catch (err) {
+      await alertError(err);
+    } finally {
+      setDrafting(null);
+    }
+  };
 
   const mark = async (p: MonitorPointDto) => {
     const result = await onSuppress(slice, p.period, true);
@@ -100,6 +121,12 @@ export function FlaggedPeriods({ projectId, monitor, slice, flagged, notes, expe
               <button onClick={() => noteFor(p, entry.id, null, false)} title={entry.note_missing ? 'Its note is gone (deleted or renamed): write another' : 'Write a note about this period'}
                 className="shrink-0 text-[11px] text-gray-400 hover:text-gray-200">
                 {entry.note_missing ? 'Note missing · add' : 'Add note'}
+              </button>
+            )}
+            {canDraft && !linked && !explained.length && (
+              <button onClick={() => void draft(p)} disabled={drafting !== null} title="Draft with Wicky: a note about this period, from the flag and the notes near it"
+                className="flex items-center gap-1 shrink-0 text-[11px] text-purple-300 hover:brightness-125 disabled:opacity-50">
+                {drafting === p.period ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Draft
               </button>
             )}
             <button onClick={() => void (p.suppressed ? undo(p) : mark(p))}

@@ -30,7 +30,7 @@ from sqlalchemy import select
 from app.events.bus import Event, bus
 from app.logging_setup import get_logger
 from app.scheduling import loop as scheduler_loop
-from app.semantic import anomaly, monitor_points
+from app.semantic import anomaly, monitor_points, note_seasons
 from app.semantic import monitor_queries as mq
 from app.semantic import monitor_schedule as ms
 from app.semantic.batch import BatchResult, run_many
@@ -260,8 +260,9 @@ async def _refresh_target(
     batch = await run_many(project.id, Path(project.path), [p.sql for p in plans], target=target or None,
                             kind="monitors")
     await _progress(project.id, run_id, "detecting", len(plans))
+    recurring = await _recurring_for(project, [p.monitor for p in plans])
     for plan, res in zip(plans, batch, strict=True):
-        results[plan.monitor.id] = await _store_and_detect(plan, res, target, today)
+        results[plan.monitor.id] = await _store_and_detect(plan, res, target, today, recurring)
     return results
 
 
@@ -340,7 +341,19 @@ async def _save_slices(monitors: list[MonitorSpec], now: datetime) -> None:
         await session.commit()
 
 
-async def _store_and_detect(plan: _Plan, res: BatchResult, target: str, today: date) -> dict:
+async def _recurring_for(project: Any, monitors: list[MonitorSpec]) -> list:
+    """Recurring notes (plan 33), read only when a seasonal monitor will use them."""
+    if not note_seasons.needs_recurring(monitors):
+        return []
+    from app.db import engine as db_engine
+
+    async with db_engine.SessionLocal() as session:
+        return await note_seasons.recurring_notes(session, project.id, Path(project.path))
+
+
+async def _store_and_detect(
+    plan: _Plan, res: BatchResult, target: str, today: date, recurring: list | None = None
+) -> dict:
     from app.db import engine as db_engine
     from app.db.models import MetricMonitor
 
@@ -362,6 +375,7 @@ async def _store_and_detect(plan: _Plan, res: BatchResult, target: str, today: d
             )
             await session.flush()
             series = await monitor_points.series(session, m.id, target, key, lookback_start)
+            series = _without_recurring(m, series, key, recurring)
             try:
                 detected = detect_for(m, series, previous=previous, today=today)
             except (anomaly.AnomalyUnavailable, ValueError) as exc:
@@ -393,8 +407,10 @@ async def rescore_stored(session: Any, row: Any, target: str, today: date) -> No
     since = mq.window_start(today, m.grain, m.lookback, has_history=False).isoformat()
     restated = {s.get("slice"): s.get("restated") or 0 for s in stored.get("slices") or []}
     slices = []
+    recurring = await _recurring_of_row(session, row, m)
     for key in _slice_keys(m):
         series = await monitor_points.series(session, m.id, target, key, since)
+        series = _without_recurring(m, series, key, recurring)
         try:
             detected = detect_for(m, series, previous=None, today=today)
         except (anomaly.AnomalyUnavailable, ValueError) as exc:
@@ -407,6 +423,21 @@ async def rescore_stored(session: Any, row: Any, target: str, today: date) -> No
     checked_at = _as_utc(datetime.fromisoformat(stored["checked_at"])) if stored.get("checked_at") else datetime.now(UTC)
     row.last_result_json = json.dumps(
         monitor_result(m, target, slices, truncated=bool(stored.get("truncated")), checked_at=checked_at)
+    )
+
+
+async def _recurring_of_row(session: Any, row: Any, m: MonitorSpec) -> list:
+    from app.db.models import Project
+
+    if not note_seasons.needs_recurring([m]):
+        return []
+    project = await session.get(Project, row.project_id)
+    return await note_seasons.recurring_notes(session, project.id, Path(project.path)) if project else []
+
+
+def _without_recurring(m: MonitorSpec, series: list[dict], key: str, recurring: list | None) -> list[dict]:
+    return note_seasons.exclude_recurring(
+        series, recurring or [], algorithm=m.algorithm, metric=m.metric, grain=m.grain, dimension=m.dimension, slice_=key,
     )
 
 

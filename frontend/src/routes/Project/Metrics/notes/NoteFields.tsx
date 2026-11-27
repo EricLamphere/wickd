@@ -1,10 +1,12 @@
 // The New note / Edit note form fields: title, date range, metric, dimension = value. The body
 // editor is NoteDialog's. Dimension values are suggested from the warehouse (POST
-// …/semantic/dimension-values) once a dimension is picked; any value can be typed.
+// …/semantic/dimension-values) once a dimension is picked; any value can be typed. The metric is
+// picked with the shared MetricChooser (search + Model / Type filters, "Every metric" first).
 import { useEffect, useMemo, useState } from 'react';
 import { dashboardsApi } from '../../../../lib/dashboardsApi';
 import type { SemanticCatalogDto } from '../../../../lib/semanticApi';
 import type { NotePrefill } from './lib/metricNotes';
+import { MetricChooser } from '../MetricChooser';
 
 export type NoteForm = NotePrefill;
 
@@ -49,11 +51,6 @@ export function NoteFields({ projectId, catalog, form, onChange, errorField }: {
     return form.dimension && !options.includes(form.dimension) ? [form.dimension, ...options] : options;
   }, [catalog, metric, form.dimension]);
   const suggestions = useValueSuggestions(projectId, catalog, metric, form.dimension);
-  const metricOptions = useMemo(() => {
-    const names = (catalog?.metrics ?? []).map((m) => ({ name: m.name, label: m.label || m.name }));
-    for (const m of form.metrics) if (!names.some((n) => n.name === m)) names.unshift({ name: m, label: `${m} (not in the semantic layer)` });
-    return names;
-  }, [catalog, form.metrics]);
   const bad = (field: string) => (errorField === field ? ' border-red-600' : '');
   const set = (patch: Partial<NoteForm>) => onChange({ ...form, ...patch });
 
@@ -75,14 +72,16 @@ export function NoteFields({ projectId, catalog, form, onChange, errorField }: {
         <input type="date" value={form.end} min={form.start} required onChange={(e) => set({ end: e.target.value })}
           className={INPUT + bad('end')} />
       </label>
-      <label className={`${LABEL} col-span-2`}>
-        Metric
-        <select value={metric ?? ''} onChange={(e) => set({ metrics: e.target.value ? [e.target.value] : [] })} className={INPUT + bad('metrics')}>
-          <option value="">Every metric</option>
-          {metricOptions.map((m) => <option key={m.name} value={m.name}>{m.label}</option>)}
-        </select>
+      <div className={`${LABEL} col-span-2`}>
+        <span>Metric</span>
+        {catalog ? (
+          <MetricChooser catalog={catalog} value={metric} onPick={(m) => set({ metrics: [m] })} placeholder="Every metric"
+            clearLabel="Every metric" onClear={() => set({ metrics: [] })} ariaLabel="Metric" popover popoverFull />
+        ) : (
+          <span className={`${INPUT} text-gray-500`}>{metric ?? 'Every metric'}</span>
+        )}
         {form.metrics.length > 1 && <span className="text-[10px] text-gray-500">This note's file lists {form.metrics.join(', ')} (picking a metric here keeps only that one).</span>}
-      </label>
+      </div>
       <label className={LABEL}>
         Dimension (optional)
         <select value={form.dimension ?? ''} onChange={(e) => set({ dimension: e.target.value || null, value: e.target.value ? form.value : null })}

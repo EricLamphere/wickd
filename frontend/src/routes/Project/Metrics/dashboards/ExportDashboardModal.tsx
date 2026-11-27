@@ -1,6 +1,7 @@
 // Export a dashboard to a file: self-contained HTML (charts as rendered, data embedded, hover
 // readouts) or PNG. Written by POST /exports/dashboard into the chosen folder (the desktop
 // webview has no download manager). The export says which target and when the data was queried.
+// Include metric notes (plan 33) keeps the note bands and pins and lists the notes; off renders without them.
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, FolderOpen, X } from 'lucide-react';
@@ -10,6 +11,8 @@ import { FolderPickerModal } from '../../components/DagExport/FolderPickerModal'
 import { renderDashboardExport, type DashboardExportFormat } from '../../lib/dashboardExport';
 import { compareLabel, currentLabel, rangeLabel, resolveCompare, resolveCurrent } from './dashboardModel';
 import { filterLabel } from '../lib/metricQuery';
+import type { MetricNoteDto } from '../../../../lib/notesApi';
+import { exportNoteLine } from '../notes/lib/widgetNotes';
 
 interface Props {
   projectId: number;
@@ -21,6 +24,14 @@ interface Props {
   onClose: () => void;
   /** Export as a dbt Charts board (charts/<slug>.yml, reviewed before it's written) */
   onExportDct?: () => void;
+  /** metric notes shown on the dashboard (plan 33): listed in the file when included */
+  notes?: MetricNoteDto[];
+  /** the dashboard's Notes toggle: the default for Include notes */
+  notesShown?: boolean;
+  /** re-render the grid with notes on or off for the capture (resolves once painted) */
+  onRenderNotes?: (include: boolean) => Promise<void>;
+  /** the capture is done: back to the toggle */
+  onRendered?: () => void;
 }
 
 const INPUT = 'w-full bg-surface-elevated border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-100 font-mono placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-brand-500';
@@ -37,7 +48,10 @@ function storedDir(): string {
   try { return localStorage.getItem(DIR_KEY) ?? ''; } catch { return ''; }
 }
 
-export function ExportDashboardModal({ projectId, doc, slug, target, results, gridRef, onClose, onExportDct }: Props) {
+export function ExportDashboardModal({
+  projectId, doc, slug, target, results, gridRef, onClose, onExportDct, notes = [], notesShown = true, onRenderNotes, onRendered,
+}: Props) {
+  const [includeNotes, setIncludeNotes] = useState(notesShown);
   const [format, setFormat] = useState<DashboardExportFormat>('html');
   // the third card: a dbt Charts board written into the project (reviewed), not a file here
   const [dct, setDct] = useState(false);
@@ -85,7 +99,15 @@ export function ExportDashboardModal({ projectId, doc, slug, target, results, gr
     setError(null);
     setPhase({ kind: 'working' });
     try {
-      const rendered = await renderDashboardExport({ format, grid: gridRef.current, doc, results, meta });
+      let rendered;
+      try {
+        await onRenderNotes?.(includeNotes);
+        rendered = await renderDashboardExport({
+          format, grid: gridRef.current, doc, results, meta, notes: includeNotes ? notes.map(exportNoteLine) : undefined,
+        });
+      } finally {
+        onRendered?.();
+      }
       const result = await api.exports.dashboard(projectId, {
         directory, filename, format, content: rendered.content, encoding: rendered.encoding, overwrite,
       });
@@ -161,6 +183,15 @@ export function ExportDashboardModal({ projectId, doc, slug, target, results, gr
                   <input value={directory} onChange={(e) => setDirectory(e.target.value)} placeholder="~/Downloads" aria-label="Folder" className={INPUT} />
                   <button onClick={() => setPicking(true)} className="px-3 py-1.5 text-xs rounded border border-gray-700 text-gray-300 hover:border-gray-600 shrink-0">Browse…</button>
                 </div>
+                {onRenderNotes && (
+                  <label className="flex items-center gap-1.5 text-xs text-gray-300">
+                    <input type="checkbox" checked={includeNotes} onChange={(e) => setIncludeNotes(e.target.checked)} />
+                    Include metric notes
+                    <span className="text-[11px] text-gray-500">
+                      {notes.length ? `(${notes.length} on this dashboard: bands, pins and a list)` : '(none on this dashboard)'}
+                    </span>
+                  </label>
+                )}
                 <input value={filename} aria-label="File name" className={INPUT}
                   onChange={(e) => { setFilename(e.target.value); if (phase.kind === 'conflict') setPhase({ kind: 'idle' }); }} />
                 </>

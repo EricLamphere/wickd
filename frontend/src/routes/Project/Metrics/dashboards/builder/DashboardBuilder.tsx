@@ -27,6 +27,9 @@ import { useDashboardEditor } from './useDashboardEditor';
 import { useWidgetDraft } from './useWidgetDraft';
 import { WidgetsRail, type RailTab } from './WidgetsRail';
 import { WidgetFrame } from '../widgets/WidgetFrame';
+import { NotesVisibilityContext, afterPaint, useDashboardNotesShown } from '../../notes/notesVisibility';
+import { dashboardNotes } from '../../notes/lib/widgetNotes';
+import { useNotes } from '../../notes/useNotes';
 import { aiApi, type AiProposalDto } from '../../../../../lib/aiApi';
 import { chartsApi, chartsErrorMessage } from '../../../../../lib/chartsApi';
 import { ProposalReviewModal } from '../../../components/Wicky/ProposalReviewModal';
@@ -72,6 +75,11 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<RailTab>('widgets');
   const [present, setPresent] = useState(false);
+  const [notesShown, setNotesShown] = useDashboardNotesShown(projectId, slug);
+  // while an export renders: notes forced on (kept in the file) or off; null = the toggle
+  const [exportNotes, setExportNotes] = useState<boolean | null>(null);
+  const notesVisibility = useMemo(() => ({ show: exportNotes ?? notesShown, inExport: exportNotes === true }), [exportNotes, notesShown]);
+  const projectNotes = useNotes(projectId).data?.notes;
   // each Run / Refresh in flight on its own (one finishing mustn't clear another's spinner)
   const [runs, setRuns] = useState<WidgetRuns>(NO_RUNS);
   const [notice, setNotice] = useState<string | null>(null);
@@ -316,7 +324,8 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
             hasMetrics={hasMetrics} hasWidgets={doc.widgets.length > 0} onBack={() => void leave(onBack)} onRename={rename} onUndo={editor.undo}
             onRedo={editor.redo} onPresent={() => void leave(() => { setPresent((p) => !p); setSelected(null); })} onExposure={registerExposure}
             onExport={() => setExporting(true)} onDelete={remove} onRefresh={() => run()}
-            onReload={async () => { const latest = await detail.refetch(); if (latest.data) editor.reload(latest.data); }} />
+            onReload={async () => { const latest = await detail.refetch(); if (latest.data) editor.reload(latest.data); }}
+            notesShown={notesShown} onToggleNotes={() => setNotesShown(!notesShown)} />
           <PeriodBar projectId={projectId} doc={doc} catalog={catalog} onChange={(next) => apply(() => next)}
             asOf={asOf ? `Data as of ${relativeTime(asOf)}` : null} />
         </div>
@@ -326,11 +335,13 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
             {results.error && (
               <p className="sticky top-0 z-20 px-4 py-2 text-xs text-center text-red-300 bg-red-950/60">{errorText(results.error)}</p>
             )}
-            <Canvas widgets={dnd.ordered(doc.widgets)} present={present} frameProps={frameProps} gridRef={gridRef}
-              onClearSelection={() => void leave(() => { setSelected(null); setTab('widgets'); })}
-              dropping={!!dnd.active && dnd.active.kind !== 'widget'}
-              canvasWidth={canvasWidthOf(doc)} onCanvasWidth={(px) => apply((d) => ({ ...d, canvas_width: px }))}
-              insetLeft={present ? 0 : leftRail.width} insetRight={present ? 0 : rightRail.width} />
+            <NotesVisibilityContext.Provider value={notesVisibility}>
+              <Canvas widgets={dnd.ordered(doc.widgets)} present={present} frameProps={frameProps} gridRef={gridRef}
+                onClearSelection={() => void leave(() => { setSelected(null); setTab('widgets'); })}
+                dropping={!!dnd.active && dnd.active.kind !== 'widget'}
+                canvasWidth={canvasWidthOf(doc)} onCanvasWidth={(px) => apply((d) => ({ ...d, canvas_width: px }))}
+                insetLeft={present ? 0 : leftRail.width} insetRight={present ? 0 : rightRail.width} />
+            </NotesVisibilityContext.Provider>
           </div>
           {!present && <MetricsRail catalog={catalog} labels={labels} inUse={metricsInUse(doc)} monitorStatuses={monitorStatuses} onAdd={addFromRail} rail={leftRail} />}
           {!present && (
@@ -357,7 +368,10 @@ export function DashboardBuilder({ projectId, slug, catalog, labels, target, onB
       {review && <ProposalReviewModal projectId={projectId} proposal={review} onClose={closeReview} />}
       {exporting && (
         <ExportDashboardModal projectId={projectId} doc={doc} slug={slug} target={results.data?.target ?? target}
-          results={results.data?.widgets ?? []} gridRef={gridRef} onClose={() => setExporting(false)} onExportDct={exportDct} />
+          results={results.data?.widgets ?? []} gridRef={gridRef} onClose={() => setExporting(false)} onExportDct={exportDct}
+          notes={dashboardNotes(doc.widgets, results.data?.widgets ?? [], projectNotes ?? [])} notesShown={notesShown}
+          onRenderNotes={async (include) => { setExportNotes(include); await afterPaint(); }}
+          onRendered={() => setExportNotes(null)} />
       )}
     </DndContext>
   );
